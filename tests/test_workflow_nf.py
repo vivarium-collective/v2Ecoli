@@ -12,7 +12,11 @@ import subprocess
 
 import pytest
 
-from v2ecoli.composites.workflow_nf import AnalysisTaskStep, ParcaTaskStep, build_workflow_nf
+from v2ecoli.composites.workflow_nf import (
+    AnalysisTaskStep,
+    ParcaTaskStep,
+    build_workflow_nf,
+)
 
 
 @pytest.fixture(scope="module")
@@ -33,7 +37,9 @@ def _render(core, doc):
 
 
 def test_shape_is_one_parca_per_variant_feeding_its_own_seeds() -> None:
-    doc = build_workflow_nf(n_seeds=2, variants=[{"variant_name": "a"}, {"variant_name": "b"}])
+    doc = build_workflow_nf(
+        n_seeds=2, variants=[{"variant_name": "a"}, {"variant_name": "b"}]
+    )
     state = doc["state"]
     assert sorted(state) == ["parca_v0", "parca_v1", "runs_v0", "runs_v1"]
     # each variant's sub-composite reads ITS OWN cache -- the point of a strain sweep
@@ -41,7 +47,10 @@ def test_shape_is_one_parca_per_variant_feeding_its_own_seeds() -> None:
     assert state["runs_v1"]["inputs"]["cache"] == ["cache_v1"]
     # and the M lineages live inside it, wired to the take: port
     inner = state["runs_v0"]["config"]["state"]
-    assert sorted(k for k in inner if k.startswith("lineage")) == ["lineage_s0", "lineage_s1"]
+    assert sorted(k for k in inner if k.startswith("lineage")) == [
+        "lineage_s0",
+        "lineage_s1",
+    ]
     assert inner["lineage_s1"]["inputs"]["cache_dir"] == ["cache"]
 
 
@@ -49,8 +58,16 @@ def test_strain_inputs_reach_PARCA_not_the_lineage() -> None:
     """The silent failure this guards: threading new_genes to the lineage instead
     (what lineage_ray_batch's variants collapse does today) gives ONE shared cache
     for the whole sweep -- N runs of the same genotype wearing different labels."""
-    doc = build_workflow_nf(n_seeds=1, variants=[
-        {"variant_name": "vio", "new_genes": "violacein_MG1655_M5", "bundle_overrides": "/m.json"}])
+    doc = build_workflow_nf(
+        n_seeds=1,
+        variants=[
+            {
+                "variant_name": "vio",
+                "new_genes": "violacein_MG1655_M5",
+                "bundle_overrides": "/m.json",
+            }
+        ],
+    )
     parca_cfg = doc["state"]["parca_v0"]["config"]
     assert parca_cfg["new_genes"] == "violacein_MG1655_M5"
     assert parca_cfg["bundle_overrides"] == "/m.json"
@@ -65,7 +82,9 @@ def test_no_variants_means_one_baseline_not_zero() -> None:
 
 
 def test_renders_the_two_level_scatter(core) -> None:
-    doc = build_workflow_nf(n_seeds=2, variants=[{"variant_name": "a"}, {"variant_name": "b"}])
+    doc = build_workflow_nf(
+        n_seeds=2, variants=[{"variant_name": "a"}, {"variant_name": "b"}]
+    )
     nf = _render(core, doc)
     # 2 parca + 2 lineage process blocks (one per node inside the sub-workflows)
     assert nf.count("workflow runs_v") == 2
@@ -77,7 +96,9 @@ def test_parca_script_carries_the_strain_flags_and_the_hydrate_step(core) -> Non
     """--new-genes/--bundle-overrides go to v2ecoli-parca ONLY: build_cache.py's CLI
     has neither (viva-api#410, a real crash). And the hydrate step is not optional --
     v2ecoli-parca emits only the raw parca_state.pkl."""
-    step = ParcaTaskStep(config={"new_genes": "vio", "bundle_overrides": "/m.json"}, core=core)
+    step = ParcaTaskStep(
+        config={"new_genes": "vio", "bundle_overrides": "/m.json"}, core=core
+    )
     script = step.nextflow_script()
     parca_cmd, _, rest = script.partition("&&")
     assert "--new-genes vio" in parca_cmd and "--bundle-overrides /m.json" in parca_cmd
@@ -88,7 +109,10 @@ def test_parca_script_carries_the_strain_flags_and_the_hydrate_step(core) -> Non
 def test_parca_omits_the_off_sentinel(core) -> None:
     """'off' IS v2ecoli-parca's default for --new-genes, so passing it and omitting
     it are the same build. Omit, so the command stays byte-identical to a plain one."""
-    assert "--new-genes" not in ParcaTaskStep(config={"new_genes": "off"}, core=core).nextflow_script()
+    assert (
+        "--new-genes"
+        not in ParcaTaskStep(config={"new_genes": "off"}, core=core).nextflow_script()
+    )
 
 
 def test_task_declarations_refuse_to_run_in_process(core) -> None:
@@ -117,16 +141,21 @@ def test_each_variant_collects_its_seeds_into_ONE_channel(core) -> None:
     nf = _render(core, build_workflow_nf(n_seeds=3, include_analysis=True))
     assert "workflow runs_v0 {" in nf
     assert "take:" in nf and "emit:" in nf
-    assert nf.count("_merged = _merged.mix(") == 2      # 3 units -> 2 binary mixes
+    assert nf.count("_merged = _merged.mix(") == 2  # 3 units -> 2 binary mixes
     assert "_merged.collect()" in nf
 
 
 def test_analysis_takes_one_port_per_variant(core) -> None:
     """N named ports, each fed by a variant's already-collected channel. One port
     wired to N stores is what the document model cannot express."""
-    nf = _render(core, build_workflow_nf(
-        n_seeds=2, include_analysis=True,
-        variants=[{"variant_name": "a"}, {"variant_name": "b"}]))
+    nf = _render(
+        core,
+        build_workflow_nf(
+            n_seeds=2,
+            include_analysis=True,
+            variants=[{"variant_name": "a"}, {"variant_name": "b"}],
+        ),
+    )
     assert "analysis(ch_results_v0, ch_results_v1" in nf
 
 
@@ -135,11 +164,15 @@ def test_renders_at_run4_scale_without_hitting_the_255_wall(core) -> None:
     256 arguments (`bad parameter count 257`); nesting keeps the parent call at one
     argument per VARIANT and the mixes binary."""
     variants = [{"variant_name": f"v{i}"} for i in range(84)]
-    nf = _render(core, build_workflow_nf(n_seeds=4, include_analysis=True, variants=variants))
+    nf = _render(
+        core, build_workflow_nf(n_seeds=4, include_analysis=True, variants=variants)
+    )
     assert nf.count("workflow runs_v") == 84
     assert nf.count("= lineage_s") == 336
     # chained binary, never one n-ary call
-    assert ".mix(" in nf and all("," not in seg[:seg.index(")")] for seg in nf.split(".mix(")[1:])
+    assert ".mix(" in nf and all(
+        "," not in seg[: seg.index(")")] for seg in nf.split(".mix(")[1:]
+    )
 
 
 # --- the generator must stand on its own ------------------------------------
@@ -253,8 +286,12 @@ def _pbg_quotes_script_overrides() -> bool:
     return hasattr(_nf, "_as_script_block")
 
 
-@pytest.mark.skipif(shutil.which("nextflow") is None, reason="nextflow binary not on PATH")
-@pytest.mark.skipif(not _pbg_quotes_script_overrides(), reason="needs process-bigraph#205")
+@pytest.mark.skipif(
+    shutil.which("nextflow") is None, reason="nextflow binary not on PATH"
+)
+@pytest.mark.skipif(
+    not _pbg_quotes_script_overrides(), reason="needs process-bigraph#205"
+)
 def test_the_rendered_workflow_actually_compiles(tmp_path) -> None:
     """The check that would have caught process-bigraph#205.
 
@@ -262,8 +299,12 @@ def test_the_rendered_workflow_actually_compiles(tmp_path) -> None:
     structure, and still emit a file Nextflow cannot parse -- an unquoted
     `script:` block is Groovy source. Only running it tells you.
     """
-    (tmp_path / "main.nf").write_text(_render_via_generator(n_seeds=2, include_analysis=True))
-    (tmp_path / "nextflow.config").write_text("profiles { local { process { executor='local' } } }\n")
+    (tmp_path / "main.nf").write_text(
+        _render_via_generator(n_seeds=2, include_analysis=True)
+    )
+    (tmp_path / "nextflow.config").write_text(
+        "profiles { local { process { executor='local' } } }\n"
+    )
     proc = subprocess.run(
         ["nextflow", "run", "main.nf", "-profile", "local", "-stub-run"],
         cwd=str(tmp_path),
@@ -328,3 +369,59 @@ def test_an_explicitly_declared_repo_root_wins(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("V2E_ROOT", str(tmp_path / "nope"))
     assert str(tmp_path / "nope") not in candidate_repo_roots()
     assert os.environ["V2E_ROOT"]
+
+
+# --- publishDir: without it a successful campaign has no reachable output ----
+
+
+def test_the_lineage_publishes_its_sweep(core) -> None:
+    """Measured on a real run before this landed: 633 MB across 43 objects sat in
+    the Nextflow WORK dir under a content hash, while the results prefix held
+    78 KB of render artifacts and no science at all. A campaign that exits 0 with
+    nowhere to read its output is the silent-success shape in its purest form."""
+    rendered = _render(core, build_workflow_nf(n_seeds=1, n_generations=1))
+    block = rendered.split("process lineage_s0 {", 1)[1].split("}", 1)[0]
+    assert "publishDir" in block
+
+
+def test_the_analysis_publishes_its_report(core) -> None:
+    """The gather's report IS the deliverable; an unpublished one is as
+    unreachable as no report."""
+    rendered = _render(core, build_workflow_nf(n_seeds=1, include_analysis=True))
+    block = rendered.split("process analysis {", 1)[1].split("}", 1)[0]
+    assert "publishDir" in block
+
+
+def test_parca_does_not_publish_its_cache(core) -> None:
+    """Deliberate. The cache is an INTERMEDIATE (~262 MB) and staging it
+    task-to-task is what the work dir is for -- publishing would double every
+    campaign's storage to no one's benefit."""
+    rendered = _render(core, build_workflow_nf(n_seeds=1))
+    block = rendered.split("process parca_v0 {", 1)[1].split("}", 1)[0]
+    assert "publishDir" not in block
+
+
+def test_the_publish_target_is_a_closure_over_a_param_with_a_local_fallback(
+    core,
+) -> None:
+    """A literal cannot work: the destination is the RUN's own prefix, known only
+    at dispatch. And the `?:` is not decoration -- without it a bare
+    `nextflow run` dies on a missing param, which would make every local render
+    unrunnable to buy nothing."""
+    rendered = _render(core, build_workflow_nf(n_seeds=1))
+    line = next(ln for ln in rendered.splitlines() if "publishDir" in ln)
+    assert line.strip().startswith("publishDir {"), line
+    assert "params.publish_dir" in line
+    assert "?:" in line, "a missing param must fall back, not fail the run"
+    assert 'mode: "copy"' in line
+
+
+def test_every_lineage_publishes_to_the_same_target(core) -> None:
+    """On purpose: the tree underneath is hive-partitioned
+    (experiment_id/variant/lineage_seed/generation/agent_id), so copies interleave
+    rather than collide. Identity lives in the partitions, not the directory name
+    -- which is also why publishing per-task subdirs would BREAK the gather."""
+    rendered = _render(core, build_workflow_nf(n_seeds=3, n_generations=1))
+    lines = [ln.strip() for ln in rendered.splitlines() if "publishDir" in ln]
+    assert len(lines) == 3
+    assert len(set(lines)) == 1
