@@ -425,3 +425,70 @@ def test_every_lineage_publishes_to_the_same_target(core) -> None:
     lines = [ln.strip() for ln in rendered.splitlines() if "publishDir" in ln]
     assert len(lines) == 3
     assert len(set(lines)) == 1
+
+
+# --- v2ecoli#722: the gather must emit a command the real CLI accepts --------
+
+
+def _emitted_analyze_argv(core, **kw) -> list[str]:
+    """The `v2ecoli-analyze ...` line from a rendered campaign, as argv."""
+    import shlex as _shlex
+
+    rendered = _render(core, build_workflow_nf(n_seeds=2, include_analysis=True, **kw))
+    line = next(ln for ln in rendered.splitlines() if "v2ecoli-analyze" in ln)
+    return _shlex.split(line)[1:]
+
+
+def test_the_emitted_argv_parses_against_the_real_analyze_cli(core) -> None:
+    """The render-shape tests never checked the argv against the CLI, so the
+    gather shipped `--experiment-id` / `--out-dir` / `--modules` -- none of which
+    `v2ecoli-analyze` declares. Every --include-analysis campaign ran every
+    lineage and then died at argparse (exit 2) on the last node."""
+    import argparse
+
+    argv = _emitted_analyze_argv(core)
+    p = argparse.ArgumentParser()
+    p.add_argument("sweep_dir")
+    p.add_argument("--config", default=None)
+    ns = p.parse_args(argv)  # SystemExit(2) before the fix
+    assert ns.sweep_dir
+    assert ns.config, "without --config the runner finds no analysis_options and exits 0"
+
+
+def test_the_gather_consumes_its_staged_sweep_inputs(core) -> None:
+    """The old command referenced none of them, so Nextflow staged N directories
+    the task never looked at -- N lineages gathered into nothing."""
+    rendered = _render(core, build_workflow_nf(n_seeds=3, include_analysis=True))
+    block = rendered.split("process analysis {", 1)[1].split("\n}", 1)[0]
+    assert "${sweep_v0}" in block, "must reference the declared input, not a guess at its name"
+
+
+def test_the_gather_fails_when_it_produces_nothing(core) -> None:
+    """`run_analyses` writes analysis.json into the sweep dir while the declared
+    output is a directory -- so 'copy whatever exists' would satisfy Nextflow
+    with an EMPTY dir. Reporting success over an empty gather is the failure this
+    whole path keeps producing."""
+    rendered = _render(core, build_workflow_nf(n_seeds=2, include_analysis=True))
+    block = rendered.split("process analysis {", 1)[1].split("\n}", 1)[0]
+    assert "test -f merged_sweep/analysis.json" in block
+    assert "exit 1" in block
+
+
+def test_analysis_options_reach_the_staged_config(core) -> None:
+    """Threaded from the generator, because an empty one is a silent no-op:
+    the runner prints 'no analysis_options found; nothing to run' and returns 0."""
+    doc = build_workflow_nf(n_seeds=2, include_analysis=True, analysis_options={"multiseed": {}})
+    assert doc["state"]["analysis"]["config"]["analysis_options"] == {"multiseed": {}}
+    assert build_workflow_nf(n_seeds=2, include_analysis=True)["state"]["analysis"]["config"][
+        "analysis_options"
+    ] == {}
+
+
+def test_shell_and_nextflow_variables_are_escaped_correctly(core) -> None:
+    """Both directions matter in one line. `${sweep_v0}` must survive UNescaped
+    for Nextflow to substitute the staged paths; `\\$d` must be escaped or Groovy
+    interpolates the loop variable away before the shell ever sees it."""
+    rendered = _render(core, build_workflow_nf(n_seeds=2, include_analysis=True))
+    block = rendered.split("process analysis {", 1)[1].split("\n}", 1)[0]
+    assert "${sweep_v0}" in block
+    assert '"\\$d/."' in block, "the shell loop variable must be escaped from Groovy"

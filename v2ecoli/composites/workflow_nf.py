@@ -187,7 +187,10 @@ class AnalysisTaskStep(Step):
     config_schema = {
         "experiment_id": {"_type": "string", "_default": "default"},
         "out_dir": {"_type": "string", "_default": "out/analysis"},
-        "modules": {"_type": "quote", "_default": []},
+        # What to actually run. The CLI reads `analysis_options` out of a config
+        # JSON; with none it prints "no analysis_options found; nothing to run"
+        # and exits 0 -- a gather that reports success having gathered nothing.
+        "analysis_options": {"_type": "quote", "_default": {}},
         # One input port per variant. A port maps to ONE store path, so a single
         # port wired to a LIST of stores cannot be constructed at all
         # (TypeError: unhashable type: 'list', raised in core.realize before the
@@ -221,12 +224,53 @@ class AnalysisTaskStep(Step):
         return {"report": {"_type": "string", "_is_file": True}}
 
     def nextflow_script(self) -> str:
-        modules = list(self.config.get("modules") or [])
-        module_flag = f" --modules {shlex.quote(','.join(modules))}" if modules else ""
-        return (
-            f"v2ecoli-analyze --experiment-id {shlex.quote(str(self.config.get('experiment_id', 'default')))}"
-            f" --out-dir {shlex.quote(str(self.config.get('out_dir', 'out/analysis')))}"
-            f"{module_flag}"
+        """Emit the command the REAL ``v2ecoli-analyze`` accepts (v2ecoli#722).
+
+        It was emitting ``--experiment-id`` / ``--out-dir`` / ``--modules``, none
+        of which the console script declares::
+
+            usage: v2ecoli-analyze [-h] [--config CONFIG] sweep_dir
+
+        so every ``--include-analysis`` campaign ran every lineage and then died
+        at argparse (exit 2) on the last node.
+
+        Four things this has to get right, and three of them fail QUIETLY:
+
+        1. **Consume the staged inputs.** ``${sweep_v{i}}`` are the per-variant
+           collected lineage sweeps. The old command referenced none of them, so
+           Nextflow staged N directories the task never looked at.
+        2. **Pass a config.** Without ``--config`` the runner finds no
+           ``analysis_options``, prints "nothing to run" and returns **0**. The
+           renderer already stages this Step's config beside the task, so point
+           at it.
+        3. **Merge, then analyse once.** The CLI takes ONE ``sweep_dir``. Each
+           lineage's tree is hive-partitioned under a shared root, so copying
+           them together interleaves by ``lineage_seed=`` rather than colliding
+           -- which is what makes a single gather over N lineages meaningful.
+        4. **Fail if nothing was produced.** ``run_analyses`` writes
+           ``analysis.json`` into the sweep dir; the declared output is a
+           directory. Copying "whatever exists" would satisfy the output contract
+           with an empty directory -- the exact silent success this path keeps
+           producing.
+
+        Shell variables are escaped (``\$d``): the renderer wraps this in a
+        Groovy GString, so a bare ``$d`` would be interpolated away, while
+        ``${sweep_v0}`` is left unescaped BECAUSE Nextflow must substitute it.
+        """
+        staged = " ".join(f"${{sweep_v{i}}}" for i in self._variants())
+        # `<node>.config.json`: the renderer stages each Step's config under its
+        # node name, and this module is what names the node (`state["analysis"]`).
+        return "\n".join(
+            [
+                "set -eu",
+                "mkdir -p merged_sweep analysis",
+                f'for d in {staged} ; do cp -a "\$d/." merged_sweep/ ; done',
+                "v2ecoli-analyze merged_sweep --config analysis.config.json",
+                "test -f merged_sweep/analysis.json || { "
+                'echo "gather produced no analysis.json -- analysis_options empty, or every module failed" >&2 ; '
+                "exit 1 ; }",
+                "cp merged_sweep/analysis.json analysis/",
+            ]
         )
 
     def update(self, state: dict[str, Any]) -> dict[str, Any]:
@@ -300,6 +344,15 @@ def _variant_specs(variants: list[dict[str, Any]] | None) -> list[dict[str, Any]
         "max_duration_per_gen": {"type": "number", "default": 3600.0},
         "parca_mode": {"type": "string", "default": "fast"},
         "parca_cpus": {"type": "integer", "default": 8},
+        "analysis_options": {
+            "type": "object",
+            "default": None,
+            "description": (
+                "Passed through to the gather's staged config as `analysis_options`. "
+                "Without it `v2ecoli-analyze` prints 'nothing to run' and exits 0 -- a "
+                "gather that reports success having gathered nothing (v2ecoli#722)."
+            ),
+        },
         "include_analysis": {
             "type": "boolean",
             "default": False,
@@ -323,6 +376,7 @@ def build_workflow_nf(
     parca_mode: str = "fast",
     parca_cpus: int = 8,
     include_analysis: bool = False,
+    analysis_options: dict[str, Any] | None = None,
     **_ignored: Any,
 ) -> dict[str, Any]:
     state: dict[str, Any] = {}
@@ -416,6 +470,9 @@ def build_workflow_nf(
                 "experiment_id": experiment_id,
                 "out_dir": f"{out_dir}/analysis",
                 "variant_indices": indices,
+                # Staged beside the task as `analysis.config.json` and read back
+                # via `--config`; an empty one makes the gather a silent no-op.
+                "analysis_options": analysis_options or {},
             },
             # one named port per variant, each fed by that variant's sub-workflow
             "inputs": {f"sweep_v{i}": [f"results_v{i}"] for i in indices},
