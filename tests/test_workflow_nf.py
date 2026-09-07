@@ -613,3 +613,66 @@ def test_the_keys_survive_every_hop_to_baseline() -> None:
 
     src = inspect.getsource(LineageProcess.update.__globals__["LineageProcess"])
     assert "independent_founders=" in src, "_bio_kwargs must pass it to baseline()"
+
+
+# --- pre-built caches: recomputing one is a different experiment ------------
+
+
+def _parca_block(core, **kw) -> str:
+    rendered = _render(core, build_workflow_nf(n_seeds=2, **kw))
+    return rendered.split("process parca_v0 {", 1)[1].split("\n}", 1)[0]
+
+
+def test_a_cache_uri_makes_the_node_fetch_instead_of_compute(core) -> None:
+    """CD2's payloads do not build their caches at dispatch: Run 1 uses ten
+    pre-built per-seed K4 founder caches (staged at ray-parca-cache/9f84e6b/) and
+    Run 2 the violacein bundle. A campaign that recomputes is running a different
+    experiment, however green it looks."""
+    block = _parca_block(core, cache_uri="s3://bucket/ray-parca-cache/9f84e6b/")
+    assert "aws s3 cp --recursive s3://bucket/ray-parca-cache/9f84e6b/" in block
+    assert "v2ecoli-parca" not in block, "must not also run a ParCa"
+
+
+def test_the_dag_is_unchanged_by_reuse(core) -> None:
+    """The node keeps its `path "cache"` output, so `take: cache` and every
+    lineage's staged input are identical. Removing the node instead would leave
+    the lineages wired to nothing -- a Nextflow input is fed by a channel, not a
+    path."""
+    with_uri = _render(core, build_workflow_nf(n_seeds=2, cache_uri="s3://b/c/"))
+    without = _render(core, build_workflow_nf(n_seeds=2))
+    names = lambda nf: [
+        ln.split()[1] for ln in nf.splitlines() if ln.startswith("process ")
+    ]
+    assert names(with_uri) == names(without)
+    assert 'path "cache"' in _parca_block(core, cache_uri="s3://b/c/")
+
+
+def test_a_fetched_cache_is_checked_for_contents(core) -> None:
+    """`aws s3 cp --recursive` on an empty or wrong prefix copies zero objects
+    and exits 0, leaving a cache-shaped directory that is not a cache. Every
+    lineage would then fail far from the cause."""
+    block = _parca_block(core, cache_uri="s3://b/c/")
+    assert "test -f cache/simData.cPickle" in block
+    assert "test -f cache/sim_data_cache.dill" in block
+
+
+def test_a_variants_own_cache_uri_wins(core) -> None:
+    """Run 1 pairs a DIFFERENT founder cache per seed, so one campaign-wide value
+    cannot express it; a sweep may also reuse some caches and build others."""
+    doc = build_workflow_nf(
+        n_seeds=1,
+        cache_uri="s3://b/global/",
+        variants=[
+            {"variant_name": "a", "cache_uri": "s3://b/own/"},
+            {"variant_name": "b"},
+        ],
+    )
+    assert doc["state"]["parca_v0"]["config"]["cache_uri"] == "s3://b/own/"
+    assert doc["state"]["parca_v1"]["config"]["cache_uri"] == "s3://b/global/"
+
+
+def test_no_cache_uri_still_runs_parca(core) -> None:
+    """The default path must be untouched -- this is additive."""
+    block = _parca_block(core)
+    assert "v2ecoli-parca" in block
+    assert "aws s3 cp" not in block

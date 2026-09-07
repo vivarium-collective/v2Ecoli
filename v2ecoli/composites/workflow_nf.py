@@ -136,6 +136,10 @@ class ParcaTaskStep(Step):
         "cpus": {"_type": "integer", "_default": 8},
         "cache_dir": {"_type": "string", "_default": "out/cache"},
         "simdata_dir": {"_type": "string", "_default": "out/parca"},
+        # An EXISTING cache to use instead of computing one. Set, this node
+        # stops being a ParCa and becomes a cache provider -- same output
+        # port, same DAG, so nothing downstream changes.
+        "cache_uri": {"_type": "string", "_default": ""},
     }
 
     nextflow_port_decls = {"cache_dir": 'path "cache"'}
@@ -155,6 +159,30 @@ class ParcaTaskStep(Step):
         return {"cache_dir": {"_type": "string", "_is_file": True}}
 
     def nextflow_script(self) -> str:
+        # A pre-built cache: fetch instead of compute. The node keeps its
+        # `path "cache"` output, so the sub-workflow's `take: cache` and every
+        # lineage's staged input are unchanged -- the DAG does not know the
+        # difference. That is why this lives here rather than in the builder:
+        # removing the node instead would leave the lineages with nothing to
+        # wire to, since a Nextflow input is fed by a channel, not a path.
+        #
+        # Needed for the campaigns this path exists to run: CD2's Run 1 uses ten
+        # pre-built per-seed K4 founder caches and Run 2 the violacein bundle.
+        # Recomputing a cache is not the same experiment.
+        cache_uri = str(self.config.get("cache_uri") or "").strip()
+        if cache_uri:
+            cache = self.config.get("cache_dir", "out/cache")
+            # `aws s3 cp --recursive` is already how the head stages its own
+            # runner and session, so the task image needs nothing new.
+            # `test -f` because an empty or wrong prefix copies zero objects and
+            # exits 0 -- a cache-shaped directory that is not a cache, which every
+            # lineage would then fail on far from the cause.
+            return (
+                f"aws s3 cp --recursive {shlex.quote(cache_uri)} {shlex.quote(cache)} --only-show-errors"
+                f" && test -f {shlex.quote(cache)}/simData.cPickle"
+                f" && test -f {shlex.quote(cache)}/sim_data_cache.dill"
+            )
+
         flags = ""
         new_genes = str(self.config.get("new_genes") or "")
         overrides = str(self.config.get("bundle_overrides") or "")
@@ -304,6 +332,17 @@ def _variant_specs(variants: list[dict[str, Any]] | None) -> list[dict[str, Any]
         "max_duration_per_gen": {"type": "number", "default": 3600.0},
         "parca_mode": {"type": "string", "default": "fast"},
         "parca_cpus": {"type": "integer", "default": 8},
+        "cache_uri": {
+            "type": "string",
+            "default": "",
+            "description": (
+                "An EXISTING cache to use instead of computing one, e.g. "
+                "s3://.../ray-parca-cache/<commit>/. Per-variant via the variant spec's "
+                "own `cache_uri`, which wins over this. Required to run CD2's actual "
+                "payloads: Run 1 uses pre-built per-seed founder caches and Run 2 the "
+                "violacein bundle -- recomputing a cache is a different experiment."
+            ),
+        },
         "independent_founders": {
             "type": "boolean",
             "default": False,
@@ -354,6 +393,7 @@ def build_workflow_nf(
     include_analysis: bool = False,
     analysis_options: dict[str, Any] | None = None,
     independent_founders: bool = False,
+    cache_uri: str = "",
     **_ignored: Any,
 ) -> dict[str, Any]:
     state: dict[str, Any] = {}
@@ -383,6 +423,9 @@ def build_workflow_nf(
                 # partitioning, not in the directory name. (@eagmon, review of #694.)
                 "cache_dir": "cache",
                 "simdata_dir": "parca",
+                # Per-variant wins over the campaign-wide default: a strain sweep
+                # may reuse one cache for some variants and build others.
+                "cache_uri": str(spec.get("cache_uri") or cache_uri or ""),
             },
             "inputs": {},
             "outputs": {"cache_dir": [cache_store]},
