@@ -13,6 +13,8 @@ These tests build tiny, self-contained cache dirs (no real ParCa fixture
 needed) and exercise the load path directly through ``load_cache_bundle``.
 """
 
+import json
+
 import dill
 import pytest
 
@@ -28,14 +30,25 @@ def _write_minimal_cache_dir(cache_dir, version=None):
     sufficient for both — this test only cares about the cache_version.json
     gate, not the payload contents.
 
-    ``version=None`` writes the CURRENT fingerprint (a "fresh" cache);
-    pass an explicit stale ``CacheVersion`` to simulate a mismatched cache.
+    ``version=None`` writes the CURRENT fingerprint (a "fresh" cache) with a
+    clean chassis chain (schema 3 requires a ``derived_from``); pass an
+    explicit stale ``CacheVersion`` to simulate a mismatched cache.
     """
     cache_dir.mkdir(parents=True, exist_ok=True)
     (cache_dir / "initial_state.json").write_text("{}")
     with open(cache_dir / "sim_data_cache.dill", "wb") as f:
         dill.dump({"configs": {}}, f)
-    write_cache_version(str(cache_dir), version=version)
+    sources = None
+    if version is None:
+        chassis = cache_dir / "parca_state.pkl"
+        chassis.write_bytes(b"fake-chassis")
+        (cache_dir / "parca_state.provenance.json").write_text(json.dumps({
+            "schema": "chassis-provenance/1", "layer": "chassis",
+            "code": {"v2ecoli": {"commit": "abc123", "dirty": False,
+                                 "source": "git"}},
+        }))
+        sources = [{"layer": "chassis", "path": str(chassis)}]
+    write_cache_version(str(cache_dir), version=version, sources=sources)
 
 
 def _stale_version():

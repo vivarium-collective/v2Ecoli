@@ -94,10 +94,17 @@ def build_cache(fixture: str, cache_dir: str,
     # all None, configs empty) and clobber the correct file with it, purely
     # to have a `version` object to print inputs_hash from. Read the
     # already-written file back instead: same print, no clobber.
+    # Declare the ParCa chassis this cache is derived from (schema 3): the
+    # fixture pickle becomes the bundle's ``derived_from`` chain, so a swap of
+    # the chassis moves ``inputs_hash`` and its provenance sidecar (if one
+    # sits beside the fixture) is embedded. A schema-3 cache with no declared
+    # chain is rejected by ``verify_cache_version`` (guard a).
     save_sim_input(sim_data, cache_dir,
                    condition=media_condition, fixed_media=fixed_media,
                    new_genes=_normalize_strain(new_genes),
-                   bundle_overrides=_normalize_strain(bundle_overrides))
+                   bundle_overrides=_normalize_strain(bundle_overrides),
+                   sources=[{"layer": "chassis",
+                             "path": os.path.abspath(fixture)}])
 
     version = read_cache_version(cache_dir)
     print(f"    bundle built in {time.time()-t2:.1f}s")
