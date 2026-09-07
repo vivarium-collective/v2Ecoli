@@ -411,10 +411,13 @@ runs:
       operator: derived/band [0.99, 1.0]
       gate_class: acceptance_criterion
       detail: 'All 3 source TUs containing dnaG also contain rpoD -- fraction 1.0000. dnaG has NO
-        dedicated promoter anywhere, not even before model selection, so it is intrinsically an operon
-        passenger. This is the one structural fact about dnaG that survives the study, and it decides
-        which fix applies: restoring omitted TUs would not help dnaG, because there is no dnaG-only
-        TU to restore. rpsU by contrast keeps TU00472 with a LexA delta of exactly 0.0.'
+        dedicated promoter anywhere, not even before model selection, so it can never be transcribed
+        independently of rpsU and rpoD. That is a statement about TU STRUCTURE, not about regulation:
+        dnaG is itself a direct LexA target (corrected 2026-09-07: dnaG IS a direct LexA target,
+        log2FC -1.71; ''passenger'' here means only that it has no dedicated TU). This is the one
+        structural fact about dnaG that survives the study, and it decides which fix applies: restoring
+        omitted TUs would not help dnaG, because there is no dnaG-only TU to restore. rpsU by contrast
+        keeps TU00472 with a LexA delta of exactly 0.0.'
     essential-genes-are-not-preferentially-orphaned:
       result: PASS
       measured_value: 0.8608
@@ -469,10 +472,13 @@ runs:
       operator: derived/band [0.99, 1.0]
       gate_class: acceptance_criterion
       detail: 'All 3 source TUs containing dnaG also contain rpoD -- fraction 1.0000. dnaG has NO
-        dedicated promoter anywhere, not even before model selection, so it is intrinsically an operon
-        passenger. This is the one structural fact about dnaG that survives the study, and it decides
-        which fix applies: restoring omitted TUs would not help dnaG, because there is no dnaG-only
-        TU to restore. rpsU by contrast keeps TU00472 with a LexA delta of exactly 0.0.'
+        dedicated promoter anywhere, not even before model selection, so it can never be transcribed
+        independently of rpsU and rpoD. That is a statement about TU STRUCTURE, not about regulation:
+        dnaG is itself a direct LexA target (corrected 2026-09-07: dnaG IS a direct LexA target,
+        log2FC -1.71; ''passenger'' here means only that it has no dedicated TU). This is the one
+        structural fact about dnaG that survives the study, and it decides which fix applies: restoring
+        omitted TUs would not help dnaG, because there is no dnaG-only TU to restore. rpsU by contrast
+        keeps TU00472 with a LexA delta of exactly 0.0.'
     essential-genes-are-not-preferentially-orphaned:
       result: PASS
       measured_value: 0.8608

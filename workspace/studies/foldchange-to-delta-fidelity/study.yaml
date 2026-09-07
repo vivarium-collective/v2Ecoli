@@ -59,10 +59,33 @@ behavior_tests:
         equal to its midpoint and so can never satisfy the discrimination check -- the same reformulation
         dnag-promoter-availability needed. [0.67, 1.5] is the factor-of-1.5 agreement band used across
         this investigation.
-  status: failed
-  result: FAIL
-  measured_value: 1.538
+  status: passed
+  result: PASS
+  measured_value: 1.1357
   evaluated_by: agent
+  remeasured_2026_09_07:
+    value: 1.1357
+    status: passed
+    result: PASS
+    script: analyses/measure_v2.py
+    supersedes: 1.538
+    note: "REMEASURED 2026-09-07 against the IN-FORCE mapping (analyses/measure_v2.py). The original\
+      \ analyses/measure.py had two join defects and one reproducibility defect:\n  (1) it read fold_changes.tsv\
+      \ ONLY. fold_changes_nca.tsv — carrying lexA->dnaG at log2FC -1.71 and lexA->rpsU at -1.89\
+      \ — was never joined. Coverage goes 564 -> 1606 entries once tf_to_fold_change, the mapping\
+      \ ParCa actually fit, is used instead of the raw tsv.\n  (2) it paired every cistron in a TU\
+      \ with that TU's delta, so the lexA->rpoD row (-0.65) was credited with a delta that derives\
+      \ from dnaG's own edge. rpoD is absent from tf_to_fold_change entirely.\n  (3) the recorded\
+      \ value 1.8828 DOES NOT REPRODUCE: re-running the study's own measure.py today returns 1.476e+07\
+      \ for that axis. The 1.8828 came from a 'corrected conversion' that the sibling study deltav-conversion-diagnosis\
+      \ subsequently FAILED to validate (corrected-conversion-restores-fidelity = 1.968, outside\
+      \ its band; corrected-lexa-rpod-is-non-lethal left ungraded). So the amendment rested on a\
+      \ conversion that was later refuted, and the amended number was never reproducible.\nCorrected\
+      \ values on the full in-force join: all entries 1.1357, repressors 0.2629, activators 4.6095,\
+      \ 26 entries violating the probability bound.\nThe dnaG locus, measured against ITS OWN fold\
+      \ change rather than rpoD's: expected retained 0.30566 (2^-1.71), implied 4.3167e-08, discrepancy\
+      \ 7.08e+06x. The equivalent figure for rpsU is 6.65e+06x. Neither is the 1.476e+07 computed\
+      \ against rpoD's -0.65, which was never dnaG's input."
 - name: distortion-grows-with-repression-strength
   classification: primary
   gate_class: acceptance_criterion
@@ -95,6 +118,10 @@ behavior_tests:
   result: FAIL
   measured_value: 1.6602
   evaluated_by: agent
+  remeasured_2026_09_07:
+    status: not recomputed
+    note: Needs a strong/weak split on the in-force mapping; measure_v2.py reports the aggregate
+      only. Left at its original value, which was computed on the incomplete join.
 - name: delta-respects-the-probability-bound
   classification: diagnostic
   gate_class: acceptance_criterion
@@ -131,8 +158,15 @@ behavior_tests:
       note: 'Definitional: an initiation probability cannot be negative.'
   status: failed
   result: FAIL
-  measured_value: 2
+  measured_value: 26
   evaluated_by: agent
+  remeasured_2026_09_07:
+    value: 26
+    status: failed
+    result: FAIL
+    script: analyses/measure_v2.py
+    supersedes: 2
+    note: See distortion-is-systematic for the full remeasurement note.
 - name: activators-are-encoded-faithfully
   classification: primary
   gate_class: acceptance_criterion
@@ -166,8 +200,15 @@ behavior_tests:
   status: failed
   control: negative
   result: FAIL
-  measured_value: 2.1314
+  measured_value: 4.6095
   evaluated_by: agent
+  remeasured_2026_09_07:
+    value: 4.6095
+    status: failed
+    result: FAIL
+    script: analyses/measure_v2.py
+    supersedes: 2.1314
+    note: See distortion-is-systematic for the full remeasurement note.
 - name: lexa-rpod-discrepancy
   classification: supporting
   gate_class: regression_pin
@@ -190,10 +231,19 @@ behavior_tests:
     provenance:
       kind: post_hoc
       note: 10x the 1.476e+07 measured while scoping the sibling study; a drift pin, not a gate.
-  status: passed
-  result: PASS
-  measured_value: 1.8828
+  status: failed
+  result: FAIL
+  measured_value: 7080856.67
   evaluated_by: agent
+  remeasured_2026_09_07:
+    value: 7080856.67
+    supersedes: 1.8828
+    renamed_to: lexa-dnag-discrepancy (the axis graded the wrong edge)
+    note: 'The axis was defined on lexA->rpoD, an entry ParCa never used for this TU. Regraded on
+      dnaG''s own edge: expected 0.30566, implied 4.3167e-08, discrepancy 7.08e+06x. Still inside
+      the drift pin''s <=1.476e+08 bound, so the PIN passes, but the value it pins is now a different
+      and correct quantity. Recorded as FAIL on the substance: a 7-million-fold encoding discrepancy
+      is the finding, not a passing pin.'
 preregistered:
   declared_before_runs: true
   registered_at: '2026-09-04T02:00:00Z'
@@ -334,6 +384,9 @@ controls:
     (receiving less). The conversion is wrong in both directions.
   result: FAIL
 limitations:
+- The recorded value 1.8828 for lexa-rpod-discrepancy does not reproduce from this study's own measure.py,
+  which returns 1.476e+07. It originated in a 'corrected conversion' that deltav-conversion-diagnosis
+  later failed to validate. Any downstream claim resting on '1.88x off' should be treated as unsupported.
 - "CORRECTION 2026-09-07 — this study's account of WHY LexA acts on the rpsU-dnaG-rpoD operon is\
   \ wrong, and the wrongness is inherited, not original to it.\nStatements in this file to the effect\
   \ that 'LexA regulates rpoD and dnaG is silenced as a passenger', or that a dnaG-bearing TU acquires\
