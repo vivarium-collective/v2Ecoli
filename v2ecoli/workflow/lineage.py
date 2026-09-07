@@ -42,6 +42,7 @@ def select_carry_daughter(agents_before, agents_now, mother_snapshot):
         return {k: dcell.get(k) for k in keys}
     if mother_snapshot and mother_snapshot.get("bulk") is not None:
         from v2ecoli.library.division import divide_cell
+
         d1, _d2 = divide_cell(mother_snapshot)
         return d1
     return None
@@ -135,13 +136,21 @@ def _apply_lineage_offset(injected_processes, offset):
 # Default xarray view: scalar mass gauges (no vector coord arrays needed).
 # Override via emitter_arg["view"] (JSON list roots are accepted). Leaves the
 # composite doesn't emit are filtered out at open time (xarray is strict).
-DEFAULT_XARRAY_VIEW = [{
-    "root": ("listeners", "mass"),
-    "variables": {
-        name: [{"path": name, "dtype": "<f4"}]
-        for name in ("dry_mass", "cell_mass", "protein_mass", "rna_mass", "dna_mass")
-    },
-}]
+DEFAULT_XARRAY_VIEW = [
+    {
+        "root": ("listeners", "mass"),
+        "variables": {
+            name: [{"path": name, "dtype": "<f4"}]
+            for name in (
+                "dry_mass",
+                "cell_mass",
+                "protein_mass",
+                "rna_mass",
+                "dna_mass",
+            )
+        },
+    }
+]
 
 
 class LineageProcess(Process):
@@ -187,6 +196,15 @@ class LineageProcess(Process):
         "max_duration_per_gen": {"_type": "float", "_default": 3600.0},
         "time_step": {"_type": "float", "_default": 1.0},
         "media": {"_type": "string", "_default": "minimal"},
+        # Gate 1b / v2ecoli#693: seeds sharing a cache_dir share a FOUNDER cell,
+        # because _load_cache_bundle_cached is memoised on cache_dir alone and
+        # returns the initial state by reference. So an M-seed sweep off one
+        # cache varies the trajectory but not the starting cell -- measured at
+        # 251/16321 species differing between two seeds, against 754 changing in
+        # a single timestep of one seed. Opt in to re-drawing a founder per
+        # lineage_seed (v2ecoli#712).
+        "independent_founders": {"_type": "boolean", "_default": False},
+        "founder_sim_data": {"_type": "string", "_default": ""},
         # "parquet" (default), "xarray", or "both". xarray drives an external
         # XArrayEmitter per lineage (validated multigen pattern); the internal
         # baseline emitter step then falls back to RAM (not read). "both" keeps
@@ -237,8 +255,11 @@ class LineageProcess(Process):
             # wrong summary["generation"]) instead of failing loudly.
             raise ValueError(
                 "LineageProcess: initial_generation_index must be 0 when "
-                "initial_carry_state_path is empty.")
-        self._generation = gen_index  # 0-based current generation; >0 resumes a checkpointed wave
+                "initial_carry_state_path is empty."
+            )
+        self._generation = (
+            gen_index  # 0-based current generation; >0 resumes a checkpointed wave
+        )
         # Under single_daughters=True (the only supported mode, enforced below
         # in update()), the phylogeny walk is deterministic: select_carry_daughter
         # always keeps the "...0" daughter, so a continuous single-process run
@@ -262,6 +283,7 @@ class LineageProcess(Process):
         self._carry_state: dict | None = None
         if carry_path:
             from v2ecoli.cache import load_initial_state
+
             self._carry_state = load_initial_state(carry_path)
         self._complete = False
         self._summaries: list[dict] = []
@@ -276,12 +298,12 @@ class LineageProcess(Process):
         # expects from a single-invocation run's summary.json.
         if self._carry_state and "_prior_summaries" in self._carry_state:
             self._summaries = list(self._carry_state.pop("_prior_summaries"))
-        self._needs_build = True      # True → call _build_generation on next tick
+        self._needs_build = True  # True → call _build_generation on next tick
         # xarray emitter state (only used when config["emitter"] == "xarray")
-        self._xarray_em = None        # live XArrayEmitter for the current gen
+        self._xarray_em = None  # live XArrayEmitter for the current gen
         self._xarray_pending = False  # True → open on first populated emit tick
-        self._xarray_view = None      # filtered view in use for this lineage
-        self._xarray_store = None     # zarr store path (stable across gens)
+        self._xarray_view = None  # filtered view in use for this lineage
+        self._xarray_store = None  # zarr store path (stable across gens)
 
     def _is_xarray(self) -> bool:
         """True when this lineage drives the external XArrayEmitter."""
@@ -307,7 +329,7 @@ class LineageProcess(Process):
         from v2ecoli.composites.ecoli_baseline import baseline, seed_mass_listener
 
         core = build_core()
-        gen_seed = (int(self.config["seed"]) + self._generation) % (2 ** 31)
+        gen_seed = (int(self.config["seed"]) + self._generation) % (2**31)
         overrides = dict(self.config.get("config_overrides") or {})
 
         # Forward baseline()'s feature-selection kwargs from the config so an
@@ -333,7 +355,8 @@ class LineageProcess(Process):
         # / single-generation runs) is a no-op for every reader — see
         # _apply_lineage_offset.
         _injected_for_build = _apply_lineage_offset(
-            self.config.get("injected_processes"), self._lineage_offset)
+            self.config.get("injected_processes"), self._lineage_offset
+        )
 
         # Per-cell biological build kwargs, shared by both emitter branches below
         # so an injected batch/lineage run builds every generation cell with the
@@ -345,6 +368,8 @@ class LineageProcess(Process):
             cache_dir=self.config["cache_dir"],
             config_overrides=overrides,
             media=self.config.get("media", "minimal"),
+            independent_founders=bool(self.config.get("independent_founders", False)),
+            founder_sim_data=str(self.config.get("founder_sim_data", "") or ""),
             features=_features,
             injected_processes=_injected_for_build,
             ppgpp_regulation=bool(_feature_flag("ppgpp_regulation", True)),
@@ -354,11 +379,11 @@ class LineageProcess(Process):
             exchange_fluxes=_feature_flag("exchange_fluxes", None) or None,
             exchange_flux_basis=_feature_flag("exchange_flux_basis", None) or None,
             transcript_initiation_mode=(
-                _feature_flag("transcript_initiation_mode", "discrete")
-                or "discrete"),
+                _feature_flag("transcript_initiation_mode", "discrete") or "discrete"
+            ),
             polypeptide_initiation_mode=(
-                _feature_flag("polypeptide_initiation_mode", "discrete")
-                or "discrete"),
+                _feature_flag("polypeptide_initiation_mode", "discrete") or "discrete"
+            ),
         )
 
         # The inner composite's own emitter step writes the hive parquet sweep;
@@ -371,6 +396,7 @@ class LineageProcess(Process):
         if self._is_parquet():
             from v2ecoli.composites._helpers import set_parquet_emitter_override
             from v2ecoli.library.emitter_presets import parquet_vecoli
+
             emitter_cfg = parquet_vecoli(
                 out_dir=self.config["out_dir"],
                 experiment_id=self.config["experiment_id"],
@@ -392,6 +418,7 @@ class LineageProcess(Process):
                 set_parquet_emitter_override(None)
         else:
             from v2ecoli.composites._helpers import set_null_emitter_override
+
             set_null_emitter_override(True)
             try:
                 doc = baseline(core=core, seed=gen_seed, **_bio_kwargs)
@@ -417,8 +444,10 @@ class LineageProcess(Process):
         import os
         import shutil
         from v2ecoli.library.xarray_run import (
-            _build_emitter, filter_view_to_existing_leaves,
-            extract_output_metadata_from_state)
+            _build_emitter,
+            filter_view_to_existing_leaves,
+            extract_output_metadata_from_state,
+        )
 
         from v2ecoli.cache import is_s3_uri
 
@@ -426,7 +455,7 @@ class LineageProcess(Process):
         raw_view = arg.get("view") or DEFAULT_XARRAY_VIEW
         raw_view = [dict(e, root=tuple(e["root"])) for e in raw_view]
         transducer = arg.get("transducer") or {}
-        buf = ((transducer.get("buffer") or {}).get("size"))
+        buf = (transducer.get("buffer") or {}).get("size")
         # Default 600 (viva-emitters library default: a handful of flushes per
         # generation, not one every few steps); floor 3 since the transducer
         # requires buffer.size > 2.
@@ -458,8 +487,11 @@ class LineageProcess(Process):
             present_leaves: set[str] = set()
             for _e in view:
                 present_leaves.update((_e.get("variables") or {}).keys())
-            missing = [leaf for leaf in required
-                       if str(leaf).split(".")[-1] not in present_leaves]
+            missing = [
+                leaf
+                for leaf in required
+                if str(leaf).split(".")[-1] not in present_leaves
+            ]
             if missing:
                 raise ValueError(
                     f"LineageProcess: required emitter leaf(s) {missing} absent from "
@@ -467,10 +499,13 @@ class LineageProcess(Process):
                     f"{sorted(present_leaves)}). A missing KPI column usually means an "
                     f"injected process/swap did not apply -- refusing to emit a "
                     f"silently-wild-type run. Drop 'required_leaves' from emitter_arg to "
-                    f"downgrade to warn-and-skip.")
+                    f"downgrade to warn-and-skip."
+                )
         if not view:
-            warnings.warn("LineageProcess: xarray view has no leaves present in "
-                          "composite state; skipping xarray emission.")
+            warnings.warn(
+                "LineageProcess: xarray view has no leaves present in "
+                "composite state; skipping xarray emission."
+            )
             self._xarray_pending = False
             return
         output_metadata = extract_output_metadata_from_state(wrapped, view)
@@ -479,7 +514,8 @@ class LineageProcess(Process):
             self._xarray_store = os.path.join(
                 out_dir,
                 f"{self.config['experiment_id']}_v{int(self.config['variant_index'])}"
-                f"_s{int(self.config['lineage_seed'])}.zarr")
+                f"_s{int(self.config['lineage_seed'])}.zarr",
+            )
         if not out_is_s3:
             # Local-filesystem-only bookkeeping: zarr's own S3 store (opened via
             # zarr.open_group(store=...) inside pbg-emitters) handles "fresh
@@ -499,10 +535,17 @@ class LineageProcess(Process):
         }
         self._xarray_view = view
         self._xarray_em = _build_emitter(
-            core=self._core, store_path=self._xarray_store, view=view,
-            metadata_base=metadata_base, generation=self._generation,
-            agent_id=self._agent_id, buffer_size=buf,
-            output_metadata=output_metadata, writer=writer, predicate=predicate)
+            core=self._core,
+            store_path=self._xarray_store,
+            view=view,
+            metadata_base=metadata_base,
+            generation=self._generation,
+            agent_id=self._agent_id,
+            buffer_size=buf,
+            output_metadata=output_metadata,
+            writer=writer,
+            predicate=predicate,
+        )
         self._xarray_pending = False
 
     def _emit_xarray(self, agents_now):
@@ -516,16 +559,21 @@ class LineageProcess(Process):
         if self._xarray_em is None:
             return
         from v2ecoli.library.xarray_run import _filter_agent_state
+
         payload = _filter_agent_state(emit_cell, self._xarray_view)
         try:
-            self._xarray_em.update({
-                "time": float(self._gen_elapsed),
-                "global_time": float(self._gen_elapsed),
-                "agents": {self._agent_id: payload},
-            })
+            self._xarray_em.update(
+                {
+                    "time": float(self._gen_elapsed),
+                    "global_time": float(self._gen_elapsed),
+                    "agents": {self._agent_id: payload},
+                }
+            )
         except Exception as e:
-            warnings.warn(f"LineageProcess: xarray emit failed at generation "
-                          f"{self._generation} t={self._gen_elapsed}: {e}")
+            warnings.warn(
+                f"LineageProcess: xarray emit failed at generation "
+                f"{self._generation} t={self._gen_elapsed}: {e}"
+            )
 
     def _finalize_parquet(self) -> None:
         """Close this generation's parquet emitter, however the generation ended.
@@ -554,17 +602,24 @@ class LineageProcess(Process):
         not just its last few hundred ticks (v2ecoli#687).
         """
         from v2ecoli.composites._helpers import (
-            finalize_emitter_for_agent, flush_parquet)
+            finalize_emitter_for_agent,
+            flush_parquet,
+        )
+
         try:
             flush_parquet(self._composite, success=True)
         except Exception as e:
-            warnings.warn(f"LineageProcess: parquet flush failed for "
-                          f"generation {self._generation} ({self._agent_id}): {e}")
+            warnings.warn(
+                f"LineageProcess: parquet flush failed for "
+                f"generation {self._generation} ({self._agent_id}): {e}"
+            )
         try:
             finalize_emitter_for_agent(self._agent_id, success=True)
         except Exception as e:
-            warnings.warn(f"LineageProcess: parquet finalize failed for "
-                          f"generation {self._generation} ({self._agent_id}): {e}")
+            warnings.warn(
+                f"LineageProcess: parquet finalize failed for "
+                f"generation {self._generation} ({self._agent_id}): {e}"
+            )
 
     def _run_until_division(self, interval):
         """Run the internal composite for ``interval`` seconds. Returns
@@ -578,7 +633,9 @@ class LineageProcess(Process):
         mother = agents.get(self._agent_id) or next(iter(agents.values()), {})
         mother_snapshot = (
             {k: mother.get(k) for k in ("bulk", "unique", "environment", "boundary")}
-            if isinstance(mother, dict) else None)
+            if isinstance(mother, dict)
+            else None
+        )
 
         divided = False
         try:
@@ -592,11 +649,13 @@ class LineageProcess(Process):
             # failures as phantom divisions. Only a genuine division signal is
             # honored, and never silently.
             from v2ecoli.library.division import is_division_exception
+
             if not is_division_exception(e):
                 raise
             warnings.warn(
                 f"LineageProcess: treating a raised exception as a division "
-                f"signal at t={self._gen_elapsed}: {e!r}")
+                f"signal at t={self._gen_elapsed}: {e!r}"
+            )
             divided = True
         self._gen_elapsed += interval
 
@@ -617,7 +676,9 @@ class LineageProcess(Process):
             divided = True
 
         cell = agents_now.get(self._agent_id) or next(iter(agents_now.values()), {})
-        dry_mass = fg_magnitude(cell.get("listeners", {}).get("mass", {}).get("dry_mass", 0.0))
+        dry_mass = fg_magnitude(
+            cell.get("listeners", {}).get("mass", {}).get("dry_mass", 0.0)
+        )
 
         if self._is_xarray():
             self._emit_xarray(agents_now)
@@ -633,7 +694,8 @@ class LineageProcess(Process):
         if not self.config.get("single_daughters", True):
             raise NotImplementedError(
                 "single_daughters=False (binary-tree lineage) is deferred; "
-                "MVP supports the single-lineage walk only.")
+                "MVP supports the single-lineage walk only."
+            )
         if self._complete:
             return {"complete": True}
         if self._needs_build:
@@ -658,28 +720,38 @@ class LineageProcess(Process):
         # invisible. Printed (flushed) so it lands in the run log, and timed so a
         # slow/blocked step is obvious rather than silent.
         _t_flush = time.monotonic()
-        print(f"[LineageProcess] gen {self._generation}: end (divided={divided} "
-              f"timed_out={timed_out}); flushing emitters...", flush=True)
+        print(
+            f"[LineageProcess] gen {self._generation}: end (divided={divided} "
+            f"timed_out={timed_out}); flushing emitters...",
+            flush=True,
+        )
         if self._is_xarray() and self._xarray_em is not None:
             try:
                 self._xarray_em.close(success=True)
             except Exception as e:
-                warnings.warn(f"LineageProcess: xarray close failed for "
-                              f"generation {self._generation}: {e}")
+                warnings.warn(
+                    f"LineageProcess: xarray close failed for "
+                    f"generation {self._generation}: {e}"
+                )
             self._xarray_em = None
         if self._is_xarray():
             self._xarray_pending = False
         if self._is_parquet():
             self._finalize_parquet()
-        print(f"[LineageProcess] gen {self._generation}: emitters flushed in "
-              f"{time.monotonic() - _t_flush:.1f}s", flush=True)
-        self._summaries.append({
-            "generation": self._generation,
-            "agent_id": self._agent_id,
-            "duration": self._gen_elapsed,
-            "dry_mass": dry_mass,
-            "divided": bool(divided),
-        })
+        print(
+            f"[LineageProcess] gen {self._generation}: emitters flushed in "
+            f"{time.monotonic() - _t_flush:.1f}s",
+            flush=True,
+        )
+        self._summaries.append(
+            {
+                "generation": self._generation,
+                "agent_id": self._agent_id,
+                "duration": self._gen_elapsed,
+                "dry_mass": dry_mass,
+                "divided": bool(divided),
+            }
+        )
         # This generation is done: fold its duration into the cumulative
         # lineage-time offset so the NEXT generation's injected processes see the
         # correct cumulative lineage time (see _apply_lineage_offset /
@@ -702,6 +774,7 @@ class LineageProcess(Process):
             out_path = str(self.config.get("daughter_state_out_path") or "")
         if out_path and daughter is not None:
             from v2ecoli.cache import save_initial_state
+
             payload = dict(daughter)
             payload["_prior_summaries"] = list(self._summaries)
             # Log size + growth BEFORE the write: this is the stall point in 313,
@@ -717,14 +790,21 @@ class LineageProcess(Process):
                     f"generation ({prev:.1f}MB). A lineage whose per-generation "
                     f"state keeps growing is not reaching steady-state division "
                     f"size (over-growth); the checkpoint reflects it and the "
-                    f"write gets progressively heavier.")
+                    f"write gets progressively heavier."
+                )
             self._last_checkpoint_mb = mb
             _t_ckpt = time.monotonic()
-            print(f"[LineageProcess] gen {self._generation}: writing checkpoint "
-                  f"(~{mb:.1f}MB) -> {out_path}", flush=True)
+            print(
+                f"[LineageProcess] gen {self._generation}: writing checkpoint "
+                f"(~{mb:.1f}MB) -> {out_path}",
+                flush=True,
+            )
             save_initial_state(payload, out_path)
-            print(f"[LineageProcess] gen {self._generation}: checkpoint written "
-                  f"in {time.monotonic() - _t_ckpt:.1f}s", flush=True)
+            print(
+                f"[LineageProcess] gen {self._generation}: checkpoint written "
+                f"in {time.monotonic() - _t_ckpt:.1f}s",
+                flush=True,
+            )
 
         self._generation += 1
         if self._generation >= int(self.config["generations"]):
@@ -734,6 +814,7 @@ class LineageProcess(Process):
 
         # Carry daughter 0 forward; rebuild a fresh composite next tick.
         from v2ecoli.steps.division import daughter_phylogeny_id
+
         self._carry_state = daughter
         self._agent_id = daughter_phylogeny_id(self._agent_id)[0]
         self._composite = None

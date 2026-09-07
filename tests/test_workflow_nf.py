@@ -544,3 +544,72 @@ def test_every_builder_kwarg_is_a_declared_parameter() -> None:
     assert not undeclared, (
         f"accepted by the builder, unreachable via dispatch: {sorted(undeclared)}"
     )
+
+
+# --- gate 1b: M seeds must be M founders, not M copies of one ---------------
+
+
+def test_independent_founders_reaches_every_lineage() -> None:
+    """v2ecoli#693: `_load_cache_bundle_cached` is memoised on `cache_dir` alone
+    and returns the initial state BY REFERENCE, so M seeds off one cache share
+    one founder cell. Measured on simulation 326: two seeds differed by 251 of
+    16321 species while a single timestep of one seed changes 754 — i.e. the
+    seeds differ by less than one tick. #712 added the opt-out in `baseline()`;
+    until now no Nextflow campaign could reach it, because one ParCa per variant
+    feeds every lineage."""
+    from process_bigraph.composite_spec import discover_specs
+    from process_bigraph.composite_spec import get as get_spec
+
+    discover_specs()
+    spec = get_spec("v2ecoli.composites.workflow_nf.workflow_nf")
+    doc = spec.to_document(overrides={"n_seeds": 3, "independent_founders": True})
+    inner = doc["state"]["runs_v0"]["config"]["state"]
+    lineages = sorted(k for k in inner if k.startswith("lineage"))
+    assert len(lineages) == 3
+    for name in lineages:
+        cfg = inner[name]["config"]
+        assert cfg["independent_founders"] is True
+        # task-local: `cache_dir` is staged as `path "cache"` and ParCa writes
+        # simData.cPickle inside it
+        assert cfg["founder_sim_data"] == "cache/simData.cPickle"
+    # and each still draws from its OWN seed -- one founder per lineage_seed is
+    # the entire point
+    assert sorted(inner[n]["config"]["lineage_seed"] for n in lineages) == [0, 1, 2]
+
+
+def test_founders_are_off_by_default_and_the_keys_are_absent() -> None:
+    """Omitted, not False: absent means `baseline()` keeps its own default, and
+    it keeps the cheap path cheap (re-drawing regenerates initial conditions per
+    seed)."""
+    from process_bigraph.composite_spec import discover_specs
+    from process_bigraph.composite_spec import get as get_spec
+
+    discover_specs()
+    spec = get_spec("v2ecoli.composites.workflow_nf.workflow_nf")
+    cfg = spec.to_document(overrides={"n_seeds": 2})["state"]["runs_v0"]["config"][
+        "state"
+    ]["lineage_v0_s0"]["config"]
+    assert "independent_founders" not in cfg
+    assert "founder_sim_data" not in cfg
+
+
+def test_the_keys_survive_every_hop_to_baseline() -> None:
+    """Three places drop config silently if a key is not declared there, and all
+    three had to change: LineageStep's `_FORWARDED` whitelist, LineageProcess's
+    `config_schema`, and the `_bio_kwargs` dict that calls `baseline()`. A key
+    present in one and missing from the next is dropped with no error."""
+    import inspect
+
+    from v2ecoli.composites.ecoli_baseline import baseline
+    from v2ecoli.workflow.lineage import LineageProcess
+    from v2ecoli.workflow.lineage_step import _FORWARDED
+
+    for key in ("independent_founders", "founder_sim_data"):
+        assert key in _FORWARDED, f"LineageStep would drop {key}"
+        assert key in LineageProcess.config_schema, f"LineageProcess would drop {key}"
+        assert key in inspect.signature(baseline).parameters, (
+            f"baseline() rejects {key}"
+        )
+
+    src = inspect.getsource(LineageProcess.update.__globals__["LineageProcess"])
+    assert "independent_founders=" in src, "_bio_kwargs must pass it to baseline()"
