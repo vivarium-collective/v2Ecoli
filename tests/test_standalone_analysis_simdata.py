@@ -73,3 +73,36 @@ def test_resolve_reads_sim_data_from_run_identity(tmp_path):
     bare.mkdir()
     write_run_identity_record(str(bare), {"code": {}, "design": {}})
     assert _sim_data_uri_from_identity(str(bare)) is None
+
+
+def test_per_seed_identity_is_resolved(tmp_path):
+    """A dispatcher that writes run_identity.json per-seed (compose writes
+    ``seed_00/run_identity.json``, not the sweep root) is still resolved: the
+    root has none, the seed sidecar carries the pointer."""
+    from v2ecoli.library.run_provenance import write_run_identity_record
+    from v2ecoli.workflow.analysis_runner import _sim_data_uri_from_identity
+
+    sweep = tmp_path / "sweep"
+    (sweep / "seed_00").mkdir(parents=True)
+    # sweep root has NO run_identity.json; the per-seed sidecar records sim_data.
+    write_run_identity_record(str(sweep / "seed_00"), {
+        "code": {}, "cache_version": {}, "design": {},
+        "sim_data": {"uri": "s3://b/cache/simData.cPickle", "source": "stage_s3"}})
+    assert _sim_data_uri_from_identity(str(sweep)) == "s3://b/cache/simData.cPickle"
+
+
+def test_root_identity_wins_over_seed(tmp_path):
+    """When both the sweep root and a per-seed sidecar record sim_data, the
+    authoritative root pointer wins."""
+    from v2ecoli.library.run_provenance import write_run_identity_record
+    from v2ecoli.workflow.analysis_runner import _sim_data_uri_from_identity
+
+    sweep = tmp_path / "sweep"
+    (sweep / "seed_00").mkdir(parents=True)
+    write_run_identity_record(str(sweep), {
+        "code": {},
+        "sim_data": {"uri": "s3://b/ROOT/simData.cPickle", "source": "explicit"}})
+    write_run_identity_record(str(sweep / "seed_00"), {
+        "code": {},
+        "sim_data": {"uri": "s3://b/SEED/simData.cPickle", "source": "stage_s3"}})
+    assert _sim_data_uri_from_identity(str(sweep)) == "s3://b/ROOT/simData.cPickle"

@@ -299,21 +299,65 @@ def resolve_sim_data(sweep_dir: str):
 def _sim_data_uri_from_identity(sweep_dir: str) -> "str | None":
     """The resolvable sim_data URI recorded in the sweep's run_identity.json, or
     None. Reads the sidecar from a local OR s3:// sweep (a standalone analysis
-    may point at either)."""
+    may point at either).
+
+    Checks the sweep ROOT first, then any nested sidecar: some dispatchers write
+    ``run_identity.json`` per-seed (compose writes ``seed_00/run_identity.json``)
+    rather than at the sweep root, so a root-only lookup silently misses a
+    recorded pointer. Returns the first sidecar that carries a ``sim_data.uri``.
+    """
+    for ident_uri in _run_identity_candidates(sweep_dir):
+        uri = _read_sim_data_uri(ident_uri)
+        if uri:
+            return uri
+    return None
+
+
+def _read_sim_data_uri(ident_uri: str) -> "str | None":
+    """``sim_data.uri`` from a single ``run_identity.json`` (local path or s3://
+    URI), or None if absent/unreadable."""
     try:
-        if is_s3_uri(sweep_dir):
-            ident_path = localize(sweep_dir.rstrip("/") + "/run_identity.json")
-            with open(ident_path, encoding="utf-8") as fh:
-                ident = json.load(fh)
-        else:
-            from v2ecoli.library.run_provenance import read_run_identity
-            ident = read_run_identity(sweep_dir)
+        path = localize(ident_uri) if is_s3_uri(ident_uri) else ident_uri
+        with open(path, encoding="utf-8") as fh:
+            ident = json.load(fh)
     except Exception:
         return None
     if not isinstance(ident, dict):
         return None
     sd = ident.get("sim_data")
     return sd.get("uri") if isinstance(sd, dict) else None
+
+
+def _run_identity_candidates(sweep_dir: str) -> "list[str]":
+    """``run_identity.json`` locations under ``sweep_dir``, sweep ROOT first then
+    any nested sidecar (a dispatcher may write it per-seed, e.g.
+    ``seed_00/run_identity.json``). Local paths for a local sweep, ``s3://`` URIs
+    for a remote one."""
+    base = sweep_dir.rstrip("/")
+    root = base + "/run_identity.json"
+    if not is_s3_uri(sweep_dir):
+        nested = glob.glob(os.path.join(sweep_dir, "**", "run_identity.json"),
+                           recursive=True)
+        ordered = [root, *sorted(p for p in nested if os.path.abspath(p) != os.path.abspath(root))]
+        return [p for p in ordered if os.path.isfile(p)]
+    # DuckDB's glob() lists object storage through httpfs -- no extra dependency,
+    # no download, same mechanism history_files() uses.
+    import tempfile
+
+    from viva_emitters import create_duckdb_conn
+
+    conn = create_duckdb_conn(temp_dir=tempfile.gettempdir())
+    configure_duckdb_s3(conn)
+    try:
+        rows = conn.sql(
+            f"SELECT file FROM glob('{base}/**/run_identity.json')").fetchall()
+    except Exception:
+        return [root]
+    finally:
+        conn.close()
+    found = sorted(r[0] for r in rows)
+    # sweep ROOT first, so an authoritative top-level sidecar wins over per-seed.
+    return sorted(found, key=lambda p: (p.rstrip("/") != root, p)) or [root]
 
 
 def resolve_validation_data(sim_data):
