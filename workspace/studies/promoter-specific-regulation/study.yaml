@@ -407,6 +407,72 @@ behavior_tests:
   measured_value: 6.93
   evaluated_by: agent
   detail: Corrected arm 7.23 / 6.93 / 6.62 across seeds 0/1/2 — a 1.09x spread.
+- name: lexa-exposed-expression-fraction
+  classification: primary
+  gate_class: acceptance_criterion
+  question: Once the operon's expression is redistributed within the optimal face, how much of it
+    sits on a LexA-carrying transcript?
+  description: 'PRE-REGISTERED 2026-09-07, before the combined arm was read.
+
+    The promoter-specific rescue currently depends on two things landing on DIFFERENT transcripts,
+    and only one of them is principled. LexA -> TU00435 is principled: EcoCyc records the operator
+    there. Expression -> TU00352 is ARBITRARY: the three dnaG TUs have identical cistron sets, so
+    NNLS returns one vertex of an optimal face and could equally have put the expression on TU00435.
+    In the promoter-specific arm the fraction of operon expression sitting on a LexA-carrying TU
+    is 0.0, which is why dnaG escapes.
+
+    PREDICTION: redistributing expression within the same optimal face — a change that costs the
+    cistron fit nothing — puts roughly a third of the operon''s expression back onto TU00435, which
+    carries the LexA edge. I expect this axis to land near 0.33 and therefore to FAIL its band, demonstrating
+    that the rescue is contingent on the tie-break.
+
+    Band is written so PASS means the rescue is ROBUST (dnaG stays unexposed) and FAIL means it is
+    contingent.'
+  measure:
+    kind: derived
+    path: fraction of the rpsU-dnaG-rpoD operon's total basal_prob carried by TUs that hold a PC00010
+      edge, combined arm
+    detail: sum of basal_prob over LexA-carrying TUs among TU00352/TU00434/TU00435, over the operon
+      total, in out/cache_both.
+  pass_if:
+    op: <=
+    value: 0.05
+    provenance:
+      kind: theory
+      note: PASS requires dnaG to stay essentially unexposed under redistribution. 0.05 allows a
+        negligible leak without allowing a material one. The promoter-specific arm measures exactly
+        0.0, so any nonzero value is a change in kind, not degree.
+  status: pending
+- name: rescue-survives-expression-redistribution
+  classification: primary
+  gate_class: acceptance_criterion
+  question: Does the 12-generation rescue survive an equally-optimal reallocation of the operon expression?
+  description: 'PRE-REGISTERED 2026-09-07, before any simulation of the combined arm.
+
+    The functional form of the axis above, and the one that decides whether this study''s headline
+    claim needs qualifying. Arms: promoter-specific alone (already measured at 12/12/12 divided generations)
+    against promoter-specific PLUS the minimum-norm tie-break, both built from the same code with
+    the two flags as the only difference.
+
+    PREDICTION: I expect this to FAIL — the lineage should arrest again, because TU00435 would carry
+    both the operon''s expression and its repressor. If it PASSES, the rescue is robust to the tie-break
+    and the study''s claim stands unqualified, which would be the better outcome and is a real possibility:
+    the redistributed TU00352 still carries two thirds of the expression with no LexA edge, and that
+    may be sufficient on its own.
+
+    Same measure and band as lineage-completes so the two are directly comparable.'
+  measure:
+    kind: derived
+    path: minimum generations divided across seeds, promoter-specific + min-norm tie-break arm
+    detail: same construction as lineage-completes; 3 seeds, 12 generations requested.
+  pass_if:
+    low: 8
+    high: 12
+    provenance:
+      kind: theory
+      note: Identical to lineage-completes so the contingency is read as a direct comparison against
+        12.
+  status: pending
 preregistered:
   declared_before_runs: true
   registered_at: '2026-09-04T19:00:00Z'
@@ -473,6 +539,13 @@ preregistered:
     prior: Does the cell live?
   - test: rescue-is-not-a-global-growth-artefact
     prior: Is any rescue attributable to dnaG rather than to perturbing the network generally?
+  - test: lexa-exposed-expression-fraction
+    prior: redistributing expression within the optimal face puts roughly a third of the operon's
+      expression back onto the LexA-carrying TU00435, so the axis fails its <=0.05 band
+  - test: rescue-survives-expression-redistribution
+    prior: the lineage arrests again, because TU00435 would carry both the expression and the repressor;
+      a PASS would instead show the rescue is robust to the arbitrary tie-break
+  amended: '2026-09-07: two axes added, declared before the combined arm was read or simulated.'
 implementation_requirements:
 - id: req-1
   status: complete
