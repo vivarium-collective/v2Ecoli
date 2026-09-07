@@ -332,6 +332,12 @@ limitations:
 - Whether TU00434/TU00435 would in reality escape the LexA operator depends on the operator's position
   relative to their transcription start sites, which this study did not establish -- it shows only
   that under the current cistron-content rule they could not escape regardless of position.
+- 'CROSS-REFERENCE 2026-09-07: this study''s 760-absent and 637-dedup figures were re-derived independently
+  and reproduce exactly (promoter-specific-regulation/analyses/ecocyc_model_coverage.py). Two clarifications
+  worth carrying. First, the loss is INTERNAL to the model build, not a gap between EcoCyc and the
+  input: all 3766 source TUs exist in EcoCyc 30.0. Second, 637 counts dedup casualties over all source
+  TUs while 624 counts them after excluding the 64 explicitly removed — one phenomenon, two denominators,
+  13 TUs in both sets.'
 claim: There are no orphaned genes and single-TU genes are not more silenceable; dnaG is a genuine
   special case -- the only one of its operon with no promoter of its own.
 conclusion: 'Largely a refutation, including of my own framing, and the study is more useful for

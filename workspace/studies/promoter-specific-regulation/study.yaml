@@ -1210,3 +1210,53 @@ report:
     -- the blind rule''s disruption control (superseded by the contradiction-gated rule, recorded
     separately) and dnag-transcription-recovers by 0.0017 against an inherited anchor. Neither failure
     undermines the rescue; both are recorded rather than re-badged.'
+ecocyc_model_coverage:
+  measured: '2026-09-07'
+  script: analyses/ecocyc_model_coverage.py
+  source: EcoCyc 30.0 PGDB flatfiles (references/ecocyc-30.0/, gitignored as licensed)
+  transcription_units:
+    ecocyc_transunits_dat: 3772
+    model_input_tsv: 3766
+    model_rna_data: 3277
+    source_tus_present_in_ecocyc: 3766
+    ecocyc_tus_absent_from_input: 6
+    absent_from_model_total: 760
+    explicitly_removed: 64
+    not_kept_thereafter: 696
+    kept_with_tu_id: 3006
+    single_gene_renamed: 271
+    dedup_casualties_all_source: 637
+    dedup_casualties_excluding_removed: 624
+  transcription_factors:
+    ecocyc_distinct_regulators: 279
+    model_tfs: 23
+    model_tfs_found_in_ecocyc: 23
+    model_tfs_found_without_aliases: 20
+    ecocyc_regulators_represented_fraction: 0.082
+    ecocyc_tf_binding_records: 5803
+    records_belonging_to_model_tfs: 2120
+    records_belonging_fraction: 0.365
+    model_declared_edges: 1462
+  note: 'Scope facts bounding every claim in this investigation that leans on the EcoCyc join. The
+    two databases are lopsided in OPPOSITE directions.
+
+    TUs: the input is essentially complete — all 3766 source TUs exist in EcoCyc 30.0 and only 6
+    EcoCyc TUs never reach the input file. The loss is INTERNAL to the model build: 64 removed as
+    unsupported types, 696 not kept thereafter, 760 absent in total, which reproduces tu-coverage-loss
+    exactly. Of those, the gene-set dedup is the dominant mechanism. The 271 single-gene entries
+    carrying gene-RNA ids rather than TU* ids are relabelled, not lost.
+
+    Dedup casualties reconcile at two numbers for one phenomenon: 637 counted over all source TUs
+    (what tu-coverage-loss records) and 624 counted after excluding the 64 explicitly removed, because
+    13 TUs are in both sets. Neither is wrong; quote the denominator.
+
+    TFs: the model holds 23 of EcoCyc''s 279 regulators — 8.2%, a curated subset by design, being
+    the TFs with condition data ParCa can fit. All 23 resolve in EcoCyc, but only 20 without the
+    three id aliases; FNR''s model id FNR-4FE-4S-CPLX does not exist in EcoCyc 30.0 at all. Only
+    2120 of EcoCyc''s 5803 TF-binding records (36.5%) concern the model''s TFs.
+
+    CONSEQUENCE for the promoter-specific correction: it only ever touches the model''s own 1462
+    edges and never adds regulation, so the 91.8% of EcoCyc regulators the model lacks is out of
+    scope. It is also why the UNRECORDED bucket (23% of edges) had to be left alone rather than deleted
+    — with the model holding a slice of EcoCyc''s TFs, and EcoCyc itself incomplete for any given
+    promoter, absence of a record is weak evidence.'
