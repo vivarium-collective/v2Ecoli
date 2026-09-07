@@ -581,6 +581,11 @@ assumptions:
     mechanism, so a site acting by DNA looping or on an upstream promoter would be misassigned by
     this rule.
   risk: high
+- name: EcoCyc is used as a veto, never as a source
+  detail: The correction removes 887 assignments and adds none. Given the model carries 8.2% of EcoCyc's
+    regulators, importing edges from EcoCyc would be unsound; vetoing edges it positively contradicts
+    is not. Verified by set difference, recorded under intervention_is_subtractive.
+  risk: low
 simulation_set:
 - name: promoter-specific
   kind: single
@@ -1271,3 +1276,31 @@ embed_visualizations:
     edges.'
   generated_by: scripts/build_ecocyc_coverage_figure.py
   source_data: analyses/ecocyc_model_coverage.py
+intervention_is_subtractive:
+  verified: '2026-09-07'
+  method: set difference over rna_id_to_regulating_tfs between the two ParCa arms
+  control_assignments: 3166
+  corrected_assignments: 2279
+  added: 0
+  removed: 887
+  corrected_is_strict_subset_of_control: true
+  note: 'The correction can only REMOVE transcription-factor assignments. It never adds one. Verified
+    as a set difference between the two arms: 3166 (TU, TF) assignments in the control, 2279 after,
+    887 removed, 0 added, and the corrected set is a strict subset of the control. The rule is structurally
+    incapable of adding — relation.py iterates the existing tf_list and appends to a kept list —
+    so EcoCyc is used purely as a VETO, never as a source of new regulation.
+
+    This matters because of the coverage asymmetry recorded in ecocyc_model_coverage: the model holds
+    only 23 of EcoCyc''s 279 regulators (8.2%), and EcoCyc is itself incomplete for any given promoter.
+    A rule that ADDED edges on that basis would be indefensible — it would import regulation the
+    model''s own curated input deliberately excludes, from a source that is patchy per-promoter.
+    A rule that only removes has a bounded failure mode: it can lose real regulation where EcoCyc''s
+    record is wrong or misplaced, but it cannot invent any. Every edge in the corrected model was
+    already in the model.
+
+    This is consistent with, not a qualification of, the promoter-specific result. EcoCyc records
+    LexA at exactly ONE of the three dnaG-bearing TUs — REG0-5384, site BS00652 at ABS-CENTER-POS
+    3210738.5, COMPONENT-OF TU00435, with no LexA record on TU00352 or TU00434. Cistron-content assignment
+    had put LexA on all three because all three contain dnaG, itself a direct LexA target. Removing
+    the two unsupported assignments is exactly what replacing cistron-specific with promoter-specific
+    regulation means here.'
