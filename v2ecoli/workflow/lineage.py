@@ -16,6 +16,7 @@ cells have been run.
 from __future__ import annotations
 
 import copy
+import os
 import time
 import warnings
 from v2ecoli.library.quantity_helpers import fg_magnitude
@@ -672,13 +673,29 @@ class LineageProcess(Process):
         # never see the divide flag and run to max_duration_per_gen without
         # dividing (matches the resilient lookups above/below).
         survivor = agents_now.get(self._agent_id) or next(iter(agents_now.values()), {})
-        if isinstance(survivor, dict) and survivor.get("divide"):
+        divide_flag = isinstance(survivor, dict) and bool(survivor.get("divide"))
+        if divide_flag:
             divided = True
 
         cell = agents_now.get(self._agent_id) or next(iter(agents_now.values()), {})
         dry_mass = fg_magnitude(
             cell.get("listeners", {}).get("mass", {}).get("dry_mass", 0.0)
         )
+
+        # sms-ecoli#210, item106: temporary, opt-in diagnostic for Run 3's real,
+        # not-yet-root-caused one-tick collapse (global_time reaches ~1.0 with no
+        # exception at all) — reports exactly which of the 3 division signals
+        # fired plus the real state values behind them, since static reading of
+        # this function alone couldn't distinguish the cases. Silent unless
+        # LINEAGE_DEBUG_DIVISION=1 is set; never touches production behavior.
+        if os.environ.get("LINEAGE_DEBUG_DIVISION") == "1":
+            print(
+                f"[lineage-debug] t={self._gen_elapsed} divided={divided} "
+                f"structural_agents_change={agents_before and agents_after != agents_before} "
+                f"divide_flag={divide_flag} dry_mass={dry_mass} "
+                f"agents_before={sorted(agents_before)} agents_after={sorted(agents_after)}",
+                flush=True,
+            )
 
         if self._is_xarray():
             self._emit_xarray(agents_now)
