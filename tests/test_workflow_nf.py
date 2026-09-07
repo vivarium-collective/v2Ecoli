@@ -48,10 +48,10 @@ def test_shape_is_one_parca_per_variant_feeding_its_own_seeds() -> None:
     # and the M lineages live inside it, wired to the take: port
     inner = state["runs_v0"]["config"]["state"]
     assert sorted(k for k in inner if k.startswith("lineage")) == [
-        "lineage_s0",
-        "lineage_s1",
+        "lineage_v0_s0",
+        "lineage_v0_s1",
     ]
-    assert inner["lineage_s1"]["inputs"]["cache_dir"] == ["cache"]
+    assert inner["lineage_v0_s1"]["inputs"]["cache_dir"] == ["cache"]
 
 
 def test_strain_inputs_reach_PARCA_not_the_lineage() -> None:
@@ -72,7 +72,7 @@ def test_strain_inputs_reach_PARCA_not_the_lineage() -> None:
     assert parca_cfg["new_genes"] == "violacein_MG1655_M5"
     assert parca_cfg["bundle_overrides"] == "/m.json"
     inner = doc["state"]["runs_v0"]["config"]["state"]
-    assert "new_genes" not in inner["lineage_s0"]["config"]
+    assert "new_genes" not in inner["lineage_v0_s0"]["config"]
 
 
 def test_no_variants_means_one_baseline_not_zero() -> None:
@@ -200,7 +200,7 @@ def test_renders_at_run4_scale_without_hitting_the_255_wall(core) -> None:
         core, build_workflow_nf(n_seeds=4, include_analysis=True, variants=variants)
     )
     assert nf.count("workflow runs_v") == 84
-    assert nf.count("= lineage_s") == 336
+    assert nf.count("= lineage_v") == 336
     # chained binary, never one n-ary call
     assert ".mix(" in nf and all(
         "," not in seg[: seg.index(")")] for seg in nf.split(".mix(")[1:]
@@ -355,6 +355,43 @@ def test_the_rendered_workflow_actually_compiles(tmp_path) -> None:
     assert "executor >" in combined, combined[:2000]
 
 
+@pytest.mark.skipif(
+    shutil.which("nextflow") is None, reason="nextflow binary not on PATH"
+)
+@pytest.mark.skipif(
+    not _pbg_quotes_script_overrides(), reason="needs process-bigraph#205"
+)
+def test_a_multi_variant_campaign_compiles(tmp_path) -> None:
+    """The single-variant compile test above passes even when a >=2-variant
+    render emits duplicate top-level process names: each variant's nested
+    composite renders its lineages by leaf, so a bare `lineage_s{seed}` collides
+    across variants ("Identifier lineage_s0 is already used"). Run 4's 84-genotype
+    campaign and Run 2's grid are multi-variant, so render two variants and
+    confirm Nextflow accepts the file."""
+    (tmp_path / "main.nf").write_text(
+        _render_via_generator(
+            n_seeds=2,
+            include_analysis=True,
+            variants=[{"variant_name": "a"}, {"variant_name": "b"}],
+        )
+    )
+    (tmp_path / "nextflow.config").write_text(
+        "profiles { local { process { executor='local' } } }\n"
+    )
+    proc = subprocess.run(
+        ["nextflow", "run", "main.nf", "-profile", "local", "-stub-run"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    combined = proc.stdout + proc.stderr
+    assert "Script compilation error" not in combined, combined[:2000]
+    assert "is already used by another definition" not in combined, combined[:2000]
+    assert "executor >" in combined, combined[:2000]
+
+
 def test_build_cache_runs_from_the_checkout_but_writes_to_the_work_dir() -> None:
     """`build_cache.py` imports pbg_v2ecoli, whose apply_upstream_patches() calls
     find_workspace_root() -- a walk up from CWD for workspace.yaml. A Nextflow
@@ -412,7 +449,7 @@ def test_the_lineage_publishes_its_sweep(core) -> None:
     78 KB of render artifacts and no science at all. A campaign that exits 0 with
     nowhere to read its output is the silent-success shape in its purest form."""
     rendered = _render(core, build_workflow_nf(n_seeds=1, n_generations=1))
-    block = rendered.split("process lineage_s0 {", 1)[1].split("}", 1)[0]
+    block = rendered.split("process lineage_v0_s0 {", 1)[1].split("}", 1)[0]
     assert "publishDir" in block
 
 
