@@ -442,7 +442,26 @@ behavior_tests:
       note: PASS requires dnaG to stay essentially unexposed under redistribution. 0.05 allows a
         negligible leak without allowing a material one. The promoter-specific arm measures exactly
         0.0, so any nonzero value is a change in kind, not degree.
-  status: pending
+  status: failed
+  result: FAIL
+  measured_value: 0.0676
+  evaluated_by: agent
+  detail: "0.0676 against a band of <= 0.05. The rescue IS contingent on the arbitrary tie-break,\
+    \ in the predicted direction.\n  promoter-specific only        TU00352 4.171e-05 | TU00434 0\
+    \ | TU00435 0            -> 0.0000\n  promoter-specific + min-norm  TU00352 3.930e-05 | TU00434\
+    \ 9.70e-07 | TU00435 2.920e-06 -> 0.0676\nTU00435 carries the LexA edge in both arms; what changes\
+    \ is that it now also carries expression, at a cost of exactly nothing to the cistron fit.\n\
+    PREDICTION MISS, recorded because it changes what to expect next. I pre-registered 'roughly a\
+    \ third', reasoning from an even three-way split. The actual redistribution is 91% / 2.2% / 6.8%,\
+    \ so exposure is 0.0676 rather than ~0.33 — wrong by a factor of five. Min-norm gave the three\
+    \ TUs an EVEN split in tu-expression-identifiability on the shipped fixture; it does not here,\
+    \ because the promoter-specific deltas move the fit's converged point and the rank-deficient\
+    \ block spans more columns than these three. I reasoned about the optimal face in isolation when\
+    \ it is embedded in a larger block.\nCONSEQUENCE: the exposure is real but small. About 93% of\
+    \ the operon's expression still sits on LexA-free transcripts, so the functional axis is now\
+    \ genuinely open rather than a formality — 6.8% exposure may well be insufficient to arrest the\
+    \ lineage. My pre-registered prediction that the lineage arrests is correspondingly weaker than\
+    \ when I wrote it, and I am leaving it on the record unchanged."
 - name: rescue-survives-expression-redistribution
   classification: primary
   gate_class: acceptance_criterion
