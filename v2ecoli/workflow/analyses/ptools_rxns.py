@@ -17,7 +17,10 @@ from duckdb import DuckDBPyConnection
 
 from v2ecoli.workflow.analysis import Analysis
 from v2ecoli.workflow.analyses._helpers import ptools_heatmap_view
-from v2ecoli.workflow.analyses.ptools_rna import consolidate_timepoints
+from v2ecoli.workflow.analyses.ptools_rna import (
+    consolidate_timepoints,
+    _groupby_time_keep_generation,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -27,7 +30,7 @@ from v2ecoli.workflow.analyses.ptools_rna import consolidate_timepoints
 def build_query(columns, history_sql):
     """Generate SQL query for user-specified parquet columns."""
     query_sql = f"""
-        SELECT {",".join(columns)}, global_time AS time
+        SELECT {",".join(columns)}, global_time AS time, generation
         FROM ({history_sql})
         ORDER BY time
     """
@@ -44,8 +47,7 @@ def read_outputs(
         columns = ["listeners__fba_results__base_reaction_fluxes"]
     query_sql = build_query(columns, history_sql)
     outputs_df = conn.sql(query_sql).df()
-    outputs_df = outputs_df.groupby("time", as_index=False).sum()
-    return outputs_df
+    return _groupby_time_keep_generation(outputs_df)
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +59,12 @@ class PtoolsRxns(Analysis):
 
     name = "ptools_rxns"
     scale = "single"
-    config_schema = {"n_tp": "integer", "time_unit": "string"}
+    config_schema = {
+        "n_tp": "integer",
+        "time_unit": "string",
+        "per_generation": "boolean",
+        "skip_n_gens": "integer",
+    }
 
     def _do_read_outputs(
         self,
@@ -145,8 +152,15 @@ class PtoolsRxns(Analysis):
             rxn_ids = rxn_ids + [f"injected-reaction-{k}" for k in range(extra)]
 
         n_tp = int(params["n_tp"])
+        gens = (
+            output_df["generation"].values
+            if params.get("per_generation") and "generation" in output_df.columns
+            else None
+        )
 
-        rxn_blocksum, tp_idx = consolidate_timepoints(rxn_mtx, n_tp, normalized=True)
+        rxn_blocksum, tp_idx = consolidate_timepoints(
+            rxn_mtx, n_tp, normalized=True, generations=gens
+        )
 
         tp_checkpoints = output_df["time"].values[tp_idx]
 
