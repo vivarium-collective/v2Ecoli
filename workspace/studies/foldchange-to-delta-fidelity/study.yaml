@@ -116,12 +116,26 @@ behavior_tests:
         comparison reads on the same scale as the fidelity measurements.
   status: failed
   result: FAIL
-  measured_value: 1.6602
+  measured_value: 3.4095
   evaluated_by: agent
   remeasured_2026_09_07:
-    status: not recomputed
-    note: Needs a strong/weak split on the in-force mapping; measure_v2.py reports the aggregate
-      only. Left at its original value, which was computed on the incomplete join.
+    value: 3.4095
+    supersedes: 1.6602
+    script: analyses/measure_v2.py
+    strong_n: 334
+    strong_median_absdex: 0.7246
+    weak_n: 190
+    weak_median_absdex: 0.2125
+    note: 'Now recomputed on the in-force join (1606 entries, versus 564 from fold_changes.tsv alone).
+      Same construction as measure.py — median |log10 implied/expected| for strong repressors over
+      weak — with the log2FC bands expressed as retained-fraction bands, since tf_to_fold_change
+      stores fractions: strong is expected <= 0.5, weak is 2**-0.5 <= expected < 1.
+
+      3.4095 against a two-sided band of [0.67, 1.5]. The band is centred on 1.0, i.e. ''distortion
+      does NOT depend on repression strength'', so this FAIL is the informative direction: strong
+      repressors are misencoded by about 5.3x in magnitude (10^0.7246) against 1.6x for weak ones
+      (10^0.2125). The effect is more than twice what the incomplete join showed, so widening the
+      join strengthened the study''s own hypothesis rather than weakening it.'
 - name: delta-respects-the-probability-bound
   classification: diagnostic
   gate_class: acceptance_criterion
@@ -799,6 +813,11 @@ discovery_implications:
 - 40% of joined records come from cistrons in polycistronic TUs, where one delta must serve several
   fold changes. That structural ambiguity is worth its own treatment and connects to the known TU-dedup
   issue.
+- 'All five axes are now measured on the in-force join. Four of five FAIL, and three of those got
+  WORSE with fuller coverage: activators 2.13 -> 4.61, bound violations 2 -> 26, strength-dependence
+  1.66 -> 3.41. Only distortion-is-systematic improved (1.538 -> 1.1357, now passing). The picture
+  is that the encoding is broadly faithful in aggregate while being badly wrong for strong repressors
+  specifically — which is exactly the regime dnaG sits in.'
 readouts:
 - name: median_implied_over_expected
   units: dimensionless ratio

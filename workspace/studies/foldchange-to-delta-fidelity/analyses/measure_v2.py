@@ -79,6 +79,29 @@ med(act, "activators")
 neg = sum(1 for r in recs if r["implied_retained"] < 0)
 print(f"  entries violating the probability bound (implied < 0): {neg}")
 
+# --- distortion-grows-with-repression-strength -------------------------------
+# Same construction as measure.py: median |log10| of the implied/expected ratio
+# for STRONG repressors over WEAK ones. tf_to_fold_change stores retained
+# fractions, so the log2FC bands become fraction bands:
+#     strong  log2FC <= -1      ->  expected <= 0.5
+#     weak    -0.5 <= log2FC < 0 ->  2**-0.5 <= expected < 1
+strong = [r for r in recs if r["expected_retained"] <= 0.5]
+weak = [r for r in recs if 2 ** -0.5 <= r["expected_retained"] < 1.0]
+def absdex(rs):
+    v = [abs(np.log10(abs(r["implied_retained"] / r["expected_retained"])))
+         for r in rs
+         if r["implied_retained"] != 0
+         and np.isfinite(r["implied_retained"] / r["expected_retained"])]
+    return float(np.median(v)) if v else None
+ms, mw = absdex(strong), absdex(weak)
+print(f"\n=== distortion-grows-with-repression-strength  (band [0.67, 1.5])")
+print(f"  strong repressors (expected <= 0.5)     n={len(strong):4d}  median |log10 ratio| = "
+      f"{ms if ms is None else round(ms, 4)}")
+print(f"  weak repressors  (0.707 <= exp < 1.0)   n={len(weak):4d}  median |log10 ratio| = "
+      f"{mw if mw is None else round(mw, 4)}")
+if ms and mw:
+    print(f"  measured_value = {ms / mw:.4f}")
+
 print("\n--- the dnaG locus, per cistron (this is what the old lexa-rpod pin got wrong)")
 for r in recs:
     if r["tf"] == "PC00010" and r["tu"].startswith(("TU00352", "TU00434", "TU00435")):
