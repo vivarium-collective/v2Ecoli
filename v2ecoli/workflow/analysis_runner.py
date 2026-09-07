@@ -881,25 +881,44 @@ def run_analyses(sweep_dir: str, analysis_options: dict,
     return results
 
 
-def main() -> None:
+def build_analysis_arg_parser() -> argparse.ArgumentParser:
+    """The ``v2ecoli-analyze`` CLI contract, in one place so ``main()`` and a
+    cross-repo contract test assert against the SAME parser.
+
+    The command is ``v2ecoli-analyze <sweep_dir> [--config CONFIG]``. Everything
+    an analysis needs beyond the sweep dir lives in the ``--config`` JSON
+    (``analysis_options``, and an optional ``out_dir``). An emitter that passes
+    any other flag -- workflow_nf's ``AnalysisTaskStep``, viva-api's
+    ``_analysis_command`` -- is stale against this and its argv is rejected;
+    parse the emitted argv against this parser to catch drift at the seam.
+    """
     p = argparse.ArgumentParser(description="Run configured analyses over a sweep.")
     p.add_argument("sweep_dir", help="sweep output dir (parquet + summary.json)")
     p.add_argument("--config", default=None,
-                   help="config JSON with analysis_options (with inherit_from)")
-    args = p.parse_args()
+                   help="config JSON with analysis_options (+ optional out_dir; supports inherit_from)")
+    return p
+
+
+def main() -> None:
+    args = build_analysis_arg_parser().parse_args()
     if not os.path.isdir(args.sweep_dir):
         raise SystemExit(f"sweep_dir not found: {args.sweep_dir!r}")
 
     analysis_options: dict = {}
+    out_dir: str | None = None
     if args.config:
         from v2ecoli.workflow.config import load_config_with_inheritance
-        analysis_options = load_config_with_inheritance(args.config).get(
-            "analysis_options") or {}
+        cfg = load_config_with_inheritance(args.config)
+        analysis_options = cfg.get("analysis_options") or {}
+        # out_dir lives in the config (not a CLI flag) so the argv surface stays
+        # `<sweep_dir> [--config]`; a Nextflow task sets it to a task-local name
+        # ("analysis") that matches its declared `path` output.
+        out_dir = cfg.get("out_dir") or None
     if not analysis_options:
         print("no analysis_options found; nothing to run")
         return
-    run_analyses(args.sweep_dir, analysis_options)
-    print(f"Wrote {os.path.join(args.sweep_dir, 'analysis.json')}")
+    run_analyses(args.sweep_dir, analysis_options, out_dir=out_dir)
+    print(f"Wrote {os.path.join(out_dir or args.sweep_dir, 'analysis.json')}")
 
 
 if __name__ == "__main__":

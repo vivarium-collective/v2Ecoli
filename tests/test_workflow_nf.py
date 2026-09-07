@@ -159,6 +159,38 @@ def test_analysis_takes_one_port_per_variant(core) -> None:
     assert "analysis(ch_results_v0, ch_results_v1" in nf
 
 
+def test_analysis_task_argv_parses_against_the_real_cli(core) -> None:
+    """The gather's emitted command must parse against the real v2ecoli-analyze
+    CLI. It used to emit --experiment-id/--out-dir, which the CLI rejects with
+    exit 2 (#722), so a --include-analysis campaign ran every lineage and then
+    died at the gather. Parse the emitted argv against the one shared parser."""
+    import shlex
+
+    from v2ecoli.workflow.analysis_runner import build_analysis_arg_parser
+
+    script = AnalysisTaskStep(
+        config={"analysis_options": {"single": {"mass_fraction_summary": {}}}},
+        core=core,
+    ).nextflow_script()
+    line = next(l for l in script.splitlines()
+                if l.strip().startswith("v2ecoli-analyze"))
+    args = build_analysis_arg_parser().parse_args(shlex.split(line)[1:])
+    assert args.sweep_dir == "." and args.config == "analysis.config.json"
+
+
+def test_analysis_options_reach_the_gather_config() -> None:
+    """analysis_options ride in the staged node config (analysis.config.json), the
+    only place the CLI reads them, and out_dir is task-local to match the declared
+    `path "analysis"` output."""
+    doc = build_workflow_nf(
+        n_seeds=2, include_analysis=True,
+        analysis_options={"single": {"mass_fraction_summary": {}}},
+    )
+    cfg = doc["state"]["analysis"]["config"]
+    assert cfg["analysis_options"] == {"single": {"mass_fraction_summary": {}}}
+    assert cfg["out_dir"] == "analysis"
+
+
 def test_renders_at_run4_scale_without_hitting_the_255_wall(core) -> None:
     """go/no-go 4: 84 variants x 4 seeds = 336 lineages. The unrolled form died at
     256 arguments (`bad parameter count 257`); nesting keeps the parent call at one

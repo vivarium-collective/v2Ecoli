@@ -186,8 +186,12 @@ class AnalysisTaskStep(Step):
 
     config_schema = {
         "experiment_id": {"_type": "string", "_default": "default"},
-        "out_dir": {"_type": "string", "_default": "out/analysis"},
-        "modules": {"_type": "quote", "_default": []},
+        # Task-local output dir, matching the declared `path "analysis"`. The CLI
+        # reads it from the staged config (not a flag) -- see analysis_runner.main.
+        "out_dir": {"_type": "string", "_default": "analysis"},
+        # The analyses to run, in the v2ecoli-analyze config shape
+        # ({scale: {analysis_name: params}}); threaded from build_workflow_nf.
+        "analysis_options": {"_type": "quote", "_default": {}},
         # One input port per variant. A port maps to ONE store path, so a single
         # port wired to a LIST of stores cannot be constructed at all
         # (TypeError: unhashable type: 'list', raised in core.realize before the
@@ -221,13 +225,13 @@ class AnalysisTaskStep(Step):
         return {"report": {"_type": "string", "_is_file": True}}
 
     def nextflow_script(self) -> str:
-        modules = list(self.config.get("modules") or [])
-        module_flag = f" --modules {shlex.quote(','.join(modules))}" if modules else ""
-        return (
-            f"v2ecoli-analyze --experiment-id {shlex.quote(str(self.config.get('experiment_id', 'default')))}"
-            f" --out-dir {shlex.quote(str(self.config.get('out_dir', 'out/analysis')))}"
-            f"{module_flag}"
-        )
+        # The v2ecoli-analyze CLI is `<sweep_dir> [--config CONFIG]`. This used to
+        # emit --experiment-id/--out-dir, which the CLI rejects with exit 2 (#722).
+        # The per-variant sweeps are staged into the task work dir, so sweep_dir is
+        # "." -- history_files globs the hive tree recursively from there. The
+        # analyses to run and the task-local out_dir ride in the staged node config
+        # (analysis.config.json), so nothing else goes on the command line.
+        return "v2ecoli-analyze . --config analysis.config.json"
 
     def update(self, state: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(
@@ -323,6 +327,7 @@ def build_workflow_nf(
     parca_mode: str = "fast",
     parca_cpus: int = 8,
     include_analysis: bool = False,
+    analysis_options: dict[str, Any] | None = None,
     **_ignored: Any,
 ) -> dict[str, Any]:
     state: dict[str, Any] = {}
@@ -414,7 +419,11 @@ def build_workflow_nf(
             "address": "local:AnalysisTaskStep",
             "config": {
                 "experiment_id": experiment_id,
-                "out_dir": f"{out_dir}/analysis",
+                # Task-local, matching the declared `path "analysis"` output --
+                # NOT f"{out_dir}/analysis", which the task's work dir has no way
+                # to produce (the gather runs in an isolated Nextflow work dir).
+                "out_dir": "analysis",
+                "analysis_options": analysis_options or {},
                 "variant_indices": indices,
             },
             # one named port per variant, each fed by that variant's sub-workflow
