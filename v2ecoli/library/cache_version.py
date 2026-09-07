@@ -715,8 +715,19 @@ def verify_cache_version(cache_dir: str, repo_root: str | None = None,
         if not stored.derived_from:
             # (a) A chained-schema cache that recorded no chain: its chassis
             # provenance was never captured, so nothing downstream can prove
-            # which founder/sim_data/chassis it came from.
-            raise StaleCacheError(_rebuild_message(
+            # which founder/sim_data/chassis it came from. WARN by default and
+            # hard-fail only when a verified chain is demanded — the same opt-in
+            # posture as the dirty-layer guard (b) below. This matters during the
+            # rollout of ``sources=`` wiring: many cache-building callers
+            # (new_gene_cache, variant_cache, build_condition_cache,
+            # run_comparison_ensemble, …) do not declare their sources yet, and a
+            # hard failure here would reject every one of their caches on load.
+            # CD campaigns that require a clean chain set $V2E_REQUIRE_CLEAN_CHAIN
+            # (or pass require_clean_chain=True) and DO hard-fail — which is what
+            # catches the stale-chassis incident this design targets.
+            require_clean = (require_clean_chain
+                             or bool(os.environ.get("V2E_REQUIRE_CLEAN_CHAIN")))
+            msg = _rebuild_message(
                 cache_dir,
                 reason="schema_version 3 cache has an empty/absent "
                        "'derived_from' chain — chassis provenance was NOT "
@@ -724,7 +735,10 @@ def verify_cache_version(cache_dir: str, repo_root: str | None = None,
                        "state it was built on. Rebuild declaring its sources.",
                 expected=current,
                 actual=stored,
-            ))
+            )
+            if require_clean:
+                raise StaleCacheError(msg)
+            warnings.warn(msg)
 
         # (c) Chain-level analogue of expected_build_params: fail if the
         # chassis the cache was built on isn't the one the caller expects.

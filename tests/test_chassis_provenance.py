@@ -117,8 +117,14 @@ def test_total_failure_null_when_no_git_and_no_dist(tmp_path, monkeypatch):
     assert "reason" in v2 and v2["reason"]
 
 
-def test_workspace_block_honest_null_without_a_workspace(tmp_path):
-    """No workspace root resolved -> a null workspace block, not a crash."""
+def test_workspace_block_honest_null_without_a_workspace(tmp_path, monkeypatch):
+    """No workspace root resolved -> a null workspace block, not a crash.
+
+    ``workspace_root=None`` triggers auto-detection (``_default_workspace_root``),
+    which walks up for a ``workspace.yaml`` — and the test tree itself sits under
+    one, so we pin the resolver to "nothing found" to exercise the null path."""
+    import v2ecoli.library.run_provenance as rp
+    monkeypatch.setattr(rp, "_default_workspace_root", lambda: None)
     pkl = _fake_pkl(tmp_path)
     record = chassis_provenance(pkl, repo_root=REPO_ROOT, workspace_root=None)
     ws = record["code"]["workspace"]

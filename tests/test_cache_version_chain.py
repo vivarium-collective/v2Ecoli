@@ -157,10 +157,18 @@ def _write_stored(cache_dir, derived_from, inputs_hash="deadbeef", schema="3"):
     write_cache_version(str(cache_dir), version=version)
 
 
-def test_missing_chain_on_schema3_raises(tmp_path):
+def test_missing_chain_on_schema3_warns_by_default_and_raises_when_required(tmp_path):
     _write_stored(tmp_path, derived_from=[])
+    # Default posture: WARN (chainless callers aren't all wired yet), then the
+    # hand-written stored hash != recompute raises on inputs_hash — assert the
+    # chain warning fires. Non-breaking for existing chainless callers.
+    with pytest.warns(UserWarning, match="derived_from"):
+        with pytest.raises(StaleCacheError):
+            verify_cache_version(str(tmp_path), repo_root=REPO_ROOT)
+    # A caller/environment that demands a verified chain hard-fails on the chain.
     with pytest.raises(StaleCacheError, match="derived_from"):
-        verify_cache_version(str(tmp_path), repo_root=REPO_ROOT)
+        verify_cache_version(str(tmp_path), repo_root=REPO_ROOT,
+                             require_clean_chain=True)
 
 
 def test_dirty_chassis_warns_by_default_and_raises_when_required(tmp_path):
