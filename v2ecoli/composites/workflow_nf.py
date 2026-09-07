@@ -32,8 +32,8 @@ renders as a DSL2 sub-workflow::
     workflow runs_v0 {
         take: cache
         main:
-        ch_sweep_s0 = lineage_s0(cache, ...)
-        ch_sweep_s1 = lineage_s1(cache, ...)
+        ch_sweep_v0_s0 = lineage_v0_s0(cache, ...)
+        ch_sweep_v0_s1 = lineage_v0_s1(cache, ...)
         _merged = ch_sweep_s0
         _merged = _merged.mix(ch_sweep_s1)
         emit: _merged.collect()
@@ -364,8 +364,13 @@ def build_workflow_nf(
         inner_state: dict[str, Any] = {"cache": ""}
         for m in range(int(n_seeds)):
             seed = int(base_seed) + m
-            node = f"lineage_s{seed}"
-            sweep_store = f"sweep_s{seed}"
+            # Namespace by variant AND seed. Each variant's lineages live in a
+            # nested composite, but render_composite emits nested steps as
+            # top-level Nextflow processes named by their leaf, so a bare
+            # `lineage_s{seed}` collides across variants ("Identifier lineage_s0
+            # is already used") and a >=1-variant campaign will not compile.
+            node = f"lineage_v{vi}_s{seed}"
+            sweep_store = f"sweep_v{vi}_s{seed}"
             # Everything that distinguishes this lineage lives in THIS config,
             # which is staged as its own file. No sibling shares it.
             config: dict[str, Any] = {
