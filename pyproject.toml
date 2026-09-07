@@ -129,6 +129,11 @@ v2e-compare = "scripts.compare_cli:main"
 # through the installed package. The large ParCa blob (models/parca/parca_state.pkl.gz)
 # is intentionally NOT shipped here — it is provided by ecoli-sources / the workspace.
 "v2ecoli" = ["configs/*.json", "models/sbml/*.xml"]
+# Ship the declarative composite specs so yaml-defined composites (millard_lqr,
+# millard_fba_bridge, millard2017_metabolism, …) are discoverable from a wheel/git
+# install, not only a source checkout — the workbench registry scans these files,
+# so without them those composites read as "not found in registry".
+"v2ecoli.composites" = ["*.composite.yaml", "*.composite.yml", "*.composite.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "v2ecoli/tests"]
