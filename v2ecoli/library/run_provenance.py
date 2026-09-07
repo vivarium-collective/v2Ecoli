@@ -24,11 +24,15 @@ import json
 import os
 import subprocess
 import warnings
+from datetime import datetime, timezone
 from pathlib import Path
 
 from v2ecoli.library.cache_version import read_cache_version
 
 _S3_PREFIX = "s3://"
+
+#: Schema tag of a chassis provenance sidecar record.
+CHASSIS_PROVENANCE_SCHEMA = "chassis-provenance/1"
 
 #: Canonical, runner-agnostic sidecar name for ``build_run_identity``'s
 #: record, written at the top of a run's output directory (the same level
@@ -97,6 +101,170 @@ def code_provenance(repo: Path) -> dict:
         "diff_sha256": hashlib.sha256(diff.encode()).hexdigest() if dirty else None,
         "untracked": n_untracked,
     }
+
+
+def _utc_now_iso() -> str:
+    """Current UTC time as ``YYYY-MM-DDTHH:MM:SSZ`` (iso8601, ``Z`` suffix)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _direct_url_provenance(dist_name: str) -> dict:
+    """Installed-dependency fallback: the VCS commit an installed package was
+    built from, read from its ``*.dist-info/direct_url.json`` (PEP 610).
+
+    When v2ecoli (or a workspace package) is consumed as an INSTALLED git
+    dependency there is no ``.git`` tree to interrogate, but pip records the
+    resolved commit in ``direct_url.json``'s ``vcs_info.commit_id``. Returns
+    the honest-null shape ``{"commit": None, "source": None, "reason": ...}``
+    on any failure — mirroring ``code_provenance``'s convention — so a missing
+    or non-VCS install is a plain recorded fact, not a crash. ``dirty`` is
+    ``None`` (unknowable for an installed artifact), not ``False``.
+    """
+    try:
+        import importlib.metadata as metadata
+        dist = metadata.distribution(dist_name)
+        text = dist.read_text("direct_url.json")
+        if not text:
+            return {"commit": None, "source": None,
+                    "reason": f"{dist_name}: no direct_url.json in dist-info"}
+        info = json.loads(text)
+        commit = (info.get("vcs_info") or {}).get("commit_id")
+        if not commit:
+            return {"commit": None, "source": None,
+                    "reason": f"{dist_name}: direct_url.json has no "
+                              f"vcs_info.commit_id (not a VCS install)"}
+        return {"commit": commit, "dirty": None, "source": "direct_url"}
+    except Exception as e:  # noqa: BLE001 — any lookup failure is honest-null
+        return {"commit": None, "source": None,
+                "reason": f"{dist_name}: {type(e).__name__}: {e}"}
+
+
+def _repo_code_provenance(repo: Path | str | None,
+                          *, dist_name: str | None = None) -> dict:
+    """Code identity for a repo: git if there's a ``.git`` tree, else the
+    installed-dependency ``direct_url.json`` fallback, else honest-null.
+
+    ``source`` records WHICH path produced the record: ``"git"``,
+    ``"direct_url"``, or ``None`` on total failure.
+    """
+    repo_path = Path(repo) if repo is not None else None
+    if repo_path is not None and (repo_path / ".git").exists():
+        prov = code_provenance(repo_path)
+        prov["source"] = "git"
+        return prov
+    if dist_name:
+        return _direct_url_provenance(dist_name)
+    return {"commit": None, "source": None,
+            "reason": f"no .git at {str(repo_path)!r} and no dist fallback"}
+
+
+def _default_workspace_root() -> str | None:
+    """Best-effort workspace root (nearest ``workspace.yaml`` ancestor), or
+    ``None`` when there is no workspace / ``viva_workspace`` isn't installed."""
+    try:
+        from viva_workspace import find_workspace_root
+        return str(find_workspace_root())
+    except Exception:
+        return None
+
+
+def _workspace_code_provenance(workspace_root: Path | str | None) -> dict:
+    """Code identity of the consuming WORKSPACE, prefixed with its ``repo`` id.
+
+    The workspace holds the DATA files (``models/parca/...``) and any private
+    payload, so its own commit is part of a chassis's provenance distinct from
+    the v2ecoli package commit. Honest-null when there is no workspace.
+    """
+    if not workspace_root:
+        return {"repo": None, "commit": None, "dirty": None,
+                "diff_sha256": None, "untracked": None, "source": None,
+                "reason": "no workspace root resolved"}
+    root = Path(workspace_root)
+    return {"repo": root.name, **_repo_code_provenance(root)}
+
+
+def chassis_provenance(pkl_path: Path | str, *, build: dict | None = None,
+                       repo_root: Path | str | None = None,
+                       workspace_root: Path | str | None = None) -> dict:
+    """Build the ``chassis-provenance/1`` record for a ParCa chassis pickle.
+
+    The chassis layer is the bottom of the derived-from chain: the
+    ``parca_state.pkl`` every downstream sim_data cache is built on. This
+    record pins (a) the artifact's exact bytes (sha256 + size), (b) the code
+    that produced it — the v2ecoli package commit AND the consuming workspace's
+    commit, each git-or-``direct_url``-or-null — and (c) the caller-supplied
+    ``build`` dict (mode / new_genes / bundle overrides / rnaseq source /
+    argv). It is written beside the pickle by :func:`write_chassis_provenance`
+    and embedded verbatim into a cache's ``derived_from`` chain by
+    ``cache_version.compute_cache_version``.
+
+    ``repo_root`` defaults to the v2ecoli source root (this file's package
+    root); ``workspace_root`` defaults to the nearest ``workspace.yaml``
+    ancestor (or ``None``).
+    """
+    path = Path(pkl_path)
+    data = path.read_bytes()
+    if repo_root is None:
+        repo_root = Path(__file__).resolve().parents[2]
+    if workspace_root is None:
+        workspace_root = _default_workspace_root()
+    return {
+        "schema": CHASSIS_PROVENANCE_SCHEMA,
+        "layer": "chassis",
+        "artifact": {
+            "file": path.name,
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "bytes": len(data),
+        },
+        "code": {
+            "v2ecoli": _repo_code_provenance(repo_root, dist_name="v2ecoli"),
+            "workspace": _workspace_code_provenance(workspace_root),
+        },
+        "build": dict(build) if build else {},
+        "created_at": _utc_now_iso(),
+    }
+
+
+def chassis_provenance_path(pkl_path: Path | str) -> Path:
+    """Sidecar path for ``pkl_path``: ``parca_state.pkl`` →
+    ``parca_state.provenance.json`` (the final extension is swapped)."""
+    return Path(pkl_path).with_suffix(".provenance.json")
+
+
+def write_chassis_provenance(pkl_path: Path | str, *,
+                             build: dict | None = None,
+                             repo_root: Path | str | None = None,
+                             workspace_root: Path | str | None = None) -> dict:
+    """Compute :func:`chassis_provenance` and write it to
+    ``<pkl stem>.provenance.json`` beside the pickle. Returns the record.
+
+    Atomic (tmp-file + ``os.replace``) so a killed writer leaves no half-file,
+    matching :func:`write_run_identity_record`'s local-write convention.
+    """
+    record = chassis_provenance(pkl_path, build=build, repo_root=repo_root,
+                                workspace_root=workspace_root)
+    out = chassis_provenance_path(pkl_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix(".json.tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(record, fh, indent=2, default=str)
+    os.replace(tmp, out)
+    return record
+
+
+def read_chassis_provenance(pkl_path: Path | str) -> dict | None:
+    """The chassis provenance sidecar for ``pkl_path``, or ``None`` if absent/
+    unreadable. Accepts either the stem-swap or the literal-append name."""
+    candidates = [chassis_provenance_path(pkl_path),
+                  Path(str(pkl_path) + ".provenance.json")]
+    for cand in candidates:
+        if cand.is_file():
+            try:
+                with open(cand, encoding="utf-8") as fh:
+                    return json.load(fh)
+            except Exception:
+                return None
+    return None
 
 
 def _cache_fingerprint(cache_dir: str | None) -> dict:

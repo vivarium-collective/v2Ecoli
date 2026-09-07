@@ -266,6 +266,29 @@ def main():
         pickle.dump(state, f, protocol=pickle.HIGHEST_PROTOCOL)
     size_mb = os.path.getsize(out_path) / (1024 * 1024)
 
+    # Chassis provenance sidecar (parca_state.provenance.json): pins this
+    # pickle's exact bytes + the code/workspace commits + the build inputs that
+    # produced it, so a downstream sim_data cache can embed it in its
+    # derived_from chain and a swap of the chassis is detectable rather than
+    # silent. Best-effort: a provenance-write failure must never discard a
+    # completed ParCa build, but it IS logged loudly.
+    try:
+        from v2ecoli.library.run_provenance import write_chassis_provenance
+        build_info = {
+            "mode": args.mode,
+            "new_genes": args.new_genes,
+            "bundle_manifest": args.bundle_manifest_path or "",
+            "bundle_overrides": list(args.bundle_overrides or ()),
+            "rnaseq_source": args.rnaseq_source,
+            "argv": sys.argv,
+        }
+        prov = write_chassis_provenance(out_path, build=build_info)
+        print(f"    chassis provenance -> {out_path.rsplit('.', 1)[0]}"
+              f".provenance.json (sha256 {prov['artifact']['sha256'][:12]})")
+    except Exception as e:  # noqa: BLE001 — provenance must not fail the build
+        print(f"    WARN: chassis provenance write failed: "
+              f"{type(e).__name__}: {e}")
+
     total = time.time() - t0
     print(f"\n{'=' * 60}")
     print(f"Total time:  {total:.1f}s ({total / 60:.1f} min)")
