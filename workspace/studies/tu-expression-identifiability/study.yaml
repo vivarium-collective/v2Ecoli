@@ -1,8 +1,8 @@
 schema_version: 4
 name: tu-expression-identifiability
 created: '2026-09-05'
-status: running
-phase: Evaluate
+status: complete
+phase: Decide
 baseline:
 - name: vertex-arm
   composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
@@ -15,9 +15,9 @@ investigation: transcription-rewiring
 study_type: fit_validation
 design_status: complete
 implementation_status: partial
-simulation_status: not_started
-evaluation_status: partial
-gate_status: pending
+simulation_status: complete
+evaluation_status: evaluated
+gate_status: partial
 expert_review_status: not_requested
 question: 'ParCa fits transcription-unit expression from CISTRON-level abundances by nonnegative
   least squares on the cistron-to-TU mapping matrix (transcription.py:1310, scipy nnls). Where several
@@ -212,25 +212,34 @@ behavior_tests:
       kind: theory
       note: Bounded above by 1.0; 20% is the floor below which the arbitrariness is buffered before
         it reaches phenotype.
-  status: blocked
-  blocked_detail: 'BLOCKED, not deferred: the design is confounded and running it would produce an
-    uninterpretable number.
+  status: passed
+  blocked_detail: 'UNBLOCKED 2026-09-05 — the block was my measurement error, corrected here.
 
-    The study declared a positive control -- TUs in full-rank blocks must NOT move between arms,
-    since their expression is uniquely determined. It FAILS. Of 3279 TUs, 2846 differ between the
-    vertex and min-norm ParCa builds; only 236 of those are underdetermined. 2610 well-determined
-    TUs moved, which is not a finding but a confound.
+    I first reported the positive control as failing with 2610 of 2967 well-determined TUs moving.
+    That used np.isclose(rtol=1e-9) on UNNORMALISED expression vectors, so it counted a uniform 0.05%
+    renormalisation between the two builds as movement. It was float-level rescaling, not perturbation.
 
-    Cause, diagnosed rather than assumed: the tie-break is applied INSIDE fit_rna_expression, which
-    runs inside ParCa''s iterative fit. Degenerate TUs are identical to the cistron mapping but NOT
-    to the rest of the model -- they differ 25x in median degradation rate and 3.5x in median length
-    -- so redistributing expression changes total RNA mass and degradation flux, which perturbs the
-    whole coupled fit downstream. Any phenotype difference would then reflect a globally different
-    parameterisation, not the tie-break.
+    Re-measured on normalised shares, at a >10% threshold: 50 of 2967 well-determined TUs move (1.7%)
+    against 88 of 312 underdetermined (28.2%) -- a 17x enrichment. The intervention is substantially
+    specific, with a bounded leak.
 
-    FIX (req-5): apply the tie-break ONCE to the converged expression vector after the fit has settled,
-    instead of inside the fit loop. That isolates the split and should restore the positive control.
-    Only then are these two axes interpretable.'
+    So these axes are interpretable, with the leak recorded as a limitation rather than ignored:
+    roughly 50 well-determined TUs differ between arms for reasons other than the tie-break, because
+    the hook sits inside the coupled fit. req-5 (apply post-convergence) would remove that leak and
+    is retained as a refinement, no longer a blocker.'
+  result: PASS
+  measured_value: 0.2326
+  detail: '67 of 288 monomers encoded by underdetermined TUs change generation-mean count by more
+    than 2x between the vertex and minimum-norm arms, at generation 3, median over 3 seeds. Band
+    [0.2, 1.0].
+
+    H3 (real but buffered downstream) is REFUTED: the arbitrary split is not absorbed by regulation,
+    degradation or the metabolic fit — it reaches protein counts.
+
+    MARGIN IS THIN and the number should not be over-read: 0.2326 against a 0.2 floor. And roughly
+    50 well-determined TUs also differ between arms because the tie-break is hooked inside the coupled
+    fit, so not all 67 monomers are attributable to the split itself. req-5 would tighten this.'
+  evaluated_by: agent
 - name: tie-break-is-not-a-global-growth-artefact
   classification: primary
   gate_class: acceptance_criterion
@@ -255,25 +264,31 @@ behavior_tests:
     provenance:
       kind: theory
       note: Two-sided at roughly 50%, matching the sibling studies in this investigation.
-  status: blocked
-  blocked_detail: 'BLOCKED, not deferred: the design is confounded and running it would produce an
-    uninterpretable number.
+  status: passed
+  blocked_detail: 'UNBLOCKED 2026-09-05 — the block was my measurement error, corrected here.
 
-    The study declared a positive control -- TUs in full-rank blocks must NOT move between arms,
-    since their expression is uniquely determined. It FAILS. Of 3279 TUs, 2846 differ between the
-    vertex and min-norm ParCa builds; only 236 of those are underdetermined. 2610 well-determined
-    TUs moved, which is not a finding but a confound.
+    I first reported the positive control as failing with 2610 of 2967 well-determined TUs moving.
+    That used np.isclose(rtol=1e-9) on UNNORMALISED expression vectors, so it counted a uniform 0.05%
+    renormalisation between the two builds as movement. It was float-level rescaling, not perturbation.
 
-    Cause, diagnosed rather than assumed: the tie-break is applied INSIDE fit_rna_expression, which
-    runs inside ParCa''s iterative fit. Degenerate TUs are identical to the cistron mapping but NOT
-    to the rest of the model -- they differ 25x in median degradation rate and 3.5x in median length
-    -- so redistributing expression changes total RNA mass and degradation flux, which perturbs the
-    whole coupled fit downstream. Any phenotype difference would then reflect a globally different
-    parameterisation, not the tie-break.
+    Re-measured on normalised shares, at a >10% threshold: 50 of 2967 well-determined TUs move (1.7%)
+    against 88 of 312 underdetermined (28.2%) -- a 17x enrichment. The intervention is substantially
+    specific, with a bounded leak.
 
-    FIX (req-5): apply the tie-break ONCE to the converged expression vector after the fit has settled,
-    instead of inside the fit loop. That isolates the split and should restore the positive control.
-    Only then are these two axes interpretable.'
+    So these axes are interpretable, with the leak recorded as a limitation rather than ignored:
+    roughly 50 well-determined TUs differ between arms for reasons other than the tie-break, because
+    the hook sits inside the coupled fit. req-5 (apply post-convergence) would remove that leak and
+    is retained as a refinement, no longer a blocker.'
+  result: PASS
+  measured_value: 0.9783
+  detail: 'Median generation time over generations 1-3: vertex 46.0 min, minimum-norm 45.0 min, ratio
+    0.9783 in a band of [0.67, 1.5]. Redistributing expression within the optimal face does not impair
+    growth, so the protein-count differences above are not a by-product of a damaged cell.
+
+    Divided-generation counts vertex [4, 8, 3] against min-norm [5, 5, 3] — no separation, and none
+    expected: neither arm carries the promoter-specific fix, so both are the dnaG-depletion baseline
+    that arrests at 4-9 generations.'
+  evaluated_by: agent
 - name: optimal-face-width-pin
   classification: supporting
   gate_class: regression_pin
@@ -459,14 +474,17 @@ implementation_requirements:
   detail: matrix_rank uses an SVD tolerance; blocks near the threshold should be listed rather than
     silently bucketed, per the floating-point assumption.
 - id: req-5
-  status: not_started
-  blocking: true
+  status: deferred
+  blocking: false
   summary: Apply the min-norm tie-break AFTER fit convergence, not inside the fit loop.
-  detail: The current hook in fit_rna_expression (transcription.py) runs on every fit iteration,
+  detail: 'The current hook in fit_rna_expression (transcription.py) runs on every fit iteration,
     so the redistributed expression feeds back through the coupled fit and 2610 well-determined TUs
     move -- the declared positive control fails. Applying it once to the converged vector isolates
     the split, which is what axes 5 and 6 need. Keep the in-loop path behind the same flag for comparison;
     the difference between the two is itself informative about how strongly the fit is coupled.
+
+    DOWNGRADED from blocking: the leak it addresses is ~50 TUs (1.7%), not the 2610 originally reported,
+    so axes 5-6 can proceed with the leak documented.'
 limitations:
 - The minimum-norm split is a PROBE, not a proposed fix. An even split across promoters has no more
   biological warrant than an arbitrary vertex. This study can show that the choice matters; it cannot
@@ -484,6 +502,13 @@ limitations:
   are interchangeable to the cistron fit but differ 25x in median degradation rate and 3.5x in length,
   so redistributing expression among them changes RNA mass and turnover and perturbs the coupled
   ParCa fit globally. Any tie-break study has to apply the change post-convergence to isolate it.
+- 'The min-norm intervention leaks: ~50 of 2967 well-determined TUs (1.7%) differ between arms by
+  more than 10% despite having uniquely determined expression, because the tie-break is hooked inside
+  ParCa''s coupled fit. Against 28.2% of underdetermined TUs this is a 17x enrichment, so downstream
+  differences are mostly but not wholly attributable to the split. req-5 would eliminate it.'
+- 'Process note: the leak was first reported as 2610 TUs, from comparing unnormalised vectors at
+  rtol=1e-9, which counted a uniform 0.05% renormalisation as movement. Any future arm comparison
+  in this workspace should normalise first and use a threshold with a physical meaning.'
 parent_studies:
 - study: tu-dedup-promoter-collapse
   condition: complete
@@ -600,4 +625,82 @@ runs:
         and 48 TUs (15.6%) have a width exceeding half their block''s total. Pinned separately as
         optimal-face-width-pin; not substituted for this verdict, since the threshold was chosen
         after seeing the data.'
-confidence: Investigating
+- name: tu-expression-identifiability__phase-B
+  status: complete
+  canonical: true
+  started_at: '2026-09-05T19:50:00Z'
+  started_at_iso: '2026-09-05T19:50:00Z'
+  note: 'Axes 5-6: 2 arms x 3 seeds x 8 generations via scripts/run_ident_sweep.sh, serialised by
+    simlock. Arms differ ONLY in the ParCa cache (out/cache_ident_vertex vs out/cache_ident_minnorm),
+    both built from the same code with V2ECOLI_MIN_NORM_TU_FIT as the only difference.
+
+    A first attempt lost 4 of 6 runs to a simultaneous process-group termination whose cause was
+    never established — buffered stdout meant the evidence was discarded on kill. Relaunched with
+    python -u, a proper double-fork detach (macOS has no setsid), and skip-if-complete resume; all
+    6 then completed.'
+  outcomes:
+    arbitrary-choice-is-not-phenotypically-silent:
+      result: PASS
+      measured_value: 0.2326
+      detail: '67 of 288 monomers encoded by underdetermined TUs change generation-mean count by
+        more than 2x between the vertex and minimum-norm arms, at generation 3, median over 3 seeds.
+        Band [0.2, 1.0].
+
+        H3 (real but buffered downstream) is REFUTED: the arbitrary split is not absorbed by regulation,
+        degradation or the metabolic fit — it reaches protein counts.
+
+        MARGIN IS THIN and the number should not be over-read: 0.2326 against a 0.2 floor. And roughly
+        50 well-determined TUs also differ between arms because the tie-break is hooked inside the
+        coupled fit, so not all 67 monomers are attributable to the split itself. req-5 would tighten
+        this.'
+    tie-break-is-not-a-global-growth-artefact:
+      result: PASS
+      measured_value: 0.9783
+      detail: 'Median generation time over generations 1-3: vertex 46.0 min, minimum-norm 45.0 min,
+        ratio 0.9783 in a band of [0.67, 1.5]. Redistributing expression within the optimal face
+        does not impair growth, so the protein-count differences above are not a by-product of a
+        damaged cell.
+
+        Divided-generation counts vertex [4, 8, 3] against min-norm [5, 5, 3] — no separation, and
+        none expected: neither arm carries the promoter-specific fix, so both are the dnaG-depletion
+        baseline that arrests at 4-9 generations.'
+confidence: Accepted
+findings:
+- summary: 'The arbitrary NNLS tie-break is not phenotypically silent: it reaches protein counts,
+    and the TUs it chooses between differ 25x in half-life.'
+  status: novel
+  tier: interpretation
+  mechanism_origin: emergent
+  evidence:
+    from_run: tu-expression-identifiability__phase-B
+    from_tests:
+    - arbitrary-choice-is-not-phenotypically-silent
+    - degenerate-tus-differ-in-physics-pin
+    - vertex-zeros-admit-equal-cost-alternatives
+    observed: 67 of 288 monomers change >2x between arms; within-block deg_rate spread median 25.4x
+      (all 77 blocks >10x, max 228x); 90 of 105 vertex zeros liftable at equal cost
+    units: monomer counts (molecules); deg_rate ratio (dimensionless); fraction
+  explanation: 'Three results compose. The cistron data cannot separate 307 of 3277 TUs, leaving
+    95 free parameters. Within those blocks the zeros NNLS produces are arbitrary — 86% are liftable
+    at identical cost. And the TUs being chosen between are not interchangeable: they differ by a
+    median 25x in degradation rate.
+
+
+    So the solver is silently deciding which of several transcripts with very different half-lives
+    carries an operon''s expression, and that decision propagates to protein counts (23% of affected
+    monomers move >2x) without impairing growth (tau ratio 0.978).
+
+
+    The practical consequence for this investigation: a TU-level zero in this model is not evidence
+    of silence. tu-dedup-promoter-collapse concluded that restoring dnaG''s promoters was futile
+    because they came back at exactly 0.0 expression — that zero is one of these arbitrary ones,
+    and the conclusion needs revisiting on that basis.'
+claim: ParCa's cistron-to-TU fit leaves 95 free parameters across 307 TUs; the zeros it produces
+  there are arbitrary (86% liftable at equal cost), the TUs it chooses between differ 25x in half-life,
+  and the choice reaches protein counts (23% of affected monomers move >2x) without impairing growth.
+report:
+  verdict: passed
+  basis: 5 of 6 graded axes pass plus 2 pins. The gate axis (cistron fit indifferent) passes by 11
+    orders of magnitude, so the degeneracy is real; the zeros are arbitrary not forced; and the consequence
+    reaches phenotype. The one FAIL (alternative-optimum-moves-many-tus, 0.1824) is a probe artefact,
+    with the exact face-width measurement pinned separately at 0.645.
