@@ -175,15 +175,11 @@ packages = { find = { where = ["."], include = ["v2ecoli*", "pbg_v2ecoli*"] } }
 
 
 [tool.uv.sources]
-# TEMPORARY: process-bigraph#205 head, not a commit on its `main`.
-# It carries the renderer fixes this package's workflow_nf REQUIRES -- a
-# `nextflow_script()` override wrapped as Groovy, and `cache = 'lenient'` so
-# `-resume` can match. #205 is approved-pending and blocked only on reviewer
-# availability; its blast radius is the Nextflow path alone.
-# ⚠ REVERT to a commit on process-bigraph `main` when #205 merges -- see
-# v2ecoli issue tracking this. Do NOT delete the #205 branch before then:
-# this rev has to stay fetchable.
-process-bigraph = { git = "https://github.com/vivarium-collective/process-bigraph.git", rev = "ce19811a4d543a48b9f959bf489f91e7b76eb08b" }
+# process-bigraph `main`. #205 merged (78d14883), so this is no longer a PR
+# branch head -- the renderer fixes workflow_nf requires (a `nextflow_script()`
+# override wrapped as Groovy, and `cache = 'lenient'` so `-resume` can match)
+# are on main now. Also picks up #206 (`analyses` on GeneratorEntry).
+process-bigraph = { git = "https://github.com/vivarium-collective/process-bigraph.git", rev = "78d14883e8bee2643b646f74f149b9b884442bad" }
 bigraph-schema = { git = "https://github.com/vivarium-collective/bigraph-schema.git", branch = "main" }
 viva-superpowers = { git = "https://github.com/vivarium-collective/viva-superpowers.git", branch = "main" }
 viva-workspace = { git = "https://github.com/vivarium-collective/viva-workspace.git", branch = "main" }
