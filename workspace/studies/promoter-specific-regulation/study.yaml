@@ -1260,3 +1260,14 @@ ecocyc_model_coverage:
     scope. It is also why the UNRECORDED bucket (23% of edges) had to be left alone rather than deleted
     — with the model holding a slice of EcoCyc''s TFs, and EcoCyc itself incomplete for any given
     promoter, absence of a record is weak evidence.'
+embed_visualizations:
+- name: EcoCyc 30.0 vs the model — coverage in both directions
+  url: /reports/figures/promoter-specific-regulation/ecocyc_model_coverage.html
+  description: 'Side-by-side counts for transcription units and transcription factors, with the input
+    -> model loss broken out. The two databases are incomplete in OPPOSITE directions: the model
+    holds 3277 of 3766 source TUs (all of which exist in EcoCyc, so the loss is internal to the model
+    build) but only 23 of EcoCyc''s 279 regulators. That asymmetry is what makes ''EcoCyc has no
+    record here'' weak evidence, and is why the promoter-specific rule deletes only contradicted
+    edges.'
+  generated_by: scripts/build_ecocyc_coverage_figure.py
+  source_data: analyses/ecocyc_model_coverage.py
