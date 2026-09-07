@@ -44,8 +44,7 @@ def build_composite(
         If ``name`` does not match any registered architecture, or matches more
         than one, or if ``kwargs`` contains an unknown parameter name.
     """
-    if core is None:
-        core = build_core()
+    auto_core = core is None
     matches = [e for e in _REGISTRY.values() if e.name == name]
     if not matches:
         available = sorted({e.name for e in _REGISTRY.values()})
@@ -66,7 +65,20 @@ def build_composite(
                 f"ambiguous architecture name {name!r}; multiple generators registered: "
                 f"{[e.id for e in matches]}"
             )
-    doc = build_generator(matches[0], overrides=kwargs, core=core)
+    gen = matches[0]
+    if auto_core:
+        core = build_core()
+        # Apply the generator's core_extensions so a composite that needs extra type
+        # or link registration (e.g. ecoli_colony's ``pymunk_agent`` type via
+        # viva_munk) builds on a proper core through this convenience path too -- not
+        # only inside the workbench env-worker (which already applies them). An
+        # extension may RETURN a fresh core (the colony builds one on viva_munk's base
+        # via ``core_import``); use the returned core when it does.
+        for _ext in (getattr(gen, "core_extensions", None) or []):
+            _returned = _ext(core)
+            if _returned is not None:
+                core = _returned
+    doc = build_generator(gen, overrides=kwargs, core=core)
     composite = Composite(doc, core=core)
     _install_xarray_flush_hook(composite)
     return composite
