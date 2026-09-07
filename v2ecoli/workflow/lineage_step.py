@@ -66,6 +66,11 @@ _FORWARDED = (
     "mass_conservation",
     "transcript_initiation_mode",
     "polypeptide_initiation_mode",
+    # Opt-in independent founders (v2ecoli#712). Without these forwarded, a
+    # Nextflow campaign cannot reach the capability at all: one ParCa per variant
+    # feeds M lineages, so every seed loads the SAME cached initial_state.
+    "independent_founders",
+    "founder_sim_data",
 )
 
 # Forwarded ONLY when non-empty. "no swap requested" and "swap requested, empty"

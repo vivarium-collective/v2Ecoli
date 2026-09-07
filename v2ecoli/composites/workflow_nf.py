@@ -304,6 +304,18 @@ def _variant_specs(variants: list[dict[str, Any]] | None) -> list[dict[str, Any]
         "max_duration_per_gen": {"type": "number", "default": 3600.0},
         "parca_mode": {"type": "string", "default": "fast"},
         "parca_cpus": {"type": "integer", "default": 8},
+        "independent_founders": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Re-draw a founder cell per lineage_seed instead of every seed loading the "
+                "ONE cached initial_state. Without it an M-seed campaign is not M replicates: "
+                "_load_cache_bundle_cached is memoised on cache_dir alone and returns the "
+                "initial state by reference, so the spread reflects downstream stochasticity "
+                "only, not cell-to-cell founder variability (v2ecoli#693). Off by default "
+                "because it re-generates initial conditions per seed and is slower."
+            ),
+        },
         "analysis_options": {
             "type": "object",
             "default": None,
@@ -341,6 +353,7 @@ def build_workflow_nf(
     parca_cpus: int = 8,
     include_analysis: bool = False,
     analysis_options: dict[str, Any] | None = None,
+    independent_founders: bool = False,
     **_ignored: Any,
 ) -> dict[str, Any]:
     state: dict[str, Any] = {}
@@ -404,6 +417,13 @@ def build_workflow_nf(
                 "variant_index": vi,
                 "variant_name": vname,
             }
+            if independent_founders:
+                # TASK-LOCAL, like every other path in this config: `cache_dir` is
+                # staged by Nextflow as `path "cache"` and the ParCa task writes
+                # simData.cPickle inside it, so this resolves against the task's
+                # own work dir rather than any repo layout.
+                config["independent_founders"] = True
+                config["founder_sim_data"] = "cache/simData.cPickle"
             # Omitted, not empty -- see LineageStep for why the distinction matters.
             if spec.get("injected_processes"):
                 config["injected_processes"] = spec["injected_processes"]
