@@ -326,7 +326,7 @@ simulation_set:
   status: planned
   base_model: v2ecoli.composites.ecoli_baseline.ecoli_baseline
   params:
-    config_overrides: &id007
+    config_overrides:
       ecoli-chromosome-replication.mechanistic_replisome: true
   note: The arm dnag-promoter-availability already ran; this study reuses those runs.
 planned_runs:
@@ -388,10 +388,13 @@ limitations:
   \ is wrong and should be recomputed against -1.71; in this investigation that includes the fold-change-to-delta\
   \ distortion, which is 7.08e+06-fold, not 1.48e+07.\nLeft in place rather than rewritten: the original\
   \ text is preserved above so the record shows what was believed when the work was done."
-- PC00010 is the LexA dimer, identified from reconstruction/ecoli/flat/{complexation_reactions,transcription_factors}.tsv.
-  LexA reaches this TU via rpoD, which shares the operon with dnaG (TU00352 = rpsU-dnaG-rpoD), so
-  dnaG is repressed as an operon passenger rather than as a LexA target in its own right. Whether
-  ~100% LexA occupancy is biologically right is NOT settled here and is not this study's question.
+- 'PC00010 is the LexA dimer, identified from reconstruction/ecoli/flat/{complexation_reactions,transcription_factors}.tsv.
+  LexA reaches this TU through dnaG''s OWN cistron-level edge (log2FC -1.71) and rpsU''s; rpoD is
+  not in tf_to_fold_change (corrected 2026-09-07: dnaG is a DIRECT LexA target, fold_changes_nca.tsv
+  log2FC -1.71). So dnaG is repressed as a LexA target in its own right (log2FC -1.71), not as an
+  operon passenger (corrected 2026-09-07: dnaG is a DIRECT LexA target, fold_changes_nca.tsv log2FC
+  -1.71). Whether ~100% LexA occupancy is biologically right is NOT settled here and is not this
+  study''s question.'
 - Occupancy is inferred by matching bound_TF_coordinates to a TU's replication_coordinate. It is
   a positional join; a second promoter at the same coordinate would be indistinguishable.
 - Everything is measured in a lineage that stalls by generation 4-5, so the terms are read from failing
@@ -442,7 +445,7 @@ runs:
     is necessarily PER-TU, which is this analysis''s main limitation and the identified cause of
     the arithmetic axis failing.'
   outcomes:
-    arithmetic-predicts-dnag-transcription: &id001
+    arithmetic-predicts-dnag-transcription:
       result: FAIL
       measured_value: 0.2107
       evaluated_by: agent
@@ -457,7 +460,7 @@ runs:
         scored as fully repressed while the free copy still contributes b. That biases the prediction
         DOWN, which is the direction observed. Closing this needs per-promoter occupancy, which bound_TF_coordinates
         cannot supply because two copies of one promoter share a coordinate.'
-    occupancy-explains-the-generational-collapse: &id002
+    occupancy-explains-the-generational-collapse:
       result: FAIL
       measured_value: 0.423
       evaluated_by: agent
@@ -468,7 +471,7 @@ runs:
         repressed. Directionally the account holds -- occupancy does rise to 1.000 in every seed
         and transcription does collapse -- but occupancy as measured here does not carry the collapse
         quantitatively.'
-    the-near-total-repression-cohort-is-silenced: &id003
+    the-near-total-repression-cohort-is-silenced:
       result: PASS
       measured_value: 10
       evaluated_by: agent
@@ -478,7 +481,7 @@ runs:
         generation, in every seed. dnaG is not a special case but one member of a class, exactly
         as foldchange-to-delta-fidelity found at the fit level. This is the strongest single result
         here.
-    unregulated-peers-are-unaffected: &id004
+    unregulated-peers-are-unaffected:
       result: PASS
       measured_value: 1.0775
       evaluated_by: agent
@@ -488,7 +491,7 @@ runs:
         they retain 1.078 of their in-force basal in the last generation -- i.e. they get what they
         are assigned. Silencing is confined to LexA's targets, which rules out any global explanation
         of the collapse.
-    negative-initiation-probability: &id005
+    negative-initiation-probability:
       result: PASS
       measured_value: 0.0
       evaluated_by: agent
@@ -499,7 +502,7 @@ runs:
         retained) does not reach the sampler as a negative probability -- it is floored at zero somewhere
         between the delta and the emitted target. The fit defect is real; its runtime consequence
         is silencing rather than a malformed distribution.
-    dnag-occupancy-at-generation-1: &id006
+    dnag-occupancy-at-generation-1:
       result: PASS
       measured_value: 0.9881
       evaluated_by: agent
@@ -509,12 +512,72 @@ runs:
         what leaves dnaG any generation-1 expression at all, and it closes to 1.000 by the last generation
         in every seed.
   computed_outcomes:
-    arithmetic-predicts-dnag-transcription: *id001
-    occupancy-explains-the-generational-collapse: *id002
-    the-near-total-repression-cohort-is-silenced: *id003
-    unregulated-peers-are-unaffected: *id004
-    negative-initiation-probability: *id005
-    dnag-occupancy-at-generation-1: *id006
+    arithmetic-predicts-dnag-transcription:
+      result: FAIL
+      measured_value: 0.2107
+      evaluated_by: agent
+      operator: derived/band [0.5, 1.5]
+      gate_class: acceptance_criterion
+      detail: 'Predicted over measured is 0.211: the account UNDER-predicts dnaG''s transcription
+        by ~5x, consistently and in one direction (per-seed generation-1 values 0.43, 0.25, 0.27,
+        0.18, 0.29, 0.25). A consistent one-sided miss of a fixed size is a measurement defect, not
+        a broken mechanism, and the likely cause is identified: occupancy here is per-TU -- a timestep
+        counts as occupied if ANY promoter at dnaG''s coordinate carries LexA -- while the code applies
+        delta PER PROMOTER. dnaG holds ~2 promoters, so a timestep with one bound and one free is
+        scored as fully repressed while the free copy still contributes b. That biases the prediction
+        DOWN, which is the direction observed. Closing this needs per-promoter occupancy, which bound_TF_coordinates
+        cannot supply because two copies of one promoter share a coordinate.'
+    occupancy-explains-the-generational-collapse:
+      result: FAIL
+      measured_value: 0.423
+      evaluated_by: agent
+      operator: derived/band [0.5, 1.5]
+      gate_class: acceptance_criterion
+      detail: '0.423, just outside the band, and inherits the same per-TU occupancy defect: the occupancy-only
+        model predicts a steeper collapse than measured because it treats a partly-bound TU as fully
+        repressed. Directionally the account holds -- occupancy does rise to 1.000 in every seed
+        and transcription does collapse -- but occupancy as measured here does not carry the collapse
+        quantitatively.'
+    the-near-total-repression-cohort-is-silenced:
+      result: PASS
+      measured_value: 10
+      evaluated_by: agent
+      operator: derived/band [8, 10]
+      gate_class: acceptance_criterion
+      detail: ALL TEN of LexA's near-total-repression targets are silenced below 1e-9 in the last
+        generation, in every seed. dnaG is not a special case but one member of a class, exactly
+        as foldchange-to-delta-fidelity found at the fit level. This is the strongest single result
+        here.
+    unregulated-peers-are-unaffected:
+      result: PASS
+      measured_value: 1.0775
+      evaluated_by: agent
+      operator: derived/band [0.67, 1.5]
+      gate_class: acceptance_criterion
+      detail: The control holds cleanly. NONE of the 41 idx_rprotein peers is a LexA target, and
+        they retain 1.078 of their in-force basal in the last generation -- i.e. they get what they
+        are assigned. Silencing is confined to LexA's targets, which rules out any global explanation
+        of the collapse.
+    negative-initiation-probability:
+      result: PASS
+      measured_value: 0.0
+      evaluated_by: agent
+      operator: derived/>= 0
+      gate_class: acceptance_criterion
+      detail: EG10620_RNA[c]'s emitted target probability never goes below zero; its minimum is exactly
+        0. So the negative delta that foldchange-to-delta-fidelity found in the FIT (-9.25e-06 implied
+        retained) does not reach the sampler as a negative probability -- it is floored at zero somewhere
+        between the delta and the emitted target. The fit defect is real; its runtime consequence
+        is silencing rather than a malformed distribution.
+    dnag-occupancy-at-generation-1:
+      result: PASS
+      measured_value: 0.9881
+      evaluated_by: agent
+      operator: derived/<= 0.99
+      gate_class: regression_pin
+      detail: 0.988 median across 6 seeds, just inside the pin. That ~1.2% unbound fraction is precisely
+        what leaves dnaG any generation-1 expression at all, and it closes to 1.000 by the last generation
+        in every seed.
 findings:
 - summary: LexA silences all ten of its near-total-repression targets, and only its targets. dnaG
     is one member of a class.
@@ -583,8 +646,8 @@ biological_summary: 'LexA is the repressor that keeps the cell''s DNA-damage res
   as controls receive what they are assigned.
 
 
-  dnaG is not even a LexA target. It shares an operon with rpoD, which is, and it is silenced as
-  a passenger.
+  dnaG IS a LexA target (log2FC -1.71) (corrected 2026-09-07: dnaG is a DIRECT LexA target, fold_changes_nca.tsv
+  log2FC -1.71). It shares an operon with rpsU, also a target, and with rpoD, which is not.
 
 
   What is not settled is the exact size of the effect. Predicting dnaG''s transcription from the
@@ -607,7 +670,8 @@ conclusion_verdicts:
   basis: EG10620's emitted target minimum is exactly 0.
 discovery_implications:
 - 'The causal chain is established end to end: ParCa misencodes lexA->rpoD, the delta silences TU00352,
-  dnaG is silenced as an operon passenger, DnaG protein depletes, the replisome gate fails, the lineage
+  dnaG is silenced through its own LexA edge (corrected 2026-09-07: dnaG is a DIRECT LexA target,
+  fold_changes_nca.tsv log2FC -1.71), DnaG protein depletes, the replisome gate fails, the lineage
   stalls.'
 - Closing the arithmetic needs PER-PROMOTER occupancy, which no current listener provides -- two
   copies of a promoter share a coordinate. That is a concrete, scoped instrumentation gap.
@@ -643,7 +707,8 @@ baseline:
 - name: ppgpp-on-mechanistic
   composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
   params:
-    config_overrides: *id007
+    config_overrides:
+      ecoli-chromosome-replication.mechanistic_replisome: true
 conclusion_logic:
   if_primary_tests_fail:
     diagnose:
@@ -667,7 +732,7 @@ pipeline_gate:
 corrections:
 - date: '2026-09-07'
   field: causal account of LexA at the rpsU-dnaG-rpoD operon
-  status: flagged, text preserved
+  status: corrected in place; original wording replaced, correction tag inline
   summary: dnaG is a DIRECT LexA target (fold_changes_nca.tsv, log2FC -1.71), not an rpoD passenger.
     The real defect is cistron-level regulation unioned to TUs with only one dnaG-bearing TU, making
     TU-specific differential regulation structurally impossible.

@@ -523,7 +523,7 @@ runs:
     reused from foldchange-to-delta-fidelity. The candidate diagnosis and both correction options
     were recorded and committed (e67e674b) BEFORE any fidelity measurement, per req-2.
   outcomes:
-    conversion-path-reproduces-the-cache: &id001
+    conversion-path-reproduces-the-cache:
       result: PASS
       measured_value: 1.0
       evaluated_by: agent
@@ -533,7 +533,7 @@ runs:
         own indexing of r_vector, and 100% of basal_prob. r_vector (4739,) and r_columns both recover
         from models/parca/parca_state.pkl.gz -> cell_specs['basal'], so no ParCa re-run was needed.
         The diagnosis below is of the code that actually produced this cache.
-    candidate-explains-bidirectionality: &id002
+    candidate-explains-bidirectionality:
       result: FAIL
       measured_value: 0.2095
       evaluated_by: agent
@@ -550,7 +550,7 @@ runs:
         yet their median ratio is 4.77. The constraint mechanism predicts nothing for them (agreement
         0.21). My recorded prediction that the upper bound Z@R <= 1 would bind for activators is
         REFUTED -- it binds for none of them.'
-    candidate-explains-magnitude-uniformity: &id003
+    candidate-explains-magnitude-uniformity:
       result: PASS
       measured_value: 1.0774
       evaluated_by: agent
@@ -570,7 +570,7 @@ runs:
         an entire family of transform-error explanations, and corrected, the distortion does grow
         somewhat with magnitude. The constraint mechanism remains supported by the direct evidence
         (all 10 targets at Z@R = 5.23e-12, free repressors at 0.9959), not by that argument.'
-    corrected-conversion-restores-fidelity: &id004
+    corrected-conversion-restores-fidelity:
       result: FAIL
       measured_value: 1.968
       evaluated_by: agent
@@ -583,7 +583,7 @@ runs:
         and no constraint fix touches them. Restricted to repressors the same repair gives a median
         of exactly 1.0000, so the correction fully repairs the half it explains and none of the half
         it does not.'
-    corrected-lexa-rpod-is-non-lethal: &id005
+    corrected-lexa-rpod-is-non-lethal:
       result: UNGRADED
       measured_value: null
       evaluated_by: agent
@@ -595,7 +595,7 @@ runs:
         -- a full ParCa fit. Reporting a number here would mean inventing one. The study establishes
         WHY the entry sits at 4.3167e-08 (the boundary, to solver precision) without establishing
         what it would become once released.'
-    negative-basal-clipping-is-not-the-cause: &id006
+    negative-basal-clipping-is-not-the-cause:
       result: FAIL
       measured_value: 22.76
       evaluated_by: agent
@@ -608,12 +608,90 @@ runs:
         a 0.00092 base rate. Recording the failure rather than reinterpreting the threshold: the
         measure as pre-registered says what it says, and the interpretation belongs in the detail.'
   computed_outcomes:
-    conversion-path-reproduces-the-cache: *id001
-    candidate-explains-bidirectionality: *id002
-    candidate-explains-magnitude-uniformity: *id003
-    corrected-conversion-restores-fidelity: *id004
-    corrected-lexa-rpod-is-non-lethal: *id005
-    negative-basal-clipping-is-not-the-cause: *id006
+    conversion-path-reproduces-the-cache:
+      result: PASS
+      measured_value: 1.0
+      evaluated_by: agent
+      operator: derived/band [0.99, 1.0]
+      gate_class: acceptance_criterion
+      detail: 979 of 979 stored deltaV entries reproduced within 1e-9 relative by replaying calculateRnapRecruitment's
+        own indexing of r_vector, and 100% of basal_prob. r_vector (4739,) and r_columns both recover
+        from models/parca/parca_state.pkl.gz -> cell_specs['basal'], so no ParCa re-run was needed.
+        The diagnosis below is of the code that actually produced this cache.
+    candidate-explains-bidirectionality:
+      result: FAIL
+      measured_value: 0.2095
+      evaluated_by: agent
+      operator: derived/band [0.67, 1.5]
+      gate_class: acceptance_criterion
+      detail: 'The candidate explains repressors and NOT activators, and the axis grades the worse
+        of the two, so it fails at 0.21.
+
+        REPRESSORS, explained completely: 46 entries sit at the active lower constraint with a median
+        ratio of 0.0000 (total silencing), while the 175 free ones have a median ratio of 0.9959
+        -- essentially PERFECT fidelity. Subgroup agreement 0.95.
+
+        ACTIVATORS, not explained at all: ZERO of the 343 activating entries sit at the upper constraint,
+        yet their median ratio is 4.77. The constraint mechanism predicts nothing for them (agreement
+        0.21). My recorded prediction that the upper bound Z@R <= 1 would bind for activators is
+        REFUTED -- it binds for none of them.'
+    candidate-explains-magnitude-uniformity:
+      result: PASS
+      measured_value: 1.0774
+      evaluated_by: agent
+      operator: derived/band [0.67, 1.5]
+      gate_class: acceptance_criterion
+      detail: 'The candidate predicts a strong-vs-weak distortion ratio of 1.256 against the measured
+        1.166, agreeing to 1.077. Constraint activity is about twice as common in strong repressors
+        (0.241 vs 0.121), but because fewer than half of either group is at the boundary the MEDIAN
+        entry is free in both, so median distortion stays nearly flat -- which is exactly the uniformity
+        foldchange-to-delta-fidelity measured and which refutes every transform-error explanation.
+
+
+        AMENDED NOTE 2026-09-04: the measured uniformity this axis was graded against (1.166) was
+        computed with the uncorrected full-swing comparison. Corrected for the occupancy swing it
+        is 1.660, so the axis now reads 1.256/1.660 = 0.757 -- still inside [0.67, 1.5], so the VERDICT
+        stands. But the surrounding argument does not fully: I used magnitude-uniformity to refute
+        an entire family of transform-error explanations, and corrected, the distortion does grow
+        somewhat with magnitude. The constraint mechanism remains supported by the direct evidence
+        (all 10 targets at Z@R = 5.23e-12, free repressors at 0.9959), not by that argument.'
+    corrected-conversion-restores-fidelity:
+      result: FAIL
+      measured_value: 1.968
+      evaluated_by: agent
+      operator: derived/band [0.67, 1.5]
+      gate_class: acceptance_criterion
+      detail: 'Evaluated as an UPPER BOUND on what the correction could achieve, which avoids the
+        tautology of grading correction (B) against its own definition: making EVERY boundary entry
+        perfectly faithful still leaves the network median at 1.968, barely moved from the uncorrected
+        2.006. The reason is decisive -- activators are 343 of 564 entries (60.8%), sit at no boundary,
+        and no constraint fix touches them. Restricted to repressors the same repair gives a median
+        of exactly 1.0000, so the correction fully repairs the half it explains and none of the half
+        it does not.'
+    corrected-lexa-rpod-is-non-lethal:
+      result: UNGRADED
+      measured_value: null
+      evaluated_by: agent
+      operator: derived/band [0.42, 0.96]
+      gate_class: acceptance_criterion
+      detail: 'NOT EVALUATED, and deliberately not estimated. Freeing dnaG''s entry from the active
+        constraint does not determine where the optimiser would place it: the objective is a global
+        norm over 4739 coupled variables, so the corrected value requires re-solving the ECOS program
+        -- a full ParCa fit. Reporting a number here would mean inventing one. The study establishes
+        WHY the entry sits at 4.3167e-08 (the boundary, to solver precision) without establishing
+        what it would become once released.'
+    negative-basal-clipping-is-not-the-cause:
+      result: FAIL
+      measured_value: 22.76
+      evaluated_by: agent
+      operator: derived/band [0.67, 1.5]
+      gate_class: diagnostic
+      detail: 'Nominally fails on a 22.8x enrichment, but the axis is underpowered and the substantive
+        answer is the opposite: only 3 of 3277 TUs had a negative alpha clipped, and 47 of the 48
+        boundary entries sit on UNCLIPPED TUs. So clipping is NOT the general cause (H3 refuted as
+        a general explanation) even though the one clipped hit among 48 produces a large ratio against
+        a 0.00092 base rate. Recording the failure rather than reinterpreting the threshold: the
+        measure as pre-registered says what it says, and the interpretation belongs in the detail.'
 findings:
 - summary: 'The repressor half of the defect is solved: entries land on the fit''s probability-validity
     constraint, and free entries are already faithful.'
@@ -755,7 +833,8 @@ discovery_implications:
   it earlier. The distinction matters: a boundary is a modelling decision that can be changed, whereas
   cancellation noise would not be actionable.'
 - 'The whole chain is now: ParCa''s fit hits its probability-validity floor on TU00352 -> LexA''s
-  delta totally silences the operon -> dnaG is silenced as rpoD''s passenger -> DnaG depletes ->
+  delta totally silences the operon -> dnaG is silenced through its OWN LexA edge, log2FC -1.71 (corrected
+  2026-09-07: dnaG is a DIRECT LexA target, fold_changes_nca.tsv log2FC -1.71) -> DnaG depletes ->
   the replisome gate fails -> the lineage stalls.'
 readouts:
 - name: deltaV_reproduced
@@ -812,7 +891,7 @@ pipeline_gate:
 corrections:
 - date: '2026-09-07'
   field: causal account of LexA at the rpsU-dnaG-rpoD operon
-  status: flagged, text preserved
+  status: corrected in place; original wording replaced, correction tag inline
   summary: dnaG is a DIRECT LexA target (fold_changes_nca.tsv, log2FC -1.71), not an rpoD passenger.
     The real defect is cistron-level regulation unioned to TUs with only one dnaG-bearing TU, making
     TU-specific differential regulation structurally impossible.

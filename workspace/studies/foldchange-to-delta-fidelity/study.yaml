@@ -46,7 +46,7 @@ behavior_tests:
   measure:
     kind: derived
     path: median (delta-implied retained fraction / 2**log2FC) over all joinable TF-target delta_prob
-      entries, the encoding that silences dnaG via lexA on rpoD
+      entries, the encoding that silences dnaG, whose own LexA fold change is log2FC -1.71 in fold_changes_nca.tsv
     detail: median absolute log10 ratio of implied to expected retained fraction across the joined
       network.
   pass_if:
@@ -149,8 +149,9 @@ behavior_tests:
     Threshold provenance: theory. The same band as the systematic axis, so the two are directly comparable.'
   measure:
     kind: derived
-    path: median (implied retained / 2**log2FC) for activating entries, the control for the lexA
-      repression that silences dnaG through rpoD
+    path: 'median (implied retained / 2**log2FC) for activating entries, the control for the lexA
+      repression that silences dnaG through its OWN LexA edge (corrected 2026-09-07: dnaG is a DIRECT
+      LexA target, fold_changes_nca.tsv log2FC -1.71)'
     detail: median absolute log10 ratio for positive-fold-change entries.
   pass_if:
     low: 0.67
@@ -257,9 +258,10 @@ implementation_requirements:
     is keyed by (TU index, TF index). The join needs three maps, all already available: tf_ids from
     ecoli-tf-binding, the cistron_tu_mapping_matrix carried on several listener configs, and gene
     common-name to cistron id. A cistron regulated in a POLYCISTRONIC TU is the crux of this study
-    -- lexA regulates rpoD, and dnaG is silenced as its operon passenger -- so the join must record
-    which cistron each TU-level delta came from and must not silently collapse a multi-cistron TU
-    to one target. Entries that cannot be joined are reported as a count, never dropped quietly.'
+    -- LexA regulates dnaG DIRECTLY (log2FC -1.71) and also rpsU; rpoD is not in tf_to_fold_change
+    at all -- so the join must record which cistron each TU-level delta came from and must not silently
+    collapse a multi-cistron TU to one target. Entries that cannot be joined are reported as a count,
+    never dropped quietly.'
 - id: req-2
   status: not_started
   blocking: false
@@ -381,9 +383,10 @@ conclusion: 'Refuted, and more broadly than the motivating case. Across 564 join
 
   This reframes the investigation. dnaG''s collapse is not a dnaG phenomenon and not even a LexA
   phenomenon: it is one draw from a layer that misrepresents its inputs generally, and dnaG is exposed
-  to it only because rpoD shares its operon. Every result in this investigation that leaned on delta_prob
-  inherits this, and the cache under test (ea05ac9b23b1d843) is a pre-fix cache being used deliberately
-  to reproduce the discovery.
+  to it through its own cistron-level LexA edge, not through rpoD (corrected 2026-09-07: dnaG is
+  a DIRECT LexA target, fold_changes_nca.tsv log2FC -1.71). Every result in this investigation that
+  leaned on delta_prob inherits this, and the cache under test (ea05ac9b23b1d843) is a pre-fix cache
+  being used deliberately to reproduce the discovery.
 
   What this study does NOT establish: which side is right. A faithful encoding of a wrong fold change
   would pass every axis here, and locating the responsible ParCa stage (req-2) was not blocking and
@@ -419,7 +422,7 @@ runs:
     list. 228 of the 564 records come from cistrons in polycistronic TUs, which is the assumption
     flagged at design as medium risk -- now quantified at 40%.'
   outcomes:
-    distortion-is-systematic: &id001
+    distortion-is-systematic:
       result: FAIL
       measured_value: 1.538
       evaluated_by: agent
@@ -437,7 +440,7 @@ runs:
       superseded_measurement:
         result: FAIL
         measured_value: 2.0063
-    distortion-grows-with-repression-strength: &id002
+    distortion-grows-with-repression-strength:
       result: FAIL
       measured_value: 1.6602
       evaluated_by: agent
@@ -456,7 +459,7 @@ runs:
       superseded_measurement:
         result: PASS
         measured_value: 1.1659
-    delta-respects-the-probability-bound: &id003
+    delta-respects-the-probability-bound:
       result: FAIL
       measured_value: 2
       evaluated_by: agent
@@ -472,7 +475,7 @@ runs:
       superseded_measurement:
         result: FAIL
         measured_value: 6
-    activators-are-encoded-faithfully: &id004
+    activators-are-encoded-faithfully:
       result: FAIL
       measured_value: 2.1314
       evaluated_by: agent
@@ -487,7 +490,7 @@ runs:
       superseded_measurement:
         result: FAIL
         measured_value: 4.7727
-    lexa-rpod-discrepancy: &id005
+    lexa-rpod-discrepancy:
       result: PASS
       measured_value: 1.8828
       evaluated_by: agent
@@ -508,11 +511,94 @@ runs:
         result: PASS
         measured_value: 14764919.0
   computed_outcomes:
-    distortion-is-systematic: *id001
-    distortion-grows-with-repression-strength: *id002
-    delta-respects-the-probability-bound: *id003
-    activators-are-encoded-faithfully: *id004
-    lexa-rpod-discrepancy: *id005
+    distortion-is-systematic:
+      result: FAIL
+      measured_value: 1.538
+      evaluated_by: agent
+      operator: derived/band [0.67, 1.5]
+      gate_class: acceptance_criterion
+      detail: 'AMENDED. Corrected for the occupancy swing the measurement is 1.5380, not 2.0063 --
+        still marginally outside the band but a quarter of the apparent defect was my comparison
+        error, not ParCa''s. The repressor median in particular goes from 0.6276 to 0.9998, i.e.
+        essentially PERFECT: repressors were never misencoded at all. The residual is carried almost
+        entirely by activators at 2.1314.
+
+
+        SUPERSEDED VALUE (uncorrected full-swing comparison): {''result'': ''FAIL'', ''measured_value'':
+        2.0063}'
+      superseded_measurement:
+        result: FAIL
+        measured_value: 2.0063
+    distortion-grows-with-repression-strength:
+      result: FAIL
+      measured_value: 1.6602
+      evaluated_by: agent
+      operator: derived/band [0.67, 1.5]
+      gate_class: acceptance_criterion
+      detail: 'AMENDED, and this verdict FLIPS from PASS to FAIL. Corrected, strong repressors are
+        distorted 1.66x as much as weak ones, against 1.166 uncorrected. So the distortion DOES grow
+        with fold-change magnitude once measured properly, which weakens the argument deltav-conversion-diagnosis
+        built on magnitude-uniformity to refute transform-error explanations. That study''s own axis
+        still passes on the corrected number (1.256/1.660 = 0.757, inside [0.67, 1.5]), but its REASONING
+        was partly resting on a number that was wrong.
+
+
+        SUPERSEDED VALUE (uncorrected full-swing comparison): {''result'': ''PASS'', ''measured_value'':
+        1.1659}'
+      superseded_measurement:
+        result: PASS
+        measured_value: 1.1659
+    delta-respects-the-probability-bound:
+      result: FAIL
+      measured_value: 2
+      evaluated_by: agent
+      operator: derived/<= 0
+      gate_class: acceptance_criterion
+      detail: 'AMENDED: 2 entries rather than 6 produce a negative predicted fold change once the
+        occupancy swing is applied. Still a violation, but a third of the apparent count was the
+        comparison error.
+
+
+        SUPERSEDED VALUE (uncorrected full-swing comparison): {''result'': ''FAIL'', ''measured_value'':
+        6}'
+      superseded_measurement:
+        result: FAIL
+        measured_value: 6
+    activators-are-encoded-faithfully:
+      result: FAIL
+      measured_value: 2.1314
+      evaluated_by: agent
+      operator: derived/band [0.67, 1.5]
+      gate_class: acceptance_criterion
+      detail: 'AMENDED: 2.1314 rather than 4.7727. Roughly half the apparent activator defect was
+        my comparison error. The residual is real and is the subject of activator-overshoot.
+
+
+        SUPERSEDED VALUE (uncorrected full-swing comparison): {''result'': ''FAIL'', ''measured_value'':
+        4.7727}'
+      superseded_measurement:
+        result: FAIL
+        measured_value: 4.7727
+    lexa-rpod-discrepancy:
+      result: PASS
+      measured_value: 1.8828
+      evaluated_by: agent
+      operator: derived/<= 1.476e8
+      gate_class: regression_pin
+      detail: 'AMENDED, AND THIS IS THE MOST IMPORTANT CORRECTION IN THE INVESTIGATION. The lexA->rpoD
+        encoding is 1.88x off, NOT the 1.476e+07 I recorded -- I was wrong by seven orders of magnitude.
+        At the occupancy the fit assumed (p_active = 0.6615) the delta predicts a retained fraction
+        of 0.3385 against a measured 0.6373. The fit is nearly right. The catastrophe is entirely
+        a RUNTIME phenomenon: retained = 1 + r*q with r = -0.99999996 gives 0.34 at q=0.66, 0.012
+        at q=0.988, and 4.3e-08 at q=1.0. dnaG is silenced because the simulation drives LexA occupancy
+        to 1.0, not because ParCa encoded the fold change wrongly.
+
+
+        SUPERSEDED VALUE (uncorrected full-swing comparison): {''result'': ''PASS'', ''measured_value'':
+        14764919.0}'
+      superseded_measurement:
+        result: PASS
+        measured_value: 14764919.0
 canonical_runs:
 - foldchange-to-delta-fidelity__static
 findings:
@@ -596,16 +682,19 @@ findings:
   provenance:
     run_ids:
     - foldchange-to-delta-fidelity__static
-- summary: dnaG's silencing is one instance of the systematic defect, and it is an operon passenger.
+- summary: 'dnaG''s silencing is one instance of the systematic defect; dnaG is a direct LexA target,
+    not an operon passenger (corrected 2026-09-07: dnaG is a DIRECT LexA target, fold_changes_nca.tsv
+    log2FC -1.71).'
   status: confirms
   evidence:
     from_test: lexa-rpod-discrepancy
     observed: 14764919.0
     units: expected/implied retained
-  explanation: lexA->rpoD carries a measured log2FC of -0.65 (retain 0.637); the delta on TU00352[c]
-    retains 4.3167e-08. LexA regulates rpoD, and dnaG shares that operon, so dnaG is silenced without
-    being a LexA target. rpoD also sits in TU0-14460[c], which is distorted 1.849e+07-fold, so the
-    same measured datum produces two different encodings.
+  explanation: 'lexA->rpoD carries a measured log2FC of -0.65 (retain 0.637); the delta on TU00352[c]
+    retains 4.3167e-08. LexA regulates dnaG directly (log2FC -1.71) and rpsU; rpoD is absent from
+    tf_to_fold_change. dnaG is silenced as a LexA TARGET, not as a passenger (corrected 2026-09-07:
+    dnaG is a DIRECT LexA target, fold_changes_nca.tsv log2FC -1.71). rpoD also sits in TU0-14460[c],
+    which is distorted 1.849e+07-fold, so the same measured datum produces two different encodings.'
   expected: {}
   provenance:
     run_ids:
@@ -627,9 +716,10 @@ biological_summary: 'Transcription factors turn genes up or down, and the model 
   response in check, is measured as reducing rpoD to about 64% -- a modest touch on the brake. The
   model encodes it as reducing it to four parts in a hundred million: the gene is switched off entirely.
   dnaG, which the cell needs to start every round of DNA replication, sits in the same operon as
-  rpoD and is silenced along with it without being a LexA target at all. The cell then runs out of
-  primase and stops dividing. A modest, well-measured piece of regulation became a lethal one somewhere
-  between the data table and the simulation.'
+  rpoD, but is itself a LexA target (log2FC -1.71) and is silenced through its own edge (corrected
+  2026-09-07: dnaG is a DIRECT LexA target, fold_changes_nca.tsv log2FC -1.71). The cell then runs
+  out of primase and stops dividing. A modest, well-measured piece of regulation became a lethal
+  one somewhere between the data table and the simulation.'
 conclusion_verdicts:
 - claim: The distortion is isolated to dnaG's operon (H1)
   verdict: refuted
@@ -644,8 +734,9 @@ conclusion_verdicts:
   verdict: refuted
   basis: Activators are distorted 4.77x, worse than repressors.
 discovery_implications:
-- dnaG's collapse is not a dnaG or even a LexA phenomenon. It is one draw from a layer that misrepresents
-  its inputs generally, and dnaG is exposed only because rpoD shares its operon.
+- 'dnaG''s collapse is not a dnaG or even a LexA phenomenon. It is one draw from a layer that misrepresents
+  its inputs generally, and dnaG is exposed through its own LexA edge (corrected 2026-09-07: dnaG
+  is a DIRECT LexA target, fold_changes_nca.tsv log2FC -1.71).'
 - Every result in this investigation that leaned on delta_prob inherits this defect and should be
   re-read with it in mind.
 - Six TF-target pairs encode negative initiation probabilities. Whether they reach the sampler is
@@ -715,7 +806,7 @@ pipeline_gate:
 corrections:
 - date: '2026-09-07'
   field: causal account of LexA at the rpsU-dnaG-rpoD operon
-  status: flagged, text preserved
+  status: corrected in place; original wording replaced, correction tag inline
   summary: dnaG is a DIRECT LexA target (fold_changes_nca.tsv, log2FC -1.71), not an rpoD passenger.
     The real defect is cistron-level regulation unioned to TUs with only one dnaG-bearing TU, making
     TU-specific differential regulation structurally impossible.

@@ -155,8 +155,9 @@ behavior_tests:
     ignores it''.'
   measure:
     kind: derived
-    path: count of 0CS TFs whose fitted pPromoterBound is below 1, including lexA which silences
-      dnaG via rpoD
+    path: 'count of 0CS TFs whose fitted pPromoterBound is below 1, including lexA which silences
+      dnaG via its own LexA edge (corrected 2026-09-07: dnaG is a DIRECT LexA target, fold_changes_nca.tsv
+      log2FC -1.71)'
     detail: number of the 7 0CS TFs with fitted basal occupancy < 1.
   pass_if:
     op: <=
@@ -290,7 +291,7 @@ simulation_set:
   status: planned
   base_model: v2ecoli.composites.ecoli_baseline.ecoli_baseline
   params:
-    config_overrides: &id001
+    config_overrides:
       ecoli-chromosome-replication.mechanistic_replisome: true
   note: Unmodified. Must reproduce the existing stall at generation 4-5 and be bit-identical to dnag-promoter-availability
     at matched seed.
@@ -412,7 +413,8 @@ baseline:
 - name: override-control
   composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
   params:
-    config_overrides: *id001
+    config_overrides:
+      ecoli-chromosome-replication.mechanistic_replisome: true
 pipeline_gate:
   prerequisites:
   - study: foldchange-to-delta-fidelity
@@ -423,7 +425,7 @@ pipeline_gate:
 corrections:
 - date: '2026-09-07'
   field: causal account of LexA at the rpsU-dnaG-rpoD operon
-  status: flagged, text preserved
+  status: corrected in place; original wording replaced, correction tag inline
   summary: dnaG is a DIRECT LexA target (fold_changes_nca.tsv, log2FC -1.71), not an rpoD passenger.
     The real defect is cistron-level regulation unioned to TUs with only one dnaG-bearing TU, making
     TU-specific differential regulation structurally impossible.

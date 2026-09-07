@@ -71,10 +71,12 @@ behavior_tests:
 
 
     The mechanistic crux, and the reason restoring TUs is not obviously futile. I previously dismissed
-    restoration on the grounds that TU00434/TU00435 also contain rpoD and would inherit LexA -- but
-    carrying a TF is not the same as landing on the boundary. Only 10 of LexA''s 45 targets are pinned
-    there. Each TU gets its OWN fitted delta, and with three dnaG-bearing TUs the gene''s transcription
-    is their SUM, so one pinned TU does not silence the gene.
+    restoration on the grounds that TU00434/TU00435 would inherit LexA -- correct, but for the wrong
+    reason: they inherit it via dnaG''s OWN cistron edge (corrected 2026-09-07: dnaG is a DIRECT
+    LexA target, fold_changes_nca.tsv log2FC -1.71), not via rpoD -- but carrying a TF is not the
+    same as landing on the boundary. Only 10 of LexA''s 45 targets are pinned there. Each TU gets
+    its OWN fitted delta, and with three dnaG-bearing TUs the gene''s transcription is their SUM,
+    so one pinned TU does not silence the gene.
 
 
     Threshold provenance: theory. 2 of 3 is the weakest result that leaves dnaG a working transcript;
@@ -119,7 +121,7 @@ behavior_tests:
       regulator moved to the promoter carrying its binding site.
   expect: LexA regulates rpsUp3, the promoter whose site EcoCyc places at 3210729-3210749, and no
     longer TU00352, whose TSS is 88 bp upstream and carries no LexA site
-  pass_if: &id002
+  pass_if:
     low: 0.99
     high: 1.0
     provenance:
@@ -167,7 +169,7 @@ behavior_tests:
       refitted arm''s last COMPLETE generation. Normalise each TU by its own basal_prob before the
       peer median: a raw actual-value ratio measures a different quantity (134x where the normalised
       reads 47.4x).'
-  pass_if: &id001
+  pass_if:
     low: 0.35
     high: 0.55
     provenance:
@@ -280,7 +282,21 @@ preregistered:
       provenance:
         kind: theory
         note: Spans 1.5x, bounded above by 3. Two suffices because transcription sums across TUs.
-    dnag-transcription-recovers: *id001
+    dnag-transcription-recovers:
+      low: 0.35
+      high: 0.55
+      provenance:
+        kind: measured
+        note: 'Re-scoped 2026-09-04 against dnag-locus-targeted-fix, which measured LexA''s ENTIRE
+          contribution at the dnaG locus. Deleting the edge outright -- the maximum relief any promoter
+          restoration can achieve -- closes 0.455 of the log-space deficit, because the deficit factorises
+          as 2.6x static basal_prob x 8.2x ppGpp adjustment x 6.2x LexA, and restoration touches
+          only the LexA term. The previous [0.5, 1.0] band therefore sat entirely ABOVE the achievable
+          maximum and could only ever fail. Band now brackets that ceiling: 0.35 excludes a null
+          result, 0.55 allows modest upside from the refit redistributing basal_prob across the three
+          TUs.'
+        source_study: dnag-locus-targeted-fix
+        ceiling_measured: 0.455
     lineage-completes-with-restored-tus:
       low: 8
       high: 12
@@ -300,7 +316,18 @@ preregistered:
       provenance:
         kind: post_hoc
         note: 1.5x the 637 measured while scoping; pin only.
-    lexa-still-regulates-rpsup3: *id002
+    lexa-still-regulates-rpsup3:
+      low: 0.99
+      high: 1.0
+      provenance:
+        kind: literature
+        note: This is what separates restoration from deletion. dnag-locus-targeted-fix removed the
+          LexA edge entirely, leaving dnaG with ZERO regulators -- biologically wrong, since LexA
+          does regulate this locus. Restoration must keep the regulator and move it onto the promoter
+          it actually binds. Bounded above by 1.0; a fraction rather than a count so the band is
+          gradeable.
+        cites:
+        - ecocyc-tf-binding-sites-smarttable
   criteria:
   - test: dedup-discards-distinct-promoters
     prior: Do the discarded TUs really differ only by start coordinate, i.e. are they distinct promoters?
@@ -435,7 +462,7 @@ simulation_set:
   status: planned
   base_model: v2ecoli.composites.ecoli_baseline.ecoli_baseline
   params:
-    config_overrides: &id006
+    config_overrides:
       ecoli-chromosome-replication.mechanistic_replisome: true
   note: The existing cache ea05ac9b23b1d843. Its stall at generation 4-5 must be re-verified on matched
     seeds rather than assumed, since the comparison is across caches.
@@ -535,7 +562,8 @@ conclusion: '## Claims
   Phase A established the misassignment: the only LexA site at this locus is at rpsUp3 (TSS 3210734.5,
   matching TU00435''s start of 3210735), and TU00435 is one of the two TUs the gene-set dedup discards.
   The model kept TU00352, whose TSS is 88 bp upstream of the operator, and `rna_id_to_regulating_tfs`
-  handed it LexA anyway because it contains rpoD.
+  handed it LexA anyway because it contains dnaG, itself a direct LexA target (corrected 2026-09-07:
+  dnaG is a DIRECT LexA target, fold_changes_nca.tsv log2FC -1.71).
 
 
   Phase B tested the obvious repair -- restore the discarded promoters and refit -- and it fails
@@ -634,7 +662,7 @@ runs:
     and replays getter_functions' gene-set dedup. Phases B and C (refit, then lineage) are NOT run;
     axes 2-5 remain pending.
   outcomes:
-    dedup-discards-distinct-promoters: &id003
+    dedup-discards-distinct-promoters:
       result: FAIL
       measured_value: 0.8399
       evaluated_by: agent
@@ -649,7 +677,7 @@ runs:
         The study''s own mechanism is unaffected: dnaG''s three TUs differ in start coordinate (3210646
         / 3210712 / 3210735), so dnaG sits squarely in the 84%. What changes is the generalisation
         -- any claim that ''the dedup removes 637 promoters'' overstates it by about a sixth.'
-    dedup-discarded-tu-count: &id004
+    dedup-discarded-tu-count:
       result: PASS
       measured_value: 637
       evaluated_by: agent
@@ -658,8 +686,29 @@ runs:
       detail: 637 TUs discarded across 428 gene-set groups, from 3766 source TUs to 3129 kept. Reproduces
         the scoping measurement. The largest single group holds 8 TUs collapsed to one.
   computed_outcomes:
-    dedup-discards-distinct-promoters: *id003
-    dedup-discarded-tu-count: *id004
+    dedup-discards-distinct-promoters:
+      result: FAIL
+      measured_value: 0.8399
+      evaluated_by: agent
+      operator: derived/band [0.9, 1.0]
+      gate_class: acceptance_criterion
+      detail: '535 of 637 discarded TUs (0.8399) differ from their retained twin in left or right
+        end position; 102 have byte-identical coordinates and are genuine duplicates the dedup is
+        right to remove. Below the 0.9 I pre-registered, so my characterisation of the dedup as discarding
+        distinct promoters is 84% accurate rather than near-universal. Recording the FAIL rather
+        than reinterpreting the band.
+
+        The study''s own mechanism is unaffected: dnaG''s three TUs differ in start coordinate (3210646
+        / 3210712 / 3210735), so dnaG sits squarely in the 84%. What changes is the generalisation
+        -- any claim that ''the dedup removes 637 promoters'' overstates it by about a sixth.'
+    dedup-discarded-tu-count:
+      result: PASS
+      measured_value: 637
+      evaluated_by: agent
+      operator: derived/<= 956
+      gate_class: regression_pin
+      detail: 637 TUs discarded across 428 gene-set groups, from 3766 source TUs to 3129 kept. Reproduces
+        the scoping measurement. The largest single group holds 8 TUs collapsed to one.
 - name: tu-dedup-promoter-collapse__phase-B
   status: complete
   canonical: true
@@ -683,7 +732,7 @@ runs:
     Phase C (the lineage arm) is NOT run: the design pre-registered that if all three dnaG TUs remain
     pinned, H2 holds and Phase C is not worth running. It does, so axes 4-6 stay pending by design
     rather than by omission.'
-  outcomes: &id005
+  outcomes:
     restored-dnag-tus-escape-the-constraint:
       result: FAIL
       measured_value: 0
@@ -702,7 +751,25 @@ runs:
       detail: The locus's single fitted LexA edge stays on TU00352 at -0.9999999684857455, versus
         -0.999999956832897 in the unmodified cache. TU00434 and TU00435 carry 0.0. Restoring the
         promoter does not relocate the regulator.
-  computed_outcomes: *id005
+  computed_outcomes:
+    restored-dnag-tus-escape-the-constraint:
+      result: FAIL
+      measured_value: 0
+      evaluated_by: agent
+      operator: derived/band [2, 3]
+      gate_class: acceptance_criterion
+      detail: 'Z@R with all TFs bound: TU00352 -9.998750e-01 (basal 1.249862e-04, LexA delta -0.9999999684857455),
+        TU00434 0.0, TU00435 0.0. None escapes. The restored pair is pinned by having zero fitted
+        expression, not by a cancelled alpha.'
+    lexa-still-regulates-rpsup3:
+      result: FAIL
+      measured_value: 0.0
+      evaluated_by: agent
+      operator: derived/band [0.99, 1.0]
+      gate_class: acceptance_criterion
+      detail: The locus's single fitted LexA edge stays on TU00352 at -0.9999999684857455, versus
+        -0.999999956832897 in the unmodified cache. TU00434 and TU00435 carry 0.0. Restoring the
+        promoter does not relocate the regulator.
 preliminary_observations:
 - note: Phase A, recorded before Phases B/C exist. The dedup collapses 637 TUs from 428 groups, the
     largest group being 8 TUs reduced to one. 84% of the discards are distinct promoters and 16%
@@ -733,9 +800,10 @@ findings:
     to within half a base.
 
     The model kept TU00352 (start 3210646, 88 bp UPSTREAM of the operator) and discarded both TU00434
-    and TU00435. rna_id_to_regulating_tfs then assigned LexA to TU00352 because it contains rpoD.
-    So dnaG is silenced through rpsUp1, a promoter LexA has no site at, while the promoter LexA actually
-    represses was removed from the model.
+    and TU00435. rna_id_to_regulating_tfs then assigned LexA to TU00352 because it contains dnaG,
+    a direct LexA target (corrected 2026-09-07: dnaG is a DIRECT LexA target, fold_changes_nca.tsv
+    log2FC -1.71). So dnaG is silenced through rpsUp1, a promoter LexA has no site at, while the
+    promoter LexA actually represses was removed from the model.
 
     Two defects compose exactly: the dedup removed the regulated promoter, and cistron-content regulation
     reassigned its repressor to an unregulated one.'
@@ -794,7 +862,8 @@ baseline:
 - name: dedup-control
   composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
   params:
-    config_overrides: *id006
+    config_overrides:
+      ecoli-chromosome-replication.mechanistic_replisome: true
 conclusion_logic:
   if_primary_tests_fail:
     diagnose:
@@ -877,7 +946,7 @@ discovery_implications:
 corrections:
 - date: '2026-09-07'
   field: causal account of LexA at the rpsU-dnaG-rpoD operon
-  status: flagged, text preserved
+  status: corrected in place; original wording replaced, correction tag inline
   summary: dnaG is a DIRECT LexA target (fold_changes_nca.tsv, log2FC -1.71), not an rpoD passenger.
     The real defect is cistron-level regulation unioned to TUs with only one dnaG-bearing TU, making
     TU-specific differential regulation structurally impossible.
