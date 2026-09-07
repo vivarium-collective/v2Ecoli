@@ -304,6 +304,19 @@ def _variant_specs(variants: list[dict[str, Any]] | None) -> list[dict[str, Any]
         "max_duration_per_gen": {"type": "number", "default": 3600.0},
         "parca_mode": {"type": "string", "default": "fast"},
         "parca_cpus": {"type": "integer", "default": 8},
+        "analysis_options": {
+            "type": "object",
+            "default": None,
+            "description": (
+                "Analyses the gather runs, staged into analysis.config.json and read back "
+                "via --config. DECLARED here and not only accepted as a kwarg: every "
+                "dispatch goes through CompositeSpec.to_document(overrides=...), whose "
+                "_merged_params raises KeyError on any override missing from this block. "
+                "Undeclared, it was unreachable from a dispatch, so the gather always got "
+                "{} -- 'nothing to run', no analysis/ directory, and a campaign that ran "
+                "every lineage and then failed its last node."
+            ),
+        },
         "include_analysis": {
             "type": "boolean",
             "default": False,
