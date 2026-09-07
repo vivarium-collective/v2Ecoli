@@ -48,10 +48,10 @@ def test_shape_is_one_parca_per_variant_feeding_its_own_seeds() -> None:
     # and the M lineages live inside it, wired to the take: port
     inner = state["runs_v0"]["config"]["state"]
     assert sorted(k for k in inner if k.startswith("lineage")) == [
-        "lineage_s0",
-        "lineage_s1",
+        "lineage_v0_s0",
+        "lineage_v0_s1",
     ]
-    assert inner["lineage_s1"]["inputs"]["cache_dir"] == ["cache"]
+    assert inner["lineage_v0_s1"]["inputs"]["cache_dir"] == ["cache"]
 
 
 def test_strain_inputs_reach_PARCA_not_the_lineage() -> None:
@@ -72,7 +72,7 @@ def test_strain_inputs_reach_PARCA_not_the_lineage() -> None:
     assert parca_cfg["new_genes"] == "violacein_MG1655_M5"
     assert parca_cfg["bundle_overrides"] == "/m.json"
     inner = doc["state"]["runs_v0"]["config"]["state"]
-    assert "new_genes" not in inner["lineage_s0"]["config"]
+    assert "new_genes" not in inner["lineage_v0_s0"]["config"]
 
 
 def test_no_variants_means_one_baseline_not_zero() -> None:
@@ -168,7 +168,8 @@ def test_renders_at_run4_scale_without_hitting_the_255_wall(core) -> None:
         core, build_workflow_nf(n_seeds=4, include_analysis=True, variants=variants)
     )
     assert nf.count("workflow runs_v") == 84
-    assert nf.count("= lineage_s") == 336
+    # variant-qualified since #721; 84 variants x 4 seeds still = 336 lineages
+    assert nf.count("= lineage_v") == 336
     # chained binary, never one n-ary call
     assert ".mix(" in nf and all(
         "," not in seg[: seg.index(")")] for seg in nf.split(".mix(")[1:]
@@ -380,7 +381,7 @@ def test_the_lineage_publishes_its_sweep(core) -> None:
     78 KB of render artifacts and no science at all. A campaign that exits 0 with
     nowhere to read its output is the silent-success shape in its purest form."""
     rendered = _render(core, build_workflow_nf(n_seeds=1, n_generations=1))
-    block = rendered.split("process lineage_s0 {", 1)[1].split("}", 1)[0]
+    block = rendered.split("process lineage_v0_s0 {", 1)[1].split("}", 1)[0]
     assert "publishDir" in block
 
 
@@ -452,7 +453,9 @@ def test_the_emitted_argv_parses_against_the_real_analyze_cli(core) -> None:
     p.add_argument("--config", default=None)
     ns = p.parse_args(argv)  # SystemExit(2) before the fix
     assert ns.sweep_dir
-    assert ns.config, "without --config the runner finds no analysis_options and exits 0"
+    assert ns.config, (
+        "without --config the runner finds no analysis_options and exits 0"
+    )
 
 
 def test_the_gather_consumes_its_staged_sweep_inputs(core) -> None:
@@ -460,7 +463,9 @@ def test_the_gather_consumes_its_staged_sweep_inputs(core) -> None:
     the task never looked at -- N lineages gathered into nothing."""
     rendered = _render(core, build_workflow_nf(n_seeds=3, include_analysis=True))
     block = rendered.split("process analysis {", 1)[1].split("\n}", 1)[0]
-    assert "${sweep_v0}" in block, "must reference the declared input, not a guess at its name"
+    assert "${sweep_v0}" in block, (
+        "must reference the declared input, not a guess at its name"
+    )
 
 
 def test_the_gather_fails_when_it_produces_nothing(core) -> None:
@@ -477,11 +482,16 @@ def test_the_gather_fails_when_it_produces_nothing(core) -> None:
 def test_analysis_options_reach_the_staged_config(core) -> None:
     """Threaded from the generator, because an empty one is a silent no-op:
     the runner prints 'no analysis_options found; nothing to run' and returns 0."""
-    doc = build_workflow_nf(n_seeds=2, include_analysis=True, analysis_options={"multiseed": {}})
+    doc = build_workflow_nf(
+        n_seeds=2, include_analysis=True, analysis_options={"multiseed": {}}
+    )
     assert doc["state"]["analysis"]["config"]["analysis_options"] == {"multiseed": {}}
-    assert build_workflow_nf(n_seeds=2, include_analysis=True)["state"]["analysis"]["config"][
-        "analysis_options"
-    ] == {}
+    assert (
+        build_workflow_nf(n_seeds=2, include_analysis=True)["state"]["analysis"][
+            "config"
+        ]["analysis_options"]
+        == {}
+    )
 
 
 def test_shell_and_nextflow_variables_are_escaped_correctly(core) -> None:
@@ -492,3 +502,60 @@ def test_shell_and_nextflow_variables_are_escaped_correctly(core) -> None:
     block = rendered.split("process analysis {", 1)[1].split("\n}", 1)[0]
     assert "${sweep_v0}" in block
     assert '"\\$d/."' in block, "the shell loop variable must be escaped from Groovy"
+
+
+# --- v2ecoli#721: every variant past the first collided ----------------------
+
+
+def test_a_multi_variant_campaign_emits_unique_process_names(core) -> None:
+    """Each variant's lineages live in their own `runs_v{i}` sub-composite, and
+    `render_composite` descends into a nested composite with the INNER path only
+    -- so `runs_v0/lineage_s0` and `runs_v1/lineage_s0` both emitted
+    `process lineage_s0` and nextflow refused the file:
+
+        cause: Identifier `lineage_s0` is already used by another definition
+
+    Single-variant was fine, which is why every campaign so far passed; this
+    blocked Run 4's 84 genotypes outright."""
+    import collections
+
+    rendered = _render(
+        core,
+        build_workflow_nf(
+            n_seeds=2,
+            include_analysis=True,
+            variants=[{"variant_name": "lo"}, {"variant_name": "hi"}],
+        ),
+    )
+    names = [ln.split()[1] for ln in rendered.splitlines() if ln.startswith("process ")]
+    dupes = [n for n, c in collections.Counter(names).items() if c > 1]
+    assert not dupes, f"duplicate process names: {dupes}"
+    assert "lineage_v0_s0" in names and "lineage_v1_s0" in names
+
+
+@pytest.mark.skipif(shutil.which("nextflow") is None, reason="nextflow not installed")
+def test_a_multi_variant_render_actually_compiles(core, tmp_path) -> None:
+    """The name check above is a proxy; this is the property. A render-shape test
+    cannot tell a valid script from one Groovy rejects -- which is how #721 and
+    the script-quoting bug (process-bigraph#205) both shipped."""
+    main_nf = tmp_path / "main.nf"
+    main_nf.write_text(
+        _render(
+            core,
+            build_workflow_nf(
+                n_seeds=2,
+                include_analysis=True,
+                variants=[{"variant_name": "lo"}, {"variant_name": "hi"}],
+            ),
+        )
+    )
+    r = subprocess.run(
+        ["nextflow", "run", str(main_nf), "-preview"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=300,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr

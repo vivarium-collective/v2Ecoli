@@ -418,8 +418,25 @@ def build_workflow_nf(
         inner_state: dict[str, Any] = {"cache": ""}
         for m in range(int(n_seeds)):
             seed = int(base_seed) + m
-            node = f"lineage_s{seed}"
-            sweep_store = f"sweep_s{seed}"
+            # VARIANT-QUALIFIED, and that is a rendering constraint rather than
+            # a naming preference (v2ecoli#721). Each variant's lineages live in
+            # their own `runs_v{vi}` sub-composite, and `render_composite`
+            # descends into a nested composite with the INNER path only -- so
+            # `runs_v0/lineage_s0` and `runs_v1/lineage_s0` both emitted
+            # `process lineage_s0` and nextflow refused to compile the file:
+            #
+            #   cause: Identifier `lineage_s0` is already used by another definition
+            #
+            # Single-variant campaigns were fine, which is why every run so far
+            # passed; every variant past the first collided, blocking Run 4's 84
+            # genotypes and any multi-variant grid.
+            #
+            # The general defect is the renderer's -- a full path would already be
+            # unique, since _path_to_step_name joins it -- and is filed as
+            # process-bigraph#207. This makes the leaf names unique at the source,
+            # which is correct regardless of how that is resolved.
+            node = f"lineage_v{vi}_s{seed}"
+            sweep_store = f"sweep_v{vi}_s{seed}"
             # Everything that distinguishes this lineage lives in THIS config,
             # which is staged as its own file. No sibling shares it.
             config: dict[str, Any] = {
