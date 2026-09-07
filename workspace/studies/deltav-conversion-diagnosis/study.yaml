@@ -3,14 +3,14 @@ name: deltav-conversion-diagnosis
 title: Where the fold changes get lost
 investigation: transcription-rewiring
 study_type: root_cause
-phase: Decide
+phase: Evaluate
 created: '2026-09-04'
-status: complete
+status: running
 design_status: complete
 implementation_status: complete
 simulation_status: complete
 evaluation_status: evaluated
-gate_status: failed
+gate_status: partial
 expert_review_status: not_requested
 question: foldchange-to-delta-fidelity showed ParCa's TF-regulation layer misencodes its fold-change
   data by a median factor of 2, in both directions and uniformly in magnitude, with six entries encoding
@@ -127,10 +127,23 @@ behavior_tests:
         3x ceiling. [0.67, 1.5] is the agreement band used throughout this investigation, so every
         ratio axis here reads on one scale. Two-sided: a candidate predicting strong magnitude-dependence
         and one predicting none are both wrong if the measurement says 1.166.'
-  status: passed
-  result: PASS
-  measured_value: 1.0774
+  status: failed
+  result: FAIL
+  measured_value: 0.3685
   evaluated_by: agent
+  remeasured_2026_09_07:
+    value: 0.3685
+    supersedes: 1.0774
+    note: 'This axis divides the candidate''s predicted strong/weak distortion ratio by the MEASURED
+      one, which came from foldchange-to-delta-fidelity''s incomplete join at 1.166. On the in-force
+      join that measurement is 3.4095, so the axis becomes 1.2562/3.4095 = 0.3685, outside [0.67,
+      1.5].
+
+      PASS -> FAIL, and the direction matters: the active-constraint candidate predicted strong and
+      weak repressors would be distorted almost equally (1.26x apart). Measured properly they are
+      3.41x apart. So the candidate does NOT explain magnitude uniformity — it explains the boundary
+      entries, which are uniformly and totally silenced, but not the graded dependence on repression
+      strength across the whole population.'
 - name: corrected-conversion-restores-fidelity
   classification: primary
   gate_class: acceptance_criterion
@@ -163,7 +176,14 @@ behavior_tests:
   result: FAIL
   measured_value: 1.968
   evaluated_by: agent
-- name: corrected-lexa-rpod-is-non-lethal
+  remeasured_2026_09_07:
+    status: superseded, not recomputed
+    note: Measured across '564 joinable entries' — foldchange-to-delta-fidelity's incomplete join,
+      which reads fold_changes.tsv only. The in-force join has 1606 entries. This value (1.968) grades
+      a corrected conversion against a population that excludes roughly two thirds of the model's
+      regulatory input, including lexA->dnaG itself. It should be recomputed once the constraint
+      repair is implemented (req-conv-1).
+- name: corrected-lexa-dnag-is-non-lethal
   classification: primary
   gate_class: acceptance_criterion
   question: Does the correction restore dnaG's operon to a survivable expression?
@@ -183,16 +203,29 @@ behavior_tests:
     path: corrected retained fraction for the lexA->rpoD deltaV entry on dnaG's operon TU00352
     detail: 1 + corrected relative delta for TU00352[c] at the LexA column.
   pass_if:
-    low: 0.42
-    high: 0.96
+    low: 0.204
+    high: 0.459
     provenance:
       kind: theory
-      note: Centred on the 0.637 the measured log2FC specifies and spanning 3x, the widest the discrimination
-        check permits; a correction landing outside this has not restored the datum.
-  status: ungraded
+      note: RE-ANCHORED 2026-09-07. The band was [0.42, 0.96], centred on 0.637 = 2^-0.65, rpoD's
+        fold change. rpoD is not in tf_to_fold_change and was never dnaG's input. dnaG's own measured
+        value is log2FC -1.71 (fold_changes_nca.tsv), retain 0.30566, so the band is re-centred there
+        at the same +/-1.5x span.
+  status: blocked
   result: UNGRADED
   measured_value: null
   evaluated_by: agent
+  blocked_detail: 'Ungraded since the study closed; now BLOCKED with the reason stated.
+
+    It cannot be graded without implementing the constraint repair: the axis asks what TU00352 retains
+    UNDER the corrected conversion, and no corrected deltaV exists until the convex fit is re-solved
+    with the alpha + delta >= 0 constraint repaired. Computing a delta that reproduces the target
+    fold change by construction would be circular, not a test.
+
+    What IS confirmed, and reproduces exactly: TU00352 sits ON the constraint. alpha = 1.212758e-04,
+    deltaV = -1.212757e-04, Z@R = 5.235e-12 — the boundary to solver precision, matching the 5.23e-12
+    this study recorded. 13 of 45 LexA-regulated TUs and 110 of 727 regulated TUs overall sit there.
+    The diagnosis is sound; only the repair is untested.'
 - name: negative-basal-clipping-is-not-the-cause
   classification: diagnostic
   gate_class: acceptance_criterion
@@ -328,6 +361,17 @@ implementation_requirements:
   detail: The TF-target join (564 entries, with unjoined counts) is already implemented in that study's
     analyses/measure.py. Import it rather than re-deriving, so corrected and uncorrected fidelity
     are measured over an identical entry set.
+- id: req-conv-1
+  status: not_started
+  blocking: true
+  summary: Re-solve the promoter fit with the alpha + delta >= 0 constraint repaired, then regrade
+    axes 4 and 5.
+  detail: Both remaining axes need a corrected deltaV that does not exist yet. The fit minimises
+    norm(G@R - k) subject to 0 <= Z@R <= 1; when the lower bound binds the optimiser sits exactly
+    on it, giving delta/alpha = -1 and total silencing regardless of the target fold change, because
+    the objective matches absolute probabilities and never sees the ratio. Repairing it means changing
+    what the objective sees, not post-processing the output. Until then corrected-lexa-dnag-is-non-lethal
+    stays blocked and corrected-conversion-restores-fidelity stays superseded.
 alternative_hypotheses:
 - name: H1 fit residual
   discriminator: candidate-explains-magnitude-uniformity
@@ -399,6 +443,13 @@ controls:
   observed: 979/979 deltaV entries and 100% of basal_prob reproduced within 1e-9.
   result: PASS
 limitations:
+- Two of six axes cannot be graded from the current record. corrected-lexa-dnag-is-non-lethal needs
+  a corrected deltaV that does not exist until the constraint repair is implemented (req-conv-1),
+  and corrected-conversion-restores-fidelity was measured on the 564-entry incomplete join rather
+  than the 1606-entry in-force one. Both are marked rather than carried as results.
+- This study has no analyses/ directory. Every number in it was produced by code that was not saved,
+  so nothing here could be re-executed — the active-constraint diagnosis was re-verified from scratch
+  on 2026-09-07 and does reproduce (Z@R = 5.235e-12), but that was a reimplementation, not a rerun.
 - "CORRECTION 2026-09-07 — this study's account of WHY LexA acts on the rpsU-dnaG-rpoD operon is\
   \ wrong, and the wrongness is inherited, not original to it.\nStatements in this file to the effect\
   \ that 'LexA regulates rpoD and dnaG is silenced as a passenger', or that a dnaG-bearing TU acquires\
@@ -438,9 +489,11 @@ limitations:
   are on unclipped TUs.
 - The activator mechanism is not identified. This study bounds it (no boundary involvement, magnitude-uniform,
   60.8% of entries) without explaining it.
-claim: dnaG's silencing is an ACTIVE-CONSTRAINT artefact of ParCa's convex fit -- entries land on
-  alpha + delta >= 0 and are totally silenced -- which explains the repressors completely and the
-  activators, 61% of the network, not at all.
+claim: 'dnaG''s silencing is an ACTIVE-CONSTRAINT artefact of ParCa''s convex fit — TU00352 sits
+  on alpha + delta >= 0 at Z@R = 5.235e-12, with 110 of 727 regulated TUs there — and that fully
+  explains the boundary entries. It does NOT explain the graded distortion across the wider population:
+  remeasured on the in-force join, strong and weak repressors differ 3.41x where the candidate predicted
+  1.26x, so magnitude uniformity is refuted rather than supported.'
 conclusion: 'Half solved, precisely, and the other half now sharply posed.
 
   The conversion is located and confirmed: calculateRnapRecruitment reads deltaV straight out of
@@ -900,3 +953,9 @@ corrections:
   - fold_changes_nca.tsv
   - tf_to_fold_change
   - target_tf
+report:
+  verdict: needs_calibration
+  basis: 'The diagnosis holds and reproduces: TU00352 sits on the fit''s lower constraint at Z@R
+    = 5.235e-12. But candidate-explains-magnitude-uniformity flips PASS -> FAIL once its denominator
+    is corrected (1.0774 -> 0.3685), so the candidate explains the boundary entries and not the graded
+    population distortion. Two axes remain ungradeable pending req-conv-1.'
