@@ -125,7 +125,26 @@ class LineageStep(Step):
     # A whole lineage is the long-running task on this path -- hours, not
     # minutes -- so it is the one that most needs the profile's `time` and
     # memory. Without a label, `withLabel: lineage` binds to nothing.
-    nextflow_directives = {"label": "lineage"}
+    # `publishDir` or the science is unreachable. Without it a campaign that exits
+    # 0 leaves its output in the Nextflow WORK dir under a content hash --
+    # measured on a real run: 633 MB across 43 objects at
+    # `work/1d/8bdc05.../sweep/`, while the results prefix held 78 KB of render
+    # artifacts and no data at all.
+    #
+    # A closure, not a literal: the destination is the RUN's own prefix and is
+    # only known at dispatch. `params.publish_dir` is supplied by the caller
+    # (viva-api passes the run's results URI); the `?:` keeps a bare
+    # `nextflow run` working locally instead of failing on a missing param.
+    #
+    # Every lineage publishes its task-local `sweep` into the SAME target on
+    # purpose. The tree underneath is hive-partitioned
+    # (experiment_id/variant/lineage_seed/generation/agent_id), so the copies
+    # interleave rather than collide -- identity lives in the partitions, not in
+    # the directory name.
+    nextflow_directives = {
+        "label": "lineage",
+        "publishDir": '{ params.publish_dir ?: "results" }, mode: "copy", overwrite: true',
+    }
 
     def inputs(self) -> dict[str, Any]:
         # _is_file makes ParCa -> lineage a staged edge rather than a shared path.
@@ -169,7 +188,9 @@ class LineageStep(Step):
                         "_type": "process",
                         "address": "local:LineageProcess",
                         "config": config,
-                        "interval": float(self.config.get("max_duration_per_gen", 3600.0)),
+                        "interval": float(
+                            self.config.get("max_duration_per_gen", 3600.0)
+                        ),
                         "inputs": {},
                         "outputs": {"summary": ["summary"], "complete": ["complete"]},
                     }
@@ -185,7 +206,10 @@ class LineageStep(Step):
     def _has_output(self, out_dir: str) -> bool:
         for root, _dirs, files in os.walk(out_dir):
             for name in files:
-                if name.endswith((".pq", ".parquet")) and os.path.getsize(os.path.join(root, name)) > 0:
+                if (
+                    name.endswith((".pq", ".parquet"))
+                    and os.path.getsize(os.path.join(root, name)) > 0
+                ):
                     return True
                 if name in (".zgroup", ".zarray", "zarr.json", ".zattrs"):
                     return True
@@ -199,7 +223,8 @@ class LineageStep(Step):
             raise ValueError(
                 "LineageStep requires a cache_dir: it is the ParCa bundle this lineage "
                 "reads. It arrives as a staged input wire; a task with neither the input "
-                "nor a configured fallback has nothing to simulate.")
+                "nor a configured fallback has nothing to simulate."
+            )
 
         generations = int(self.config.get("generations", 1))
         per_gen = float(self.config.get("max_duration_per_gen", 3600.0))
@@ -208,10 +233,15 @@ class LineageStep(Step):
         self._run_lineage(self._lineage_config(str(cache_dir)), interval)
 
         out_dir = str(self.config.get("out_dir") or "")
-        if self.config.get("require_output", True) and out_dir and not self._has_output(out_dir):
+        if (
+            self.config.get("require_output", True)
+            and out_dir
+            and not self._has_output(out_dir)
+        ):
             raise SystemExit(
                 f"LineageStep produced no emitted output under {out_dir}. A lineage that "
                 f"emits nothing is a failed task, not a successful one -- refusing to "
-                f"report success (plan-nextflow-dispatch.md go/no-go 6).")
+                f"report success (plan-nextflow-dispatch.md go/no-go 6)."
+            )
 
         return {"sweep_dir": out_dir}

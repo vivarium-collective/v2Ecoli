@@ -96,6 +96,7 @@ def _repo_root() -> str:
     """
     return os.environ.get("V2E_ROOT", _DEFAULT_ROOT)
 
+
 # NOT cwd-relative, and NOT prefixed with `cd $V2E_ROOT`. A Nextflow task runs in
 # its own work dir and its declared outputs (`path "cache"`) are resolved
 # relative to that dir -- so cd-ing away would write the cache somewhere Nextflow
@@ -116,7 +117,7 @@ _PARCA_CHAIN = (
     # in/out paths are made absolute from it, so cd-ing does not move the
     # declared output `cache` out of the work dir where Nextflow looks for it.
     ' && WD="\$PWD" && cd "{root}"'
-    ' && python scripts/build_cache.py'
+    " && python scripts/build_cache.py"
     ' --fixture "\$WD/{simdata}/parca_state.pkl.gz" --cache "\$WD/{cache}"'
     ' && cd "\$WD"'
     " && cp {simdata}/parca_state.pkl.gz {cache}/parca_state.pkl.gz"
@@ -142,6 +143,9 @@ class ParcaTaskStep(Step):
     # profile matches NOTHING -- every task silently takes the queue defaults,
     # and in particular gets NO `time`, which is the only bound on a runaway
     # task (plan-nextflow-dispatch §11.1).
+    # Deliberately NOT published: the cache is an INTERMEDIATE, ~262 MB, and
+    # staging it task-to-task is exactly what the work dir is for. Publishing it
+    # would double the storage of every campaign to no one's benefit.
     nextflow_directives = {"label": "parca"}
 
     def inputs(self) -> dict[str, Any]:
@@ -173,7 +177,8 @@ class ParcaTaskStep(Step):
         raise RuntimeError(
             "ParcaTaskStep is a task declaration, not an in-process step: it is rendered "
             "and its nextflow_script() is what runs. Calling update() would silently "
-            "produce no cache while reporting success.")
+            "produce no cache while reporting success."
+        )
 
 
 class AnalysisTaskStep(Step):
@@ -196,7 +201,12 @@ class AnalysisTaskStep(Step):
     # this override is read off the CLASS (`_class_annotation` → `getattr(type(...))`),
     # so it cannot depend on config anyway.
     nextflow_port_decls = {"report": 'path "analysis"'}
-    nextflow_directives = {"label": "analysis"}
+    # Published for the same reason as LineageStep's sweep: the gather's report is
+    # the deliverable, and an unpublished one is as unreachable as no report.
+    nextflow_directives = {
+        "label": "analysis",
+        "publishDir": '{ params.publish_dir ?: "results" }, mode: "copy", overwrite: true',
+    }
 
     def _variants(self) -> list[int]:
         return [int(i) for i in (self.config.get("variant_indices") or [0])]
@@ -222,7 +232,8 @@ class AnalysisTaskStep(Step):
     def update(self, state: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(
             "AnalysisTaskStep is a task declaration, not an in-process step; see "
-            "ParcaTaskStep.update.")
+            "ParcaTaskStep.update."
+        )
 
 
 def _variant_specs(variants: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -260,28 +271,45 @@ def _variant_specs(variants: list[dict[str, Any]] | None) -> list[dict[str, Any]
         "never run in-process -- the ParCa and analysis nodes are script declarations."
     ),
     parameters={
-        "n_seeds": {"type": "integer", "default": 2,
-                    "description": "Seed-lineages per variant."},
-        "n_generations": {"type": "integer", "default": 1,
-                          "description": "Generations per lineage."},
-        "base_seed": {"type": "integer", "default": 0,
-                      "description": "First seed; seeds are contiguous per variant."},
-        "variants": {"type": "array", "default": None,
-                     "description": (
-                         "Per-variant strain inputs, each a dict that may carry variant_name, "
-                         "new_genes and bundle_overrides. These reach PARCA, giving each variant "
-                         "its own cache. None means a single baseline variant.")},
+        "n_seeds": {
+            "type": "integer",
+            "default": 2,
+            "description": "Seed-lineages per variant.",
+        },
+        "n_generations": {
+            "type": "integer",
+            "default": 1,
+            "description": "Generations per lineage.",
+        },
+        "base_seed": {
+            "type": "integer",
+            "default": 0,
+            "description": "First seed; seeds are contiguous per variant.",
+        },
+        "variants": {
+            "type": "array",
+            "default": None,
+            "description": (
+                "Per-variant strain inputs, each a dict that may carry variant_name, "
+                "new_genes and bundle_overrides. These reach PARCA, giving each variant "
+                "its own cache. None means a single baseline variant."
+            ),
+        },
         "experiment_id": {"type": "string", "default": "workflow_nf"},
         "out_dir": {"type": "string", "default": "out/workflow"},
         "max_duration_per_gen": {"type": "number", "default": 3600.0},
         "parca_mode": {"type": "string", "default": "fast"},
         "parca_cpus": {"type": "integer", "default": 8},
-        "include_analysis": {"type": "boolean", "default": False,
-                             "description": (
-                                 "Append the N x M -> 1 gather node. DEFAULT FALSE, and that is "
-                                 "a real limitation rather than a preference: see the module "
-                                 "docstring. A flat port wired to many stores cannot be "
-                                 "constructed at all.")},
+        "include_analysis": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "Append the N x M -> 1 gather node. DEFAULT FALSE, and that is "
+                "a real limitation rather than a preference: see the module "
+                "docstring. A flat port wired to many stores cannot be "
+                "constructed at all."
+            ),
+        },
     },
 )
 def build_workflow_nf(
