@@ -172,8 +172,9 @@ def test_analysis_task_argv_parses_against_the_real_cli(core) -> None:
         config={"analysis_options": {"single": {"mass_fraction_summary": {}}}},
         core=core,
     ).nextflow_script()
-    line = next(l for l in script.splitlines()
-                if l.strip().startswith("v2ecoli-analyze"))
+    line = next(
+        l for l in script.splitlines() if l.strip().startswith("v2ecoli-analyze")
+    )
     args = build_analysis_arg_parser().parse_args(shlex.split(line)[1:])
     assert args.sweep_dir == "." and args.config == "analysis.config.json"
 
@@ -183,7 +184,8 @@ def test_analysis_options_reach_the_gather_config() -> None:
     only place the CLI reads them, and out_dir is task-local to match the declared
     `path "analysis"` output."""
     doc = build_workflow_nf(
-        n_seeds=2, include_analysis=True,
+        n_seeds=2,
+        include_analysis=True,
         analysis_options={"single": {"mass_fraction_summary": {}}},
     )
     cfg = doc["state"]["analysis"]["config"]
@@ -494,3 +496,51 @@ def test_every_lineage_publishes_to_the_same_target(core) -> None:
     lines = [ln.strip() for ln in rendered.splitlines() if "publishDir" in ln]
     assert len(lines) == 3
     assert len(set(lines)) == 1
+
+
+# --- every kwarg must be DECLARED, or it is unreachable from a dispatch ------
+
+
+def test_analysis_options_is_reachable_through_a_dispatch() -> None:
+    """It was a function kwarg, threaded into the node config, and NOT declared
+    in the generator's `parameters` block. Every dispatch goes through
+    `CompositeSpec.to_document(overrides=...)`, whose `_merged_params` raises
+    `KeyError: unknown override(s)` on anything undeclared -- so it could only be
+    set by calling the builder in-process. Through the API it always fell back to
+    {}, the gather had nothing to run, no `analysis/` was created, and the
+    campaign failed its LAST node after running every lineage (simulation 475)."""
+    from process_bigraph.composite_spec import discover_specs
+    from process_bigraph.composite_spec import get as get_spec
+
+    discover_specs()
+    spec = get_spec("v2ecoli.composites.workflow_nf.workflow_nf")
+    doc = spec.to_document(
+        overrides={
+            "analysis_options": {"multiseed": {}},
+            "n_seeds": 2,
+            "include_analysis": True,
+        }
+    )
+    assert doc["state"]["analysis"]["config"]["analysis_options"] == {"multiseed": {}}
+
+
+def test_every_builder_kwarg_is_a_declared_parameter() -> None:
+    """The general form, so the next one is caught at test time rather than by a
+    campaign failing on real infrastructure. A kwarg the builder accepts but the
+    spec does not declare is dead on every path that matters."""
+    import inspect
+
+    from process_bigraph.composite_spec import discover_specs
+    from process_bigraph.composite_spec import get as get_spec
+
+    discover_specs()
+    spec = get_spec("v2ecoli.composites.workflow_nf.workflow_nf")
+    kwargs = {
+        name
+        for name, prm in inspect.signature(build_workflow_nf).parameters.items()
+        if prm.kind is not inspect.Parameter.VAR_KEYWORD
+    }
+    undeclared = kwargs - set(spec.parameters)
+    assert not undeclared, (
+        f"accepted by the builder, unreachable via dispatch: {sorted(undeclared)}"
+    )
