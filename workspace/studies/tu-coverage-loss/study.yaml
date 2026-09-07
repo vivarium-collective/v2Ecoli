@@ -12,11 +12,11 @@ simulation_status: complete
 evaluation_status: evaluated
 gate_status: failed
 expert_review_status: not_requested
-question: dnaG is silenced because LexA represses the only transcription unit that carries it. rpsU, in
-  the same operon, escapes untouched because it keeps a TU of its own with no LexA site. That contrast
-  is structural, not biochemical. The model omits 760 of 3766 source transcription units (20.2%), leaving
-  179 genes with none at all and 563 reduced from several to one. How widespread is the resulting exposure,
-  and does it fall on genes the cell cannot do without?
+question: dnaG is silenced because LexA represses the only transcription unit that carries it. rpsU,
+  in the same operon, escapes untouched because it keeps a TU of its own with no LexA site. That
+  contrast is structural, not biochemical. The model omits 760 of 3766 source transcription units
+  (20.2%), leaving 179 genes with none at all and 563 reduced from several to one. How widespread
+  is the resulting exposure, and does it fall on genes the cell cannot do without?
 units_and_time:
   tick: 1 s of simulated time for the runtime axes; the coverage axes read static artefacts.
   quantities:
@@ -28,25 +28,25 @@ behavior_tests:
   classification: primary
   gate_class: acceptance_criterion
   question: Do the genes left with no transcription unit actually produce nothing?
-  description: 'At least 90% of the 179 genes whose every source TU is absent from the model show zero
-    measured transcription across the lineage.
+  description: 'At least 90% of the 179 genes whose every source TU is absent from the model show
+    zero measured transcription across the lineage.
 
 
-    The most direct consequence of TU selection, and the one that needs confirming before anything subtler.
-    760 of 3766 source transcription units (20.2%) are absent from the model, leaving 179 genes with no
-    TU at all -- they cannot be transcribed by construction. If they nonetheless show transcription, the
-    gene-to-TU accounting used here is wrong and every other axis is suspect; if they are silent, the
-    model is missing 179 gene products outright.
+    The most direct consequence of TU selection, and the one that needs confirming before anything
+    subtler. 760 of 3766 source transcription units (20.2%) are absent from the model, leaving 179
+    genes with no TU at all -- they cannot be transcribed by construction. If they nonetheless show
+    transcription, the gene-to-TU accounting used here is wrong and every other axis is suspect;
+    if they are silent, the model is missing 179 gene products outright.
 
 
-    Threshold provenance: theory. 90% tolerates accounting slips in the gene-symbol join without tolerating
-    a broken premise.'
+    Threshold provenance: theory. 90% tolerates accounting slips in the gene-symbol join without
+    tolerating a broken premise.'
   measure:
     kind: derived
     path: fraction of the 179 orphaned genes with zero measured cistron transcription, from TU coverage
       loss
-    detail: fraction of orphaned genes whose actual_rna_synth_prob_per_cistron is zero throughout, median
-      over seeds.
+    detail: fraction of orphaned genes whose actual_rna_synth_prob_per_cistron is zero throughout,
+      median over seeds.
   pass_if:
     low: 0.9
     high: 1.0
@@ -61,23 +61,24 @@ behavior_tests:
   classification: primary
   gate_class: acceptance_criterion
   question: Does losing alternative promoters make a gene vulnerable to a single TF?
-  description: 'Among genes carrying a repressing TF, those reduced to ONE surviving TU are at least 3x
-    more likely to be silenced (measured transcription below 1e-9) than genes retaining two or more TUs.
+  description: 'Among genes carrying a repressing TF, those reduced to ONE surviving TU are at least
+    3x more likely to be silenced (measured transcription below 1e-9) than genes retaining two or
+    more TUs.
 
 
-    The mechanism dnaG exemplifies, tested as a population claim rather than an anecdote. dnaG has three
-    source TUs and one survivor, all carrying the LexA site, so it has no escape route; rpsU keeps its
-    own un-repressed TU (delta exactly 0, retained 1.0000) and is untouched. 563 genes were reduced from
-    several TUs to one. If they are systematically more silenceable, TU selection converts promoter-specific
-    regulation into gene-wide silencing.
+    The mechanism dnaG exemplifies, tested as a population claim rather than an anecdote. dnaG has
+    three source TUs and one survivor, all carrying the LexA site, so it has no escape route; rpsU
+    keeps its own un-repressed TU (delta exactly 0, retained 1.0000) and is untouched. 563 genes
+    were reduced from several TUs to one. If they are systematically more silenceable, TU selection
+    converts promoter-specific regulation into gene-wide silencing.
 
 
-    Threshold provenance: theory. 3x is a large effect deliberately -- a marginal enrichment would not
-    support a structural claim, and the mechanism predicts a stark difference rather than a gradient.'
+    Threshold provenance: theory. 3x is a large effect deliberately -- a marginal enrichment would
+    not support a structural claim, and the mechanism predicts a stark difference rather than a gradient.'
   measure:
     kind: derived
-    path: relative risk of silencing for single-TU versus multi-TU regulated genes -- the dnaG (no escape)
-      versus rpsU (dedicated TU) contrast as a population claim
+    path: relative risk of silencing for single-TU versus multi-TU regulated genes -- the dnaG (no
+      escape) versus rpsU (dedicated TU) contrast as a population claim
     detail: ratio of silenced fraction among single-TU regulated genes to that among multi-TU regulated
       genes.
   pass_if:
@@ -85,8 +86,8 @@ behavior_tests:
     high: 9.0
     provenance:
       kind: theory
-      note: Spans 3x, the widest the discrimination check permits, anchored at the 3x minimum effect the
-        structural claim requires.
+      note: Spans 3x, the widest the discrimination check permits, anchored at the 3x minimum effect
+        the structural claim requires.
   status: failed
   result: FAIL
   measured_value: 0.95
@@ -95,15 +96,15 @@ behavior_tests:
   classification: primary
   gate_class: acceptance_criterion
   question: Is dnaG's exposure a modelling artefact or a property of the underlying biology?
-  description: 'dnaG appears in ZERO source transcription units that exclude rpoD -- i.e. it has no dedicated
-    promoter even before any model selection.
+  description: 'dnaG appears in ZERO source transcription units that exclude rpoD -- i.e. it has
+    no dedicated promoter even before any model selection.
 
 
     Separates two very different stories. If dnaG had dedicated TUs that the model DROPPED, the defect
-    is TU selection and is fixable by keeping them. If it has none in the source data either, then dnaG
-    is intrinsically an operon passenger and the defect is that a modest LexA effect on rpoD was allowed
-    to silence the operon -- a different fix entirely. rpoD lost 5 of 7 source TUs and rpsU 2 of 4, so
-    both have alternatives; whether dnaG ever did is the question.
+    is TU selection and is fixable by keeping them. If it has none in the source data either, then
+    dnaG is intrinsically an operon passenger and the defect is that a modest LexA effect on rpoD
+    was allowed to silence the operon -- a different fix entirely. rpoD lost 5 of 7 source TUs and
+    rpsU 2 of 4, so both have alternatives; whether dnaG ever did is the question.
 
 
     Threshold provenance: definitional. A count of dedicated TUs is zero or it is not.'
@@ -111,8 +112,8 @@ behavior_tests:
     kind: derived
     path: fraction of source TUs containing dnaG that ALSO contain rpoD, the contrast with rpsU which
       keeps a dedicated un-repressed TU
-    detail: of the source transcription units whose gene list includes EG10239, the fraction that also
-      include EG10896; 1.0 means dnaG has no dedicated promoter anywhere.
+    detail: of the source transcription units whose gene list includes EG10239, the fraction that
+      also include EG10896; 1.0 means dnaG has no dedicated promoter anywhere.
   pass_if:
     low: 0.99
     high: 1.0
@@ -120,8 +121,8 @@ behavior_tests:
       kind: theory
       note: 'Expressed as a fraction bounded above by 1.0 rather than a count with ''<= 0''. Identical
         claim -- 1.0 means every dnaG-bearing TU also carries rpoD, i.e. no dedicated promoter exists
-        -- but a bounded quantity the discrimination check can grade. rpsU is the contrast: it DOES keep
-        a dedicated TU (TU00472) whose LexA delta is exactly 0.'
+        -- but a bounded quantity the discrimination check can grade. rpsU is the contrast: it DOES
+        keep a dedicated TU (TU00472) whose LexA delta is exactly 0.'
   status: passed
   result: PASS
   measured_value: 1.0
@@ -135,13 +136,13 @@ behavior_tests:
 
 
     The discriminating control, and the one that decides how alarming this is. If TU loss falls randomly,
-    179 orphans is a coverage gap to be logged. If it concentrates on essential machinery -- as the rpsU-dnaG-rpoD
-    locus hints, having lost 5 of its 8 TUs -- then the model is systematically fragile exactly where
-    it can least afford to be.
+    179 orphans is a coverage gap to be logged. If it concentrates on essential machinery -- as the
+    rpsU-dnaG-rpoD locus hints, having lost 5 of its 8 TUs -- then the model is systematically fragile
+    exactly where it can least afford to be.
 
 
-    Threshold provenance: theory. 1.5x is the standing band; enrichment beyond it is a structural finding
-    rather than noise.'
+    Threshold provenance: theory. 1.5x is the standing band; enrichment beyond it is a structural
+    finding rather than noise.'
   measure:
     kind: derived
     path: ratio of orphan-or-single-TU rate among essential genes to the all-gene rate, from TU coverage
@@ -152,8 +153,8 @@ behavior_tests:
     high: 1.5
     provenance:
       kind: theory
-      note: 'Two-sided: essential genes being DEPLETED of TU loss would be as informative as their being
-        enriched.'
+      note: 'Two-sided: essential genes being DEPLETED of TU loss would be as informative as their
+        being enriched.'
   status: passed
   control: negative
   result: PASS
@@ -163,8 +164,8 @@ behavior_tests:
   classification: supporting
   gate_class: regression_pin
   question: Does the coverage gap still measure as recorded?
-  description: 'The fraction of source TUs absent from the model stays within a factor of 1.5 of the recorded
-    0.202.
+  description: 'The fraction of source TUs absent from the model stays within a factor of 1.5 of
+    the recorded 0.202.
 
 
     POST-HOC: measured while scoping. A drift pin on the headline coverage number.'
@@ -206,16 +207,16 @@ preregistered:
       provenance:
         kind: theory
         note: 'Expressed as a fraction bounded above by 1.0 rather than a count with ''<= 0''. Identical
-          claim -- 1.0 means every dnaG-bearing TU also carries rpoD, i.e. no dedicated promoter exists
-          -- but a bounded quantity the discrimination check can grade. rpsU is the contrast: it DOES
-          keep a dedicated TU (TU00472) whose LexA delta is exactly 0.'
+          claim -- 1.0 means every dnaG-bearing TU also carries rpoD, i.e. no dedicated promoter
+          exists -- but a bounded quantity the discrimination check can grade. rpsU is the contrast:
+          it DOES keep a dedicated TU (TU00472) whose LexA delta is exactly 0.'
     essential-genes-are-not-preferentially-orphaned:
       low: 0.67
       high: 1.5
       provenance:
         kind: theory
-        note: 'Two-sided: essential genes being DEPLETED of TU loss would be as informative as their being
-          enriched.'
+        note: 'Two-sided: essential genes being DEPLETED of TU loss would be as informative as their
+          being enriched.'
     tu-loss-fraction:
       op: <=
       value: 0.303
@@ -236,10 +237,10 @@ implementation_requirements:
   status: complete
   blocking: true
   summary: Build the source-TU to model-TU coverage map per gene.
-  detail: 'Join transcription_units.tsv (3766 TUs, gene lists as JSON) against the model''s rna_data ids,
-    per gene: source TU count, surviving TU count, and whether every survivor carries the same repressing
-    TF. Genes whose symbols do not resolve must be counted and reported, not dropped -- the join is the
-    study''s main methodological risk.'
+  detail: 'Join transcription_units.tsv (3766 TUs, gene lists as JSON) against the model''s rna_data
+    ids, per gene: source TU count, surviving TU count, and whether every survivor carries the same
+    repressing TF. Genes whose symbols do not resolve must be counted and reported, not dropped --
+    the join is the study''s main methodological risk.'
 - id: req-2
   status: complete
   blocking: false
@@ -253,23 +254,24 @@ alternative_hypotheses:
     single-TU genes are markedly more silenceable. The dnaG-versus-rpsU contrast generalises.
 - name: H2 coincidence
   discriminator: single-tu-genes-are-more-exposed-to-repression
-  statement: dnaG's exposure is a one-off and single-TU genes are no more silenceable than others; the
-    TU gap is a coverage nuisance rather than a mechanism.
+  statement: dnaG's exposure is a one-off and single-TU genes are no more silenceable than others;
+    the TU gap is a coverage nuisance rather than a mechanism.
 - name: H3 the loss is targeted at essential machinery
   discriminator: essential-genes-are-not-preferentially-orphaned
-  statement: TU loss concentrates on essential genes, as the rpsU-dnaG-rpoD locus hints at having lost
-    5 of its 8 TUs. Would make the model systematically fragile where it can least afford to be.
-falsifiability: 'H2 is a real possibility and the relative-risk axis is powered to detect it: a 3x minimum
-  effect was chosen so a marginal enrichment cannot be read as a structural claim. The essential-gene
+  statement: TU loss concentrates on essential genes, as the rpsU-dnaG-rpoD locus hints at having
+    lost 5 of its 8 TUs. Would make the model systematically fragile where it can least afford to
+    be.
+falsifiability: 'H2 is a real possibility and the relative-risk axis is powered to detect it: a 3x
+  minimum effect was chosen so a marginal enrichment cannot be read as a structural claim. The essential-gene
   control can independently show the loss is random with respect to importance.'
 simulation_set: []
 planned_runs:
 - name: coverage-plus-reuse
   status: planned
   n_steps: 0
-  details: NO NEW SIMULATION. Coverage axes read transcription_units.tsv and the cache; silencing axes
-    reuse dnag-promoter-availability's 6-seed sweep via actual_rna_synth_prob_per_cistron, available only
-    because the rna_synth_prob deriver repair landed before it ran.
+  details: NO NEW SIMULATION. Coverage axes read transcription_units.tsv and the cache; silencing
+    axes reuse dnag-promoter-availability's 6-seed sweep via actual_rna_synth_prob_per_cistron, available
+    only because the rna_synth_prob deriver repair landed before it ran.
 robustness:
   n_replicates: 6
   seeds:
@@ -284,56 +286,82 @@ robustness:
 controls:
 - name: essential-genes-are-not-preferentially-orphaned
   kind: negative
-  hypothesis: If TU loss is random with respect to importance, 179 orphans is a coverage gap rather than
-    a structural fragility.
+  hypothesis: If TU loss is random with respect to importance, 179 orphans is a coverage gap rather
+    than a structural fragility.
   expected: essential-gene orphan/single-TU rate within 1.5x of the all-gene rate.
   observed: Essential genes single-TU at 0.729 vs 0.847 overall (ratio 0.861) -- slightly less exposed.
   result: PASS
 limitations:
+- "CORRECTION 2026-09-07 — this study's account of WHY LexA acts on the rpsU-dnaG-rpoD operon is\
+  \ wrong, and the wrongness is inherited, not original to it.\nStatements in this file to the effect\
+  \ that 'LexA regulates rpoD and dnaG is silenced as a passenger', or that a dnaG-bearing TU acquires\
+  \ LexA because it contains rpoD, do not match the model. They came from checking only fold_changes.tsv,\
+  \ which carries lexA->rpoD at log2FC -0.65 and no dnaG entry. There is a SECOND source, fold_changes_nca.tsv:\n\
+  \    lexA  dnaG  -1.71        lexA  rpsU  -1.89\nand it is the one in force. tf_to_fold_change['PC00010']\
+  \ holds EG10239_RNA (dnaG) at 0.30566, which is 2^-1.71 exactly, plus EG10896_RNA (rpsU) — and\
+  \ does NOT contain EG10920_RNA (rpoD) at all. target_tf likewise lists PC00010 for dnaG and rpsU,\
+  \ not rpoD. LexA is a DIRECT, cistron-level regulator of dnaG in this model. dnaG is not a passenger.\n\
+  The real structural defect is different and stronger: regulation is assigned per CISTRON and then\
+  \ unioned onto every TU containing that cistron (relation.py::_build_RNA_to_tf_mapping). dnaG's\
+  \ LexA edge therefore lands on whatever TU carries dnaG, and after the gene-set dedup there is\
+  \ exactly ONE such TU. The model cannot express 'LexA represses dnaG through this promoter but\
+  \ not that one' — TU-specific differential regulation is structurally impossible, not merely mis-assigned.\
+  \ It also means restoring the deduplicated promoters could not have separated them: all three TUs\
+  \ carry an identical cistron set, so cistron-level regulation attaches LexA to all three.\nWHAT\
+  \ THIS DOES AND DOES NOT INVALIDATE: measurements of the encoded delta, occupancy, the deficit\
+  \ and the lineage outcomes are unaffected — they measured the model as built. What is wrong is\
+  \ the causal STORY told about them. Any figure computed against rpoD's -0.65 as dnaG's input baseline\
+  \ is wrong and should be recomputed against -1.71; in this investigation that includes the fold-change-to-delta\
+  \ distortion, which is 7.08e+06-fold, not 1.48e+07.\nLeft in place rather than rewritten: the original\
+  \ text is preserved above so the record shows what was believed when the work was done."
 - The gene-to-TU join is by identifier across two artefacts; unresolved genes are counted and reported,
   but systematic naming mismatches would bias which genes are examined.
-- '''Essential'' is taken from the model''s own class lists (idx_rprotein, idx_rnap, replication cistrons),
-  not from an external essentiality dataset, so it is a proxy.'
-- 'The study measures exposure and silencing. It does NOT establish that the omitted TUs should have been
-  kept: the model may exclude them for reasons this study does not examine.'
-- Silencing is read from a stalling lineage, so a gene silent here need not be silent in healthy growth.
-- The orphan axis is recorded as FAILED because its premise was false, not because the model has orphans.
-  Read the detail before citing the result.
-- Only 4 of 237 repressed genes are silenced at all, so the relative-risk comparison rests on very small
-  counts (3 and 1). It cannot exclude a modest real effect -- only the 3x one the design required.
+- '''Essential'' is taken from the model''s own class lists (idx_rprotein, idx_rnap, replication
+  cistrons), not from an external essentiality dataset, so it is a proxy.'
+- 'The study measures exposure and silencing. It does NOT establish that the omitted TUs should have
+  been kept: the model may exclude them for reasons this study does not examine.'
+- Silencing is read from a stalling lineage, so a gene silent here need not be silent in healthy
+  growth.
+- The orphan axis is recorded as FAILED because its premise was false, not because the model has
+  orphans. Read the detail before citing the result.
+- Only 4 of 237 repressed genes are silenced at all, so the relative-risk comparison rests on very
+  small counts (3 and 1). It cannot exclude a modest real effect -- only the 3x one the design required.
 - '''Essential'' uses the model''s own class lists as a proxy, not an external essentiality dataset.'
 - Whether TU00434/TU00435 would in reality escape the LexA operator depends on the operator's position
-  relative to their transcription start sites, which this study did not establish -- it shows only that
-  under the current cistron-content rule they could not escape regardless of position.
-claim: There are no orphaned genes and single-TU genes are not more silenceable; dnaG is a genuine special
-  case -- the only one of its operon with no promoter of its own.
-conclusion: 'Largely a refutation, including of my own framing, and the study is more useful for it.
+  relative to their transcription start sites, which this study did not establish -- it shows only
+  that under the current cistron-content rule they could not escape regardless of position.
+claim: There are no orphaned genes and single-TU genes are not more silenceable; dnaG is a genuine
+  special case -- the only one of its operon with no promoter of its own.
+conclusion: 'Largely a refutation, including of my own framing, and the study is more useful for
+  it.
 
   H1 is refuted: genes reduced from several transcription units to one are silenced at 0.0167 against
-  0.0175 for genes retaining several -- a relative risk of 0.95 where the design required 3x. Losing alternative
-  promoters does not make a gene silenceable, and dnaG''s exposure does not generalise. Only 4 of 237
-  repressed genes are silenced at all.
+  0.0175 for genes retaining several -- a relative risk of 0.95 where the design required 3x. Losing
+  alternative promoters does not make a gene silenceable, and dnaG''s exposure does not generalise.
+  Only 4 of 237 repressed genes are silenced at all.
 
-  The premise axis also fired, correctly, against me. There are ZERO orphaned genes: every one of the
-  4538 cistrons has at least one model TU. My scoping figure of 179 came from comparing source TU ids
-  against model TU ids while missing the 271 TUs the model carries that the source file does not, and
-  71 of 104 ''orphans'' were visibly transcribing. The alarm I raised about 20.2% coverage loss was unfounded.
+  The premise axis also fired, correctly, against me. There are ZERO orphaned genes: every one of
+  the 4538 cistrons has at least one model TU. My scoping figure of 179 came from comparing source
+  TU ids against model TU ids while missing the 271 TUs the model carries that the source file does
+  not, and 71 of 104 ''orphans'' were visibly transcribing. The alarm I raised about 20.2% coverage
+  loss was unfounded.
 
-  What survives is the fact that matters: dnaG has NO dedicated promoter in the source data -- all 3 of
-  its TUs also carry rpoD -- while rpsU keeps TU00472 with a LexA delta of exactly 0.0 and rpoD has 4
-  dedicated source TUs. So dnaG''s silencing is a CONJUNCTION of two unusual things, a gene with no promoter
-  of its own and an operon TU that landed on ParCa''s constraint boundary, not a systematic structural
-  failure. That decides the fix: restoring omitted TUs would not help dnaG, because there is no dnaG-only
-  TU to restore.
+  What survives is the fact that matters: dnaG has NO dedicated promoter in the source data -- all
+  3 of its TUs also carry rpoD -- while rpsU keeps TU00472 with a LexA delta of exactly 0.0 and rpoD
+  has 4 dedicated source TUs. So dnaG''s silencing is a CONJUNCTION of two unusual things, a gene
+  with no promoter of its own and an operon TU that landed on ParCa''s constraint boundary, not a
+  systematic structural failure. That decides the fix: restoring omitted TUs would not help dnaG,
+  because there is no dnaG-only TU to restore.
 
 
-  CORRECTED after review: the claim that restoring TUs would not help dnaG stands, but my reason for it
-  was wrong. dnaG does not need a dnaG-only TU, only an unrepressed dnaG-bearing one. The real barrier
-  is that rna_id_to_regulating_tfs assigns TFs to TUs by CISTRON CONTENT -- both rpoD-bearing model TUs
-  are LexA-regulated, while TU00472 at the same start coordinate escapes solely by excluding rpoD -- so
-  any restored dnaG-bearing TU would inherit LexA, all three containing rpoD. The fix is therefore promoter-specific
-  regulation, not TU restoration: the three dnaG-bearing TUs have three distinct 5'' ends, and an operator
-  blocking one promoter should not silence transcripts initiated from the others.'
+  CORRECTED after review: the claim that restoring TUs would not help dnaG stands, but my reason
+  for it was wrong. dnaG does not need a dnaG-only TU, only an unrepressed dnaG-bearing one. The
+  real barrier is that rna_id_to_regulating_tfs assigns TFs to TUs by CISTRON CONTENT -- both rpoD-bearing
+  model TUs are LexA-regulated, while TU00472 at the same start coordinate escapes solely by excluding
+  rpoD -- so any restored dnaG-bearing TU would inherit LexA, all three containing rpoD. The fix
+  is therefore promoter-specific regulation, not TU restoration: the three dnaG-bearing TUs have
+  three distinct 5'' ends, and an operator blocking one promoter should not silence transcripts initiated
+  from the others.'
 confidence: Refuted
 runs:
 - name: tu-coverage-loss__static-plus-reuse
@@ -342,9 +370,10 @@ runs:
   started_at: '2026-09-04T12:00:00Z'
   started_at_iso: '2026-09-04T12:00:00Z'
   note: NO NEW SIMULATION. Coverage from transcription_units.tsv, the sim cache and the model's cistron_tu_mapping_matrix;
-    silencing from dnag-promoter-availability's 6-seed sweep via actual_rna_synth_prob_per_cistron. Axis
-    2 was first computed on the WRONG group -- all single-TU genes rather than genes REDUCED to one --
-    and recomputed as pre-registered before recording; both give the same verdict (0.938 and 0.950).
+    silencing from dnag-promoter-availability's 6-seed sweep via actual_rna_synth_prob_per_cistron.
+    Axis 2 was first computed on the WRONG group -- all single-TU genes rather than genes REDUCED
+    to one -- and recomputed as pre-registered before recording; both give the same verdict (0.938
+    and 0.950).
   outcomes:
     orphaned-genes-are-transcriptionally-dead: &id001
       result: FAIL
@@ -352,13 +381,14 @@ runs:
       evaluated_by: agent
       operator: derived/band [0.9, 1.0]
       gate_class: acceptance_criterion
-      detail: The premise was FALSE and this axis is what caught it. Measured on the model's own cistron_tu_mapping_matrix,
-        EVERY one of the 4538 cistrons has at least one model TU (min 1, max 6). There are ZERO orphaned
-        genes. My scoping figure of '179 genes with no TU' compared source TU ids against model TU ids
-        without noticing that the model carries 271 TUs ABSENT from transcription_units.tsv -- auto-generated
-        single-cistron units named like EG10016_RNA. A gene with no SOURCE TU can therefore still sit
-        in a model TU, and 71 of the 104 resolvable 'orphans' were visibly transcribing. The axis was
-        written as a premise check for exactly this failure mode and it fired.
+      detail: The premise was FALSE and this axis is what caught it. Measured on the model's own
+        cistron_tu_mapping_matrix, EVERY one of the 4538 cistrons has at least one model TU (min
+        1, max 6). There are ZERO orphaned genes. My scoping figure of '179 genes with no TU' compared
+        source TU ids against model TU ids without noticing that the model carries 271 TUs ABSENT
+        from transcription_units.tsv -- auto-generated single-cistron units named like EG10016_RNA.
+        A gene with no SOURCE TU can therefore still sit in a model TU, and 71 of the 104 resolvable
+        'orphans' were visibly transcribing. The axis was written as a premise check for exactly
+        this failure mode and it fired.
     single-tu-genes-are-more-exposed-to-repression: &id002
       result: FAIL
       measured_value: 0.95
@@ -366,41 +396,42 @@ runs:
       operator: derived/band [3.0, 9.0]
       gate_class: acceptance_criterion
       detail: 'REFUTES H1 decisively. Measured as pre-registered -- genes REDUCED from several source
-        TUs to one surviving TU, against genes retaining two or more, both restricted to those whose every
-        surviving TU carries a repressing TF. Reduced: 3 of 180 silenced (0.0167). Retained: 1 of 57 (0.0175).
-        Relative risk 0.95, i.e. no difference whatever, against a required 3x. Losing alternative promoters
-        does NOT make a gene generally more silenceable, and dnaG''s exposure does not generalise.'
+        TUs to one surviving TU, against genes retaining two or more, both restricted to those whose
+        every surviving TU carries a repressing TF. Reduced: 3 of 180 silenced (0.0167). Retained:
+        1 of 57 (0.0175). Relative risk 0.95, i.e. no difference whatever, against a required 3x.
+        Losing alternative promoters does NOT make a gene generally more silenceable, and dnaG''s
+        exposure does not generalise.'
     dnag-has-no-alternative-promoter-in-the-source-data: &id003
       result: PASS
       measured_value: 1.0
       evaluated_by: agent
       operator: derived/band [0.99, 1.0]
       gate_class: acceptance_criterion
-      detail: 'All 3 source TUs containing dnaG also contain rpoD -- fraction 1.0000. dnaG has NO dedicated
-        promoter anywhere, not even before model selection, so it is intrinsically an operon passenger.
-        This is the one structural fact about dnaG that survives the study, and it decides which fix applies:
-        restoring omitted TUs would not help dnaG, because there is no dnaG-only TU to restore. rpsU by
-        contrast keeps TU00472 with a LexA delta of exactly 0.0.'
+      detail: 'All 3 source TUs containing dnaG also contain rpoD -- fraction 1.0000. dnaG has NO
+        dedicated promoter anywhere, not even before model selection, so it is intrinsically an operon
+        passenger. This is the one structural fact about dnaG that survives the study, and it decides
+        which fix applies: restoring omitted TUs would not help dnaG, because there is no dnaG-only
+        TU to restore. rpsU by contrast keeps TU00472 with a LexA delta of exactly 0.0.'
     essential-genes-are-not-preferentially-orphaned: &id004
       result: PASS
       measured_value: 0.8608
       evaluated_by: agent
       operator: derived/band [0.67, 1.5]
       gate_class: acceptance_criterion
-      detail: The control holds and is reassuring. Genes in the model's own essential classes (192 cistrons
-        across idx_rprotein / idx_rnap / idx_rRNA / idx_tRNA) are reduced to a single model TU at a rate
-        of 0.729 against 0.847 for all genes -- a ratio of 0.861, i.e. slightly LESS exposed than average,
-        not more. The rpsU-dnaG-rpoD locus losing 5 of its 8 source TUs is not representative of essential
-        machinery generally.
+      detail: The control holds and is reassuring. Genes in the model's own essential classes (192
+        cistrons across idx_rprotein / idx_rnap / idx_rRNA / idx_tRNA) are reduced to a single model
+        TU at a rate of 0.729 against 0.847 for all genes -- a ratio of 0.861, i.e. slightly LESS
+        exposed than average, not more. The rpsU-dnaG-rpoD locus losing 5 of its 8 source TUs is
+        not representative of essential machinery generally.
     tu-loss-fraction: &id005
       result: PASS
       measured_value: 0.2018
       evaluated_by: agent
       operator: derived/<= 0.303
       gate_class: regression_pin
-      detail: '760 of 3766 source TUs absent, 0.2018, matching the scoping measurement. NOTE the pin is
-        now much less alarming than when recorded: the model also ADDS 271 TUs of its own, and no gene
-        ends up without one. A source-side absence fraction is not a coverage gap.'
+      detail: '760 of 3766 source TUs absent, 0.2018, matching the scoping measurement. NOTE the
+        pin is now much less alarming than when recorded: the model also ADDS 271 TUs of its own,
+        and no gene ends up without one. A source-side absence fraction is not a coverage gap.'
   computed_outcomes:
     orphaned-genes-are-transcriptionally-dead: *id001
     single-tu-genes-are-more-exposed-to-repression: *id002
@@ -408,18 +439,20 @@ runs:
     essential-genes-are-not-preferentially-orphaned: *id004
     tu-loss-fraction: *id005
 findings:
-- summary: 'CORRECTION: there are no orphaned genes. My ''179 genes with no TU'' was an accounting error.'
+- summary: 'CORRECTION: there are no orphaned genes. My ''179 genes with no TU'' was an accounting
+    error.'
   status: contradicts
   evidence:
     from_test: orphaned-genes-are-transcriptionally-dead
     observed: 0
     units: genes with zero model TUs
     divergence_factor: 1.0
-  explanation: Every one of the 4538 cistrons has at least one model TU (min 1, max 6). The '179 orphans'
-    I reported while scoping came from comparing source TU ids against model TU ids without accounting
-    for the 271 TUs the model carries that are ABSENT from transcription_units.tsv -- auto-generated single-cistron
-    units. 71 of the 104 resolvable 'orphans' were plainly transcribing, which is what exposed it. The
-    '20.2% of TUs absent' figure is real but not a coverage gap, because the model adds its own.
+  explanation: Every one of the 4538 cistrons has at least one model TU (min 1, max 6). The '179
+    orphans' I reported while scoping came from comparing source TU ids against model TU ids without
+    accounting for the 271 TUs the model carries that are ABSENT from transcription_units.tsv --
+    auto-generated single-cistron units. 71 of the 104 resolvable 'orphans' were plainly transcribing,
+    which is what exposed it. The '20.2% of TUs absent' figure is real but not a coverage gap, because
+    the model adds its own.
   expected:
     range:
     - 0.9
@@ -427,17 +460,19 @@ findings:
   provenance:
     run_ids:
     - tu-coverage-loss__static-plus-reuse
-- summary: dnaG's exposure does NOT generalise. Losing alternative promoters does not make a gene silenceable.
+- summary: dnaG's exposure does NOT generalise. Losing alternative promoters does not make a gene
+    silenceable.
   status: contradicts
   evidence:
     from_test: single-tu-genes-are-more-exposed-to-repression
     observed: 0.95
     units: relative risk
     divergence_factor: 0.68333333
-  explanation: 'Among genes whose every surviving TU carries a repressing TF, those reduced from several
-    source TUs to one are silenced at 0.0167 and those retaining several at 0.0175 -- a relative risk
-    of 0.95, no difference at all, against a pre-registered 3x. H1 is refuted and H2 supported: dnaG is
-    a special case, not an instance of a class. Only 4 of 237 repressed genes are silenced at all.'
+  explanation: 'Among genes whose every surviving TU carries a repressing TF, those reduced from
+    several source TUs to one are silenced at 0.0167 and those retaining several at 0.0175 -- a relative
+    risk of 0.95, no difference at all, against a pre-registered 3x. H1 is refuted and H2 supported:
+    dnaG is a special case, not an instance of a class. Only 4 of 237 repressed genes are silenced
+    at all.'
   expected:
     range:
     - 3.0
@@ -445,19 +480,19 @@ findings:
   provenance:
     run_ids:
     - tu-coverage-loss__static-plus-reuse
-- summary: 'dnaG is genuinely unique: it has no dedicated promoter in the source data, unlike rpsU or
-    rpoD.'
+- summary: 'dnaG is genuinely unique: it has no dedicated promoter in the source data, unlike rpsU
+    or rpoD.'
   status: confirms
   evidence:
     from_test: dnag-has-no-alternative-promoter-in-the-source-data
     observed: 1.0
     units: fraction of dnaG TUs also carrying rpoD
     divergence_factor: 0.0
-  explanation: All 3 source TUs containing dnaG also contain rpoD. rpsU keeps TU00472, whose LexA delta
-    is exactly 0.0 and which is why the ribosomal protein is untouched; rpoD has 4 dedicated source TUs.
-    dnaG has none. So its silencing is the conjunction of two unusual things -- a gene with no promoter
-    of its own, and an operon TU that happened to land on ParCa's probability-validity boundary -- rather
-    than an instance of a systematic structural problem.
+  explanation: All 3 source TUs containing dnaG also contain rpoD. rpsU keeps TU00472, whose LexA
+    delta is exactly 0.0 and which is why the ribosomal protein is untouched; rpoD has 4 dedicated
+    source TUs. dnaG has none. So its silencing is the conjunction of two unusual things -- a gene
+    with no promoter of its own, and an operon TU that happened to land on ParCa's probability-validity
+    boundary -- rather than an instance of a systematic structural problem.
   expected:
     range:
     - 0.99
@@ -472,10 +507,10 @@ findings:
     observed: 0.8608
     units: essential/all single-TU rate
     divergence_factor: 0.0
-  explanation: 192 essential cistrons are reduced to a single model TU at 0.729 against 0.847 for all
-    genes -- slightly less exposed, not more. The rpsU-dnaG-rpoD locus losing 5 of its 8 source TUs is
-    not representative. Combined with there being no orphans at all, the model's TU coverage is not the
-    fragility I suspected when scoping.
+  explanation: 192 essential cistrons are reduced to a single model TU at 0.729 against 0.847 for
+    all genes -- slightly less exposed, not more. The rpsU-dnaG-rpoD locus losing 5 of its 8 source
+    TUs is not representative. Combined with there being no orphans at all, the model's TU coverage
+    is not the fragility I suspected when scoping.
   expected:
     range:
     - 0.67
@@ -483,8 +518,8 @@ findings:
   provenance:
     run_ids:
     - tu-coverage-loss__static-plus-reuse
-- summary: 'CORRECTED ROOT CAUSE: regulation is assigned by cistron content, not promoter position, so
-    no dnaG-bearing TU can escape LexA.'
+- summary: 'CORRECTED ROOT CAUSE: regulation is assigned by cistron content, not promoter position,
+    so no dnaG-bearing TU can escape LexA.'
   status: novel
   evidence:
     from_run: tu-coverage-loss__static-plus-reuse
@@ -492,36 +527,38 @@ findings:
     units: of 2 rpoD-bearing model TUs LexA-regulated
   explanation: 'Added after the user challenged this study''s conclusion, and it replaces my reasoning
     rather than refining it. I had written that restoring the omitted TUs would not rescue dnaG ''because
-    there is no dnaG-only TU to restore''. That was the wrong reason: dnaG does not need a dnaG-ONLY TU,
-    it needs any dnaG-bearing TU that is not repressed.
+    there is no dnaG-only TU to restore''. That was the wrong reason: dnaG does not need a dnaG-ONLY
+    TU, it needs any dnaG-bearing TU that is not repressed.
 
-    The actual barrier is that rna_id_to_regulating_tfs assigns a TF to a TU by CISTRON CONTENT. Both
-    rpoD-bearing model TUs carry PC00010; TU00472 starts at the SAME coordinate as TU00352 (3210646) and
-    is unregulated purely because it excludes rpoD. Since all three dnaG-bearing source TUs also contain
-    rpoD, restoring TU00434 or TU00435 would give them the LexA delta too. No dnaG-bearing TU can escape
-    while the rule is cistron-content-based.
+    The actual barrier is that rna_id_to_regulating_tfs assigns a TF to a TU by CISTRON CONTENT.
+    Both rpoD-bearing model TUs carry PC00010; TU00472 starts at the SAME coordinate as TU00352 (3210646)
+    and is unregulated purely because it excludes rpoD. Since all three dnaG-bearing source TUs also
+    contain rpoD, restoring TU00434 or TU00435 would give them the LexA delta too. No dnaG-bearing
+    TU can escape while the rule is cistron-content-based.
 
-    That is the promoter-specificity defect: a repressor binding one operator should silence only transcripts
-    initiated from the promoter it blocks, not every transcript containing a downstream gene. The three
-    dnaG-bearing TUs have three different 5'' ends (3210646 / 3210712 / 3210735) -- three distinct promoters
-    -- and the model cannot represent an operator that blocks one of them.'
+    That is the promoter-specificity defect: a repressor binding one operator should silence only
+    transcripts initiated from the promoter it blocks, not every transcript containing a downstream
+    gene. The three dnaG-bearing TUs have three different 5'' ends (3210646 / 3210712 / 3210735)
+    -- three distinct promoters -- and the model cannot represent an operator that blocks one of
+    them.'
 biological_summary: 'The question this study set out to answer was whether the model routinely strips
-  genes of their alternative promoters, leaving them at the mercy of a single regulator. The answer is
-  no. Every gene in the model can be transcribed from at least one transcription unit, genes that lost
-  alternatives are no more likely to fall silent than genes that kept them, and essential machinery is
-  if anything slightly better covered than average.
+  genes of their alternative promoters, leaving them at the mercy of a single regulator. The answer
+  is no. Every gene in the model can be transcribed from at least one transcription unit, genes that
+  lost alternatives are no more likely to fall silent than genes that kept them, and essential machinery
+  is if anything slightly better covered than average.
 
 
-  So dnaG is not a symptom of a general fragility. It is unusual in a specific way: of the three genes
-  in its operon, it is the only one with no transcription unit of its own anywhere in the underlying data.
-  rpsU has a dedicated unit that LexA does not touch at all, which is why the ribosomal protein sails
-  through; rpoD has four. dnaG has none, so whatever happens to the operon happens to the primase.
+  So dnaG is not a symptom of a general fragility. It is unusual in a specific way: of the three
+  genes in its operon, it is the only one with no transcription unit of its own anywhere in the underlying
+  data. rpsU has a dedicated unit that LexA does not touch at all, which is why the ribosomal protein
+  sails through; rpoD has four. dnaG has none, so whatever happens to the operon happens to the primase.
 
 
-  That makes its silencing a coincidence of two things rather than one: a gene that depends entirely on
-  a shared transcript, and a fitting step that happened to drive that particular transcript to zero. Neither
-  alone would have stopped the cell. It also settles a practical question -- putting the omitted transcription
-  units back would not rescue dnaG, because there is no dnaG-only unit to put back.'
+  That makes its silencing a coincidence of two things rather than one: a gene that depends entirely
+  on a shared transcript, and a fitting step that happened to drive that particular transcript to
+  zero. Neither alone would have stopped the cell. It also settles a practical question -- putting
+  the omitted transcription units back would not rescue dnaG, because there is no dnaG-only unit
+  to put back.'
 conclusion_verdicts:
 - claim: 179 genes are left with no transcription unit
   verdict: refuted
@@ -538,17 +575,18 @@ conclusion_verdicts:
 discovery_implications:
 - THE FIX IS PROMOTER-SPECIFIC REGULATION. rna_id_to_regulating_tfs assigns a TF to every TU containing
   a regulated cistron, so a repressor silences transcripts initiated from promoters it cannot physically
-  block. Restoring omitted TUs cannot help while that rule holds, because all three dnaG-bearing TUs contain
-  rpoD.
-- The three dnaG-bearing TUs have three distinct 5' ends (3210646 / 3210712 / 3210735) -- the rpsUp promoter
-  set. Representing an operator as blocking ONE of them is the minimal change that would let dnaG escape.
-- The model's TU coverage is not a systemic fragility, which removes a whole line of suspicion this investigation
-  was about to pursue.
-- dnaG's silencing is a conjunction of two unusual properties, so other genes at risk would need BOTH
-  -- no dedicated promoter AND an operon TU at the constraint boundary. That is a small, enumerable set
-  worth listing.
-- 'A source-side TU absence fraction is not a coverage gap: the model adds 271 TUs of its own. Any future
-  audit of coverage must use the model''s cistron_tu_mapping_matrix, not a source-file diff.'
+  block. Restoring omitted TUs cannot help while that rule holds, because all three dnaG-bearing
+  TUs contain rpoD.
+- The three dnaG-bearing TUs have three distinct 5' ends (3210646 / 3210712 / 3210735) -- the rpsUp
+  promoter set. Representing an operator as blocking ONE of them is the minimal change that would
+  let dnaG escape.
+- The model's TU coverage is not a systemic fragility, which removes a whole line of suspicion this
+  investigation was about to pursue.
+- dnaG's silencing is a conjunction of two unusual properties, so other genes at risk would need
+  BOTH -- no dedicated promoter AND an operon TU at the constraint boundary. That is a small, enumerable
+  set worth listing.
+- 'A source-side TU absence fraction is not a coverage gap: the model adds 271 TUs of its own. Any
+  future audit of coverage must use the model''s cistron_tu_mapping_matrix, not a source-file diff.'
 readouts:
 - name: genes_with_zero_model_TUs
   units: count
@@ -581,8 +619,8 @@ conclusion_logic:
     diagnose:
     - question: Why did tu-coverage-loss's primary criteria fail, and what does that leave open?
       seeded_study: tu-dedup-promoter-collapse
-      note: Seeded from this study's declared successor (parent_studies relation leads-to/refines), not
-        invented to clear the flag.
+      note: Seeded from this study's declared successor (parent_studies relation leads-to/refines),
+        not invented to clear the flag.
 pipeline_gate:
   prerequisites:
   - study: deltav-conversion-diagnosis
@@ -595,3 +633,15 @@ pipeline_gate:
     outputs_used:
     - '6-seed sweep: actual_rna_synth_prob_per_cistron'
     note: Reads per-cistron transcription from the shared sweep.
+corrections:
+- date: '2026-09-07'
+  field: causal account of LexA at the rpsU-dnaG-rpoD operon
+  status: flagged, text preserved
+  summary: dnaG is a DIRECT LexA target (fold_changes_nca.tsv, log2FC -1.71), not an rpoD passenger.
+    The real defect is cistron-level regulation unioned to TUs with only one dnaG-bearing TU, making
+    TU-specific differential regulation structurally impossible.
+  raised_by: user
+  verified_against:
+  - fold_changes_nca.tsv
+  - tf_to_fold_change
+  - target_tf

@@ -481,6 +481,28 @@ controls:
   observed: ''
   result: PENDING
 limitations:
+- "CORRECTION 2026-09-07 — this study's account of WHY LexA acts on the rpsU-dnaG-rpoD operon is\
+  \ wrong, and the wrongness is inherited, not original to it.\nStatements in this file to the effect\
+  \ that 'LexA regulates rpoD and dnaG is silenced as a passenger', or that a dnaG-bearing TU acquires\
+  \ LexA because it contains rpoD, do not match the model. They came from checking only fold_changes.tsv,\
+  \ which carries lexA->rpoD at log2FC -0.65 and no dnaG entry. There is a SECOND source, fold_changes_nca.tsv:\n\
+  \    lexA  dnaG  -1.71        lexA  rpsU  -1.89\nand it is the one in force. tf_to_fold_change['PC00010']\
+  \ holds EG10239_RNA (dnaG) at 0.30566, which is 2^-1.71 exactly, plus EG10896_RNA (rpsU) — and\
+  \ does NOT contain EG10920_RNA (rpoD) at all. target_tf likewise lists PC00010 for dnaG and rpsU,\
+  \ not rpoD. LexA is a DIRECT, cistron-level regulator of dnaG in this model. dnaG is not a passenger.\n\
+  The real structural defect is different and stronger: regulation is assigned per CISTRON and then\
+  \ unioned onto every TU containing that cistron (relation.py::_build_RNA_to_tf_mapping). dnaG's\
+  \ LexA edge therefore lands on whatever TU carries dnaG, and after the gene-set dedup there is\
+  \ exactly ONE such TU. The model cannot express 'LexA represses dnaG through this promoter but\
+  \ not that one' — TU-specific differential regulation is structurally impossible, not merely mis-assigned.\
+  \ It also means restoring the deduplicated promoters could not have separated them: all three TUs\
+  \ carry an identical cistron set, so cistron-level regulation attaches LexA to all three.\nWHAT\
+  \ THIS DOES AND DOES NOT INVALIDATE: measurements of the encoded delta, occupancy, the deficit\
+  \ and the lineage outcomes are unaffected — they measured the model as built. What is wrong is\
+  \ the causal STORY told about them. Any figure computed against rpoD's -0.65 as dnaG's input baseline\
+  \ is wrong and should be recomputed against -1.71; in this investigation that includes the fold-change-to-delta\
+  \ distortion, which is 7.08e+06-fold, not 1.48e+07.\nLeft in place rather than rewritten: the original\
+  \ text is preserved above so the record shows what was believed when the work was done."
 - THE COMPARISON IS ACROSS CACHES. Restoring TUs forces a full ParCa refit, so the restored arm cannot
   share fingerprint ea05ac9b23b1d843 with the control. Every prior study here compared arms within
   one cache; this one cannot, and the control's stall must be re-verified on matched seeds rather
@@ -852,3 +874,15 @@ discovery_implications:
       and the runtime is not responsible -- delivered probability matches target to three decimal
       places. That points at the ppGpp-adjusted basal vector as the carrier. Predicts the residual
       is in the target rather than the runtime, and that disabling ppGpp removes it.
+corrections:
+- date: '2026-09-07'
+  field: causal account of LexA at the rpsU-dnaG-rpoD operon
+  status: flagged, text preserved
+  summary: dnaG is a DIRECT LexA target (fold_changes_nca.tsv, log2FC -1.71), not an rpoD passenger.
+    The real defect is cistron-level regulation unioned to TUs with only one dnaG-bearing TU, making
+    TU-specific differential regulation structurally impossible.
+  raised_by: user
+  verified_against:
+  - fold_changes_nca.tsv
+  - tf_to_fold_change
+  - target_tf

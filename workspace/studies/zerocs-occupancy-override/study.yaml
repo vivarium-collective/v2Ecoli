@@ -12,11 +12,12 @@ simulation_status: not_run
 evaluation_status: evaluated
 gate_status: not_applicable
 expert_review_status: not_requested
-question: 'The amended foldchange-to-delta-fidelity showed ParCa''s encoding is nearly faithful -- lexA->rpoD
-  is 1.88x off, not 1.5e+07x -- and that dnaG''s silencing is a RUNTIME occupancy effect: a delta of r
-  = -0.99999996 leaves a survivable 0.34 of expression at the fitted occupancy of 0.6615 but 4.3e-08 at
-  1.0. tf_binding.py:393 sets pPromoterBound = 1.0 unconditionally for TFs typed 0CS, and LexA is 0CS
-  while ParCa fitted it at 0.5192/0.6615. Does honouring the fitted occupancy rescue the lineage?'
+question: 'The amended foldchange-to-delta-fidelity showed ParCa''s encoding is nearly faithful --
+  lexA->rpoD is 1.88x off, not 1.5e+07x -- and that dnaG''s silencing is a RUNTIME occupancy effect:
+  a delta of r = -0.99999996 leaves a survivable 0.34 of expression at the fitted occupancy of 0.6615
+  but 4.3e-08 at 1.0. tf_binding.py:393 sets pPromoterBound = 1.0 unconditionally for TFs typed 0CS,
+  and LexA is 0CS while ParCa fitted it at 0.5192/0.6615. Does honouring the fitted occupancy rescue
+  the lineage?'
 units_and_time:
   tick: 1 s of simulated time; generations delimited by division events.
   quantities:
@@ -32,19 +33,19 @@ behavior_tests:
 
 
     Confirms the code path executes as read. tf_binding.py:393 sets pPromoterBound = 1.0 unconditionally
-    for TFs typed 0CS, bypassing the fitted p_promoter_bound_tf. LexA measured 0.988 rising to 1.000 in
-    dnag-promoter-availability, but that is one TF; this axis asks whether the override is visible generally.
-    Checked FIRST because every axis below assumes it.
+    for TFs typed 0CS, bypassing the fitted p_promoter_bound_tf. LexA measured 0.988 rising to 1.000
+    in dnag-promoter-availability, but that is one TF; this axis asks whether the override is visible
+    generally. Checked FIRST because every axis below assumes it.
 
 
-    Threshold provenance: theory. 0.95 allows for the stochastic rounding and the available-TF cap that
-    can hold occupancy just under 1 without contradicting a hard-coded probability of 1.'
+    Threshold provenance: theory. 0.95 allows for the stochastic rounding and the available-TF cap
+    that can hold occupancy just under 1 without contradicting a hard-coded probability of 1.'
   measure:
     kind: derived
     path: median measured occupancy across 0CS TF promoter sites in tf_binding, the hard-coded pPromoterBound
       override
-    detail: median over observable 0CS TFs of the fraction of timesteps their promoter coordinates are
-      bound.
+    detail: median over observable 0CS TFs of the fraction of timesteps their promoter coordinates
+      are bound.
   pass_if:
     low: 0.95
     high: 1.0
@@ -60,10 +61,10 @@ behavior_tests:
     basal value lies within [0.67, 1.5].
 
 
-    THE DISCRIMINATING CONTROL, and the axis that decides whether this is a 0CS-specific defect or a general
-    fit-versus-runtime divergence. 12 of 23 TFs are 1CS and 4 are 2CS; they call p_promoter_bound_tf,
-    the same fitted function ParCa used, so they SHOULD agree. If they diverge too, the problem is not
-    the 0CS branch and this study is aimed at the wrong line.
+    THE DISCRIMINATING CONTROL, and the axis that decides whether this is a 0CS-specific defect or
+    a general fit-versus-runtime divergence. 12 of 23 TFs are 1CS and 4 are 2CS; they call p_promoter_bound_tf,
+    the same fitted function ParCa used, so they SHOULD agree. If they diverge too, the problem is
+    not the 0CS branch and this study is aimed at the wrong line.
 
 
     Threshold provenance: theory. The standing agreement band.'
@@ -77,39 +78,40 @@ behavior_tests:
     high: 1.5
     provenance:
       kind: theory
-      note: Two-sided; these TFs should agree in both directions if the fitted function is being honoured.
+      note: Two-sided; these TFs should agree in both directions if the fitted function is being
+        honoured.
   status: pending
   control: negative
 - name: restoring-the-fitted-occupancy-rescues-the-lineage
   classification: primary
   gate_class: acceptance_criterion
   question: Does honouring the fitted occupancy for LexA let the cell live?
-  description: 'With LexA''s binding probability set to its fitted pPromoterBound instead of the hard-coded
-    1.0, lineages complete at least 8 generations, against the 4-5 they currently reach.
+  description: 'With LexA''s binding probability set to its fitted pPromoterBound instead of the
+    hard-coded 1.0, lineages complete at least 8 generations, against the 4-5 they currently reach.
 
 
     THE PAYOFF AXIS, and the first time this investigation tests a fix rather than describing a defect.
-    Everything so far is diagnosis. The arithmetic says a delta of r = -0.99999996 yields a retained fraction
-    of 0.34 at the fitted active occupancy of 0.6615 and 4.3e-08 at 1.0, so honouring the fit should leave
-    dnaG with roughly a third of its expression -- survivable, on the evidence of replisome-gate-sufficiency''s
-    DnaG-ablation arm completing 12 of 12. If the lineage still stalls, the occupancy override is not
-    the lethal step and the diagnosis is incomplete.
+    Everything so far is diagnosis. The arithmetic says a delta of r = -0.99999996 yields a retained
+    fraction of 0.34 at the fitted active occupancy of 0.6615 and 4.3e-08 at 1.0, so honouring the
+    fit should leave dnaG with roughly a third of its expression -- survivable, on the evidence of
+    replisome-gate-sufficiency''s DnaG-ablation arm completing 12 of 12. If the lineage still stalls,
+    the occupancy override is not the lethal step and the diagnosis is incomplete.
 
 
-    Threshold provenance: theory. 8 generations is comfortably beyond the 4-5 stall and short of the full
-    12, so a partial rescue still counts as one.'
+    Threshold provenance: theory. 8 generations is comfortably beyond the 4-5 stall and short of
+    the full 12, so a partial rescue still counts as one.'
   measure:
     kind: derived
-    path: minimum generations divided with lexA at its fitted pPromoterBound, rescuing dnaG on the rpoD
-      operon
+    path: minimum generations divided with lexA at its fitted pPromoterBound, rescuing dnaG on the
+      rpoD operon
     detail: minimum divided-generation count across seeds in the corrected arm.
   pass_if:
     low: 8
     high: 12
     provenance:
       kind: theory
-      note: Spans 1.5x. Anchored at 8 -- clearly past the 4-5 stall -- rather than demanding all 12, so
-        a partial rescue is still recognised as one.
+      note: Spans 1.5x. Anchored at 8 -- clearly past the 4-5 stall -- rather than demanding all
+        12, so a partial rescue is still recognised as one.
   status: pending
 - name: rescue-is-not-a-global-growth-artefact
   classification: primary
@@ -118,9 +120,10 @@ behavior_tests:
   description: 'In the corrected arm, generation time stays within 50% of the paired control''s.
 
 
-    The negative control, carried over from ppgpp-off-rescue where the equivalent axis fired and correctly
-    voided a rescue claim. Changing a TF''s occupancy alters expression across its whole regulon -- LexA
-    has 45 targets -- so a lineage that survives because everything shifted is not evidence about dnaG.
+    The negative control, carried over from ppgpp-off-rescue where the equivalent axis fired and
+    correctly voided a rescue claim. Changing a TF''s occupancy alters expression across its whole
+    regulon -- LexA has 45 targets -- so a lineage that survives because everything shifted is not
+    evidence about dnaG.
 
 
     Threshold provenance: theory. The same 50% band that ppgpp-off-rescue used, so the two are comparable.'
@@ -134,25 +137,26 @@ behavior_tests:
     high: 1.5
     provenance:
       kind: theory
-      note: Two-sided at roughly 50%, matching ppgpp-off-rescue's control so the studies read on one scale.
+      note: Two-sided at roughly 50%, matching ppgpp-off-rescue's control so the studies read on
+        one scale.
   status: pending
   control: negative
 - name: two-zero-cs-tfs-were-fitted-below-one
   classification: supporting
   gate_class: regression_pin
   question: How many 0CS TFs does the override actually contradict?
-  description: 'Exactly 2 of the 7 0CS TFs carry a fitted pPromoterBound below 1: PC00010 (LexA, 0.5192
-    basal / 0.6615 active) and PD00519 (0.3600). The other five are fitted at 1.0 and the override is
-    harmless for them.
+  description: 'Exactly 2 of the 7 0CS TFs carry a fitted pPromoterBound below 1: PC00010 (LexA,
+    0.5192 basal / 0.6615 active) and PD00519 (0.3600). The other five are fitted at 1.0 and the
+    override is harmless for them.
 
 
     POST-HOC: measured while scoping. A pin recording the blast radius, and a reminder that the defect
-    is not ''0CS handling is broken'' but ''two TFs were fitted at partial occupancy and the runtime ignores
-    it''.'
+    is not ''0CS handling is broken'' but ''two TFs were fitted at partial occupancy and the runtime
+    ignores it''.'
   measure:
     kind: derived
-    path: count of 0CS TFs whose fitted pPromoterBound is below 1, including lexA which silences dnaG
-      via rpoD
+    path: count of 0CS TFs whose fitted pPromoterBound is below 1, including lexA which silences
+      dnaG via rpoD
     detail: number of the 7 0CS TFs with fitted basal occupancy < 1.
   pass_if:
     op: <=
@@ -177,21 +181,22 @@ preregistered:
       high: 1.5
       provenance:
         kind: theory
-        note: Two-sided; these TFs should agree in both directions if the fitted function is being honoured.
+        note: Two-sided; these TFs should agree in both directions if the fitted function is being
+          honoured.
     restoring-the-fitted-occupancy-rescues-the-lineage:
       low: 8
       high: 12
       provenance:
         kind: theory
-        note: Spans 1.5x. Anchored at 8 -- clearly past the 4-5 stall -- rather than demanding all 12,
-          so a partial rescue is still recognised as one.
+        note: Spans 1.5x. Anchored at 8 -- clearly past the 4-5 stall -- rather than demanding all
+          12, so a partial rescue is still recognised as one.
     rescue-is-not-a-global-growth-artefact:
       low: 0.67
       high: 1.5
       provenance:
         kind: theory
-        note: Two-sided at roughly 50%, matching ppgpp-off-rescue's control so the studies read on one
-          scale.
+        note: Two-sided at roughly 50%, matching ppgpp-off-rescue's control so the studies read on
+          one scale.
     two-zero-cs-tfs-were-fitted-below-one:
       op: <=
       value: 2
@@ -216,54 +221,54 @@ implementation_requirements:
     = 1.0`. The corrected arm needs that to consult the fitted occupancy instead, exposed as a process
     config key so both arms run from ONE cache and differ only at runtime -- the pattern replisome-gate-sufficiency
     and ppgpp-off-rescue both used. v2ecoli/processes/tf_binding.py is NOT in cache_version.INPUT_FILES,
-    so this does not disturb fingerprint ea05ac9b23b1d843; that must be VERIFIED, not assumed, and the
-    control arm must be shown bit-identical to the existing runs at fixed seed before the corrected arm
-    is believed.'
+    so this does not disturb fingerprint ea05ac9b23b1d843; that must be VERIFIED, not assumed, and
+    the control arm must be shown bit-identical to the existing runs at fixed seed before the corrected
+    arm is believed.'
 - id: req-2
   status: not_started
   blocking: true
   summary: Decide and record WHICH fitted occupancy the corrected arm uses, before running.
-  detail: 'pPromoterBound is per-condition: LexA is 0.5192 basal and 0.6615 active. The corrected arm
-    must state which it honours and why, in the record, before any run -- otherwise the choice can be
-    made after seeing which one rescues. Default proposal: the BASAL value, since these simulations run
-    the basal condition. Recording this because studies 13-15 leaked exactly this way.'
+  detail: 'pPromoterBound is per-condition: LexA is 0.5192 basal and 0.6615 active. The corrected
+    arm must state which it honours and why, in the record, before any run -- otherwise the choice
+    can be made after seeing which one rescues. Default proposal: the BASAL value, since these simulations
+    run the basal condition. Recording this because studies 13-15 leaked exactly this way.'
 - id: req-3
   status: not_started
   blocking: false
   summary: Pair occupancy measurement with pPromoterBound for the non-0CS control.
-  detail: Only TFs whose sites are resolvable in bound_TF_coordinates can be paired. The unpairable count
-    must be reported; if too few 1CS/2CS TFs are observable the control axis is underpowered and must
-    be declared so rather than quietly graded on two TFs.
+  detail: Only TFs whose sites are resolvable in bound_TF_coordinates can be paired. The unpairable
+    count must be reported; if too few 1CS/2CS TFs are observable the control axis is underpowered
+    and must be declared so rather than quietly graded on two TFs.
 alternative_hypotheses:
 - name: H1 the override is the lethal step
   discriminator: restoring-the-fitted-occupancy-rescues-the-lineage
-  statement: 'Honouring the fitted occupancy leaves dnaG ~0.34 of its expression instead of 4.3e-08, DnaG
-    accumulates, the replisome gate is satisfied and the lineage completes. Predicts the rescue axis PASSES
-    with generation time unchanged. Favoured: the arithmetic is explicit and the DnaG-ablation arm already
-    showed 12/12 completion once the gate stops waiting on DnaG.'
+  statement: 'Honouring the fitted occupancy leaves dnaG ~0.34 of its expression instead of 4.3e-08,
+    DnaG accumulates, the replisome gate is satisfied and the lineage completes. Predicts the rescue
+    axis PASSES with generation time unchanged. Favoured: the arithmetic is explicit and the DnaG-ablation
+    arm already showed 12/12 completion once the gate stops waiting on DnaG.'
 - name: H2 the override matters but is not sufficient
   discriminator: restoring-the-fitted-occupancy-rescues-the-lineage
-  statement: dnaG recovers but the lineage still stalls, meaning something else also limits it -- the
-    2.13x activator residual, or a second depleted subunit. Predicts the rescue axis FAILS while dnaG's
-    transcription measurably improves, which would be a partial result worth having.
+  statement: dnaG recovers but the lineage still stalls, meaning something else also limits it --
+    the 2.13x activator residual, or a second depleted subunit. Predicts the rescue axis FAILS while
+    dnaG's transcription measurably improves, which would be a partial result worth having.
 - name: H3 the rescue is a global artefact
   discriminator: rescue-is-not-a-global-growth-artefact
-  statement: LexA has 45 targets, so relaxing its occupancy shifts a whole regulon. A lineage that survives
-    because everything shifted says nothing about dnaG. This is exactly how ppgpp-off-rescue's apparent
-    rescue was voided, and the same control is carried over.
+  statement: LexA has 45 targets, so relaxing its occupancy shifts a whole regulon. A lineage that
+    survives because everything shifted says nothing about dnaG. This is exactly how ppgpp-off-rescue's
+    apparent rescue was voided, and the same control is carried over.
 - name: H4 the divergence is general, not 0CS-specific
   discriminator: non-zero-cs-tfs-track-their-fitted-occupancy
-  statement: 1CS and 2CS TFs also diverge from their fitted occupancies, meaning the 0CS branch is not
-    the defect and this study is aimed at the wrong two lines.
+  statement: 1CS and 2CS TFs also diverge from their fitted occupancies, meaning the 0CS branch is
+    not the defect and this study is aimed at the wrong two lines.
 falsifiability: 'The rescue axis is a genuine experiment with a stated prediction, not a description:
-  the arm either completes 8+ generations or it does not. The global-artefact control has already voided
-  one rescue claim in this investigation, so it is not a formality. And H4 can invalidate the study''s
-  target entirely by showing the divergence is not 0CS-specific.'
+  the arm either completes 8+ generations or it does not. The global-artefact control has already
+  voided one rescue claim in this investigation, so it is not a formality. And H4 can invalidate
+  the study''s target entirely by showing the divergence is not 0CS-specific.'
 assumptions:
 - assumption: The fitted pPromoterBound is the right occupancy to honour.
   basis: It is what ParCa assumed when choosing delta, so honouring it makes the runtime self-consistent
-    with the fit. That is a consistency argument, NOT a claim that 0.5192 is biologically correct for
-    LexA -- which this study does not establish and cannot.
+    with the fit. That is a consistency argument, NOT a claim that 0.5192 is biologically correct
+    for LexA -- which this study does not establish and cannot.
   risk: medium
 - assumption: tf_binding.py is not cache-hashed.
   basis: Checked against cache_version.INPUT_FILES; req-1 requires re-verifying and proving bit-identity
@@ -299,8 +304,9 @@ planned_runs:
   status: planned
   n_steps: 6
   details: 3 seeds x 2 arms x 12 generations, AFTER req-1 and req-2. ~30-60 min per run; at concurrency
-    2 roughly 3 h, at concurrency 1 roughly 6 h -- check for sims in other worktrees first, and note disk
-    is down to 56 GB with out/ holding 51 GB, so distil dnag-promoter-availability's 28 GB before launching.
+    2 roughly 3 h, at concurrency 1 roughly 6 h -- check for sims in other worktrees first, and note
+    disk is down to 56 GB with out/ holding 51 GB, so distil dnag-promoter-availability's 28 GB before
+    launching.
 robustness:
   n_replicates: 3
   seeds:
@@ -309,8 +315,8 @@ robustness:
   - 2
   parameter_sweep: false
   note: 3 seeds per arm, genuinely independent since the generation-1 seed fix. Sufficient to distinguish
-    a 12-generation completion from a 4-5 stall, which is categorical; not sufficient to estimate a stall
-    distribution.
+    a 12-generation completion from a 4-5 stall, which is categorical; not sufficient to estimate
+    a stall distribution.
 controls:
 - name: non-zero-cs-tfs-track-their-fitted-occupancy
   kind: negative
@@ -326,47 +332,71 @@ controls:
   observed: ''
   result: PENDING
 limitations:
+- "CORRECTION 2026-09-07 — this study's account of WHY LexA acts on the rpsU-dnaG-rpoD operon is\
+  \ wrong, and the wrongness is inherited, not original to it.\nStatements in this file to the effect\
+  \ that 'LexA regulates rpoD and dnaG is silenced as a passenger', or that a dnaG-bearing TU acquires\
+  \ LexA because it contains rpoD, do not match the model. They came from checking only fold_changes.tsv,\
+  \ which carries lexA->rpoD at log2FC -0.65 and no dnaG entry. There is a SECOND source, fold_changes_nca.tsv:\n\
+  \    lexA  dnaG  -1.71        lexA  rpsU  -1.89\nand it is the one in force. tf_to_fold_change['PC00010']\
+  \ holds EG10239_RNA (dnaG) at 0.30566, which is 2^-1.71 exactly, plus EG10896_RNA (rpsU) — and\
+  \ does NOT contain EG10920_RNA (rpoD) at all. target_tf likewise lists PC00010 for dnaG and rpsU,\
+  \ not rpoD. LexA is a DIRECT, cistron-level regulator of dnaG in this model. dnaG is not a passenger.\n\
+  The real structural defect is different and stronger: regulation is assigned per CISTRON and then\
+  \ unioned onto every TU containing that cistron (relation.py::_build_RNA_to_tf_mapping). dnaG's\
+  \ LexA edge therefore lands on whatever TU carries dnaG, and after the gene-set dedup there is\
+  \ exactly ONE such TU. The model cannot express 'LexA represses dnaG through this promoter but\
+  \ not that one' — TU-specific differential regulation is structurally impossible, not merely mis-assigned.\
+  \ It also means restoring the deduplicated promoters could not have separated them: all three TUs\
+  \ carry an identical cistron set, so cistron-level regulation attaches LexA to all three.\nWHAT\
+  \ THIS DOES AND DOES NOT INVALIDATE: measurements of the encoded delta, occupancy, the deficit\
+  \ and the lineage outcomes are unaffected — they measured the model as built. What is wrong is\
+  \ the causal STORY told about them. Any figure computed against rpoD's -0.65 as dnaG's input baseline\
+  \ is wrong and should be recomputed against -1.71; in this investigation that includes the fold-change-to-delta\
+  \ distortion, which is 7.08e+06-fold, not 1.48e+07.\nLeft in place rather than rewritten: the original\
+  \ text is preserved above so the record shows what was believed when the work was done."
 - Honouring the fitted occupancy makes the runtime self-consistent with the fit. It does NOT establish
-  that 0.5192 is biologically right for LexA -- an SOS repressor is expected to be largely bound in unstressed
-  cells, so the fitted value may itself be wrong and this study cannot tell.
-- Only TFs resolvable in bound_TF_coordinates can be paired for the control axis; if few 1CS/2CS TFs are
-  observable it is underpowered and must be declared so.
-- The other affected 0CS TF, PD00519 (fitted 0.3600), is changed by the same switch, so a rescue cannot
-  be attributed to LexA alone without a LexA-only arm this design does not include.
+  that 0.5192 is biologically right for LexA -- an SOS repressor is expected to be largely bound
+  in unstressed cells, so the fitted value may itself be wrong and this study cannot tell.
+- Only TFs resolvable in bound_TF_coordinates can be paired for the control axis; if few 1CS/2CS
+  TFs are observable it is underpowered and must be declared so.
+- The other affected 0CS TF, PD00519 (fitted 0.3600), is changed by the same switch, so a rescue
+  cannot be attributed to LexA alone without a LexA-only arm this design does not include.
 - 'A rescue would show the override is SUFFICIENT to cause the stall, not that it is the only defect:
   the 2.13x activator residual is untouched by it.'
-claim: 'Superseded before running: it would have tested a fix for the trigger rather than the cause, and
-  on a misreading of what the fitted occupancy means.'
-conclusion: 'Retired unrun, on the user''s observation that dnaG is not rescued by occupancy either way.
+claim: 'Superseded before running: it would have tested a fix for the trigger rather than the cause,
+  and on a misreading of what the fitted occupancy means.'
+conclusion: 'Retired unrun, on the user''s observation that dnaG is not rescued by occupancy either
+  way.
 
-  Two things were wrong with it. First, I read the fitted pPromoterBound as a binding affinity; it is
-  not. getter_functions'' fit computes min(1, tf_counts * init_to_average / tf_targets) with the comment
-  ''If TF exists, the promoter is always bound to the TF'' -- so LexA''s 0.5192 is a SCARCITY ratio, the
-  fraction of its sites it has copies to cover. 0CS means always-bound-if-present, and the runtime''s
-  hard-coded 1.0 is a deliberate expression of that, not a bug. ''Honouring the fitted occupancy'' would
-  have imposed a fixed per-site probability that neither the fit nor the runtime means.
+  Two things were wrong with it. First, I read the fitted pPromoterBound as a binding affinity; it
+  is not. getter_functions'' fit computes min(1, tf_counts * init_to_average / tf_targets) with the
+  comment ''If TF exists, the promoter is always bound to the TF'' -- so LexA''s 0.5192 is a SCARCITY
+  ratio, the fraction of its sites it has copies to cover. 0CS means always-bound-if-present, and
+  the runtime''s hard-coded 1.0 is a deliberate expression of that, not a bug. ''Honouring the fitted
+  occupancy'' would have imposed a fixed per-site probability that neither the fit nor the runtime
+  means.
 
-  Second, and decisively: occupancy is the trigger, not the cause. With the constraint-pinned delta r
-  = -0.99999996, dnaG retains 0.48 at q=0.52, 0.34 at q=0.66, 0.012 at q=0.988 and 4.3e-08 at q=1.0 --
-  so any occupancy fix leaves the cell on a knife-edge. With the delta the measured fold change implies
-  (r = -0.3627), dnaG retains 0.637 even at q = 1.0. LexA can be permanently bound, which is what an SOS
-  repressor should be in an unstressed cell, and dnaG is fine.
+  Second, and decisively: occupancy is the trigger, not the cause. With the constraint-pinned delta
+  r = -0.99999996, dnaG retains 0.48 at q=0.52, 0.34 at q=0.66, 0.012 at q=0.988 and 4.3e-08 at q=1.0
+  -- so any occupancy fix leaves the cell on a knife-edge. With the delta the measured fold change
+  implies (r = -0.3627), dnaG retains 0.637 even at q = 1.0. LexA can be permanently bound, which
+  is what an SOS repressor should be in an unstressed cell, and dnaG is fine.
 
-  Superseded by tu-dedup-promoter-collapse, which targets the most upstream defect: getter_functions discards
-  TUs that share a gene set but differ in start coordinate -- distinct promoters -- taking 637 TUs across
-  428 groups, including both alternative dnaG transcripts.'
+  Superseded by tu-dedup-promoter-collapse, which targets the most upstream defect: getter_functions
+  discards TUs that share a gene set but differ in start coordinate -- distinct promoters -- taking
+  637 TUs across 428 groups, including both alternative dnaG transcripts.'
 confidence: Refuted
 findings:
-- summary: The fitted pPromoterBound is a scarcity ratio, not a binding affinity; the 0CS override is
-    deliberate.
+- summary: The fitted pPromoterBound is a scarcity ratio, not a binding affinity; the 0CS override
+    is deliberate.
   status: novel
   evidence:
     from_run: analysis-only
-  explanation: fit_sim_data_1.py computes limited_tf_counts = min(1, tf_counts * init_to_average / tf_targets)
-    for 0CS TFs, commented 'If TF exists, the promoter is always bound to the TF'. LexA's 0.5192 therefore
-    means it has copies for ~52% of its sites, and the runtime models the same scarcity by capping n_to_bind
-    at n_available_TF. Both sides intend always-bound-if-present. My framing of the runtime as 'ignoring
-    the fit' was wrong.
+  explanation: fit_sim_data_1.py computes limited_tf_counts = min(1, tf_counts * init_to_average
+    / tf_targets) for 0CS TFs, commented 'If TF exists, the promoter is always bound to the TF'.
+    LexA's 0.5192 therefore means it has copies for ~52% of its sites, and the runtime models the
+    same scarcity by capping n_to_bind at n_available_TF. Both sides intend always-bound-if-present.
+    My framing of the runtime as 'ignoring the fit' was wrong.
 - summary: Occupancy is the trigger; the constraint-pinned delta is the cause.
   status: novel
   evidence:
@@ -376,8 +406,8 @@ findings:
   explanation: retained = 1 + r*q. With r pinned at -1 by ParCa's constraint the cell sits on a cliff
     -- 0.34 at q=0.66, 4.3e-08 at q=1.0 -- so the difference between generation 1 surviving and generation
     3 dying is q moving from 0.988 to 1.000. With r = -0.3627, the value lexA->rpoD's log2FC of -0.65
-    implies, dnaG retains 0.637 across the whole occupancy range and is insensitive to q. Fixing occupancy
-    treats the trigger.
+    implies, dnaG retains 0.637 across the whole occupancy range and is insensitive to q. Fixing
+    occupancy treats the trigger.
 baseline:
 - name: override-control
   composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
@@ -388,5 +418,17 @@ pipeline_gate:
   - study: foldchange-to-delta-fidelity
     condition: complete
     relation: refutes-alternative
-    note: Retired unrun once that study's amendment showed the fit is nearly faithful and occupancy is
-      the trigger, not the cause.
+    note: Retired unrun once that study's amendment showed the fit is nearly faithful and occupancy
+      is the trigger, not the cause.
+corrections:
+- date: '2026-09-07'
+  field: causal account of LexA at the rpsU-dnaG-rpoD operon
+  status: flagged, text preserved
+  summary: dnaG is a DIRECT LexA target (fold_changes_nca.tsv, log2FC -1.71), not an rpoD passenger.
+    The real defect is cistron-level regulation unioned to TUs with only one dnaG-bearing TU, making
+    TU-specific differential regulation structurally impossible.
+  raised_by: user
+  verified_against:
+  - fold_changes_nca.tsv
+  - tf_to_fold_change
+  - target_tf

@@ -14,11 +14,11 @@ gate_status: failed
 expert_review_status: not_requested
 question: dnaG's transcription collapse has been traced to a single term. The TF PC00010 -- identified
   from the repo's own reconstruction data as the LexA dimer (lexA, EG10533; complexation_reactions.tsv
-  names PC00010_RXN 'DNA-binding transcriptional repressor LexA') -- is bound at dnaG's promoter on 96.3%
-  of generation-1 timesteps and 100% of every generation after, and its in-force delta is -0.999999957,
-  so b*(1+delta) retains 4.3e-08 of dnaG's assigned probability. Does that arithmetic close quantitatively,
-  is the generational collapse simply occupancy rising from 96.3% to 100%, and how many other transcripts
-  does this affect?
+  names PC00010_RXN 'DNA-binding transcriptional repressor LexA') -- is bound at dnaG's promoter
+  on 96.3% of generation-1 timesteps and 100% of every generation after, and its in-force delta is
+  -0.999999957, so b*(1+delta) retains 4.3e-08 of dnaG's assigned probability. Does that arithmetic
+  close quantitatively, is the generational collapse simply occupancy rising from 96.3% to 100%,
+  and how many other transcripts does this affect?
 units_and_time:
   tick: 1 s of simulated time; generations delimited by division events.
   quantities:
@@ -31,27 +31,27 @@ behavior_tests:
   classification: primary
   gate_class: acceptance_criterion
   question: Does b*(1+delta) reproduce dnaG's measured transcription?
-  description: 'dnaG''s measured per-promoter probability agrees within 2x with the prediction b*(1 -
-    occupancy + occupancy*(1+delta)), using the measured in-force basal b, the measured PC00010 occupancy,
-    and the in-force delta of -0.999999957.
+  description: 'dnaG''s measured per-promoter probability agrees within 2x with the prediction b*(1
+    - occupancy + occupancy*(1+delta)), using the measured in-force basal b, the measured PC00010
+    occupancy, and the in-force delta of -0.999999957.
 
 
-    Closes the arithmetic, which is this study''s whole purpose. Every term is now measured rather than
-    assumed: b from the per-timestep reconstruction (validated to 1.0003 against the per-generation mean),
-    occupancy from the repaired bound_TF listeners, delta from the in-force delta_prob_matrix built with
-    ppgpp=True. A first pass predicted a retained fraction of 4.3167e-08 against a measured 2.2e-07 --
-    a 5x gap that the occupancy term is expected to explain and that this axis exists to force into the
-    open rather than wave through.
+    Closes the arithmetic, which is this study''s whole purpose. Every term is now measured rather
+    than assumed: b from the per-timestep reconstruction (validated to 1.0003 against the per-generation
+    mean), occupancy from the repaired bound_TF listeners, delta from the in-force delta_prob_matrix
+    built with ppgpp=True. A first pass predicted a retained fraction of 4.3167e-08 against a measured
+    2.2e-07 -- a 5x gap that the occupancy term is expected to explain and that this axis exists
+    to force into the open rather than wave through.
 
 
-    Threshold provenance: theory. 2x for a chain of four independently measured quantities spanning eight
-    orders of magnitude.'
+    Threshold provenance: theory. 2x for a chain of four independently measured quantities spanning
+    eight orders of magnitude.'
   measure:
     kind: derived
-    path: predicted dnaG per-promoter init probability from measured b, occupancy and delta, over the
-      measured value
-    detail: ratio of predicted to measured dnaG per-promoter probability, per generation, median over
-      seeds.
+    path: predicted dnaG per-promoter init probability from measured b, occupancy and delta, over
+      the measured value
+    detail: ratio of predicted to measured dnaG per-promoter probability, per generation, median
+      over seeds.
   pass_if:
     low: 0.5
     high: 1.5
@@ -68,20 +68,21 @@ behavior_tests:
   gate_class: acceptance_criterion
   question: Is the collapse just PC00010's occupancy rising?
   description: 'The rise in PC00010 occupancy at dnaG''s promoter from generation 1 to the last generation
-    accounts for the fall in dnaG''s transcription within 2x, treating transcription as proportional to
-    (1 - occupancy).
+    accounts for the fall in dnaG''s transcription within 2x, treating transcription as proportional
+    to (1 - occupancy).
 
 
     The causal claim in its testable form. Occupancy measured 0.963 at generation 1 and 1.000 thereafter;
-    if transcription is b*(1-occupancy) to first order, that alone predicts the drop from ~8.7% to ~0.
-    If this passes, the ''generational decay'' this investigation chased through four studies is nothing
-    more than a repressor going from almost-always-bound to always-bound.
+    if transcription is b*(1-occupancy) to first order, that alone predicts the drop from ~8.7% to
+    ~0. If this passes, the ''generational decay'' this investigation chased through four studies
+    is nothing more than a repressor going from almost-always-bound to always-bound.
 
 
     Threshold provenance: theory. Matches the arithmetic axis so both read on one scale.'
   measure:
     kind: derived
-    path: predicted dnaG transcription fold-change from PC00010 occupancy alone, over the measured fold-change
+    path: predicted dnaG transcription fold-change from PC00010 occupancy alone, over the measured
+      fold-change
     detail: ratio of the occupancy-predicted transcription fold-change to the measured one, generation
       1 to last.
   pass_if:
@@ -89,8 +90,8 @@ behavior_tests:
     high: 1.5
     provenance:
       kind: theory
-      note: Two-sided; an occupancy model that over-predicts the collapse is as wrong as one that under-predicts
-        it.
+      note: Two-sided; an occupancy model that over-predicts the collapse is as wrong as one that
+        under-predicts it.
   status: failed
   result: FAIL
   measured_value: 0.423
@@ -99,30 +100,30 @@ behavior_tests:
   classification: primary
   gate_class: acceptance_criterion
   question: Is dnaG one of a class, or a special case?
-  description: 'At least 8 of the 10 PC00010 targets whose in-force delta retains less than 1e-6 of basal
-    show measured transcription below 1e-9 in the last generation.
+  description: 'At least 8 of the 10 PC00010 targets whose in-force delta retains less than 1e-6
+    of basal show measured transcription below 1e-9 in the last generation.
 
 
     dnaG is NOT unique: 10 of PC00010''s 45 targets retain <1e-6 when it binds, including TU00062[c],
-    which is already in this investigation''s standing cohort. If those transcripts are silenced too,
-    the finding is a class-level defect in how near-total repression is represented, not a dnaG curiosity,
-    and its scope is much larger than this investigation has assumed.
+    which is already in this investigation''s standing cohort. If those transcripts are silenced
+    too, the finding is a class-level defect in how near-total repression is represented, not a dnaG
+    curiosity, and its scope is much larger than this investigation has assumed.
 
 
-    Threshold provenance: theory. 8 of 10 tolerates two transcripts whose promoters PC00010 happens not
-    to occupy, without letting a scattered result count as a class.'
+    Threshold provenance: theory. 8 of 10 tolerates two transcripts whose promoters PC00010 happens
+    not to occupy, without letting a scattered result count as a class.'
   measure:
     kind: derived
-    path: count of the 10 near-total-repression PC00010 targets with measured transcription below 1e-9
-      in the last generation
+    path: count of the 10 near-total-repression PC00010 targets with measured transcription below
+      1e-9 in the last generation
     detail: number of the 10 identified TUs silenced in the last generation, median over seeds.
   pass_if:
     low: 8
     high: 10
     provenance:
       kind: theory
-      note: Bounded above by 10 by construction; 8 is the weakest count that still shows a class rather
-        than a scatter.
+      note: Bounded above by 10 by construction; 8 is the weakest count that still shows a class
+        rather than a scatter.
   status: passed
   result: PASS
   measured_value: 10
@@ -131,19 +132,20 @@ behavior_tests:
   classification: primary
   gate_class: acceptance_criterion
   question: Is silencing confined to PC00010's targets?
-  description: 'The idx_rprotein peers that PC00010 does NOT regulate retain median transcription within
-    1.5x of their in-force basal in the last generation.
+  description: 'The idx_rprotein peers that PC00010 does NOT regulate retain median transcription
+    within 1.5x of their in-force basal in the last generation.
 
 
-    The discriminating control. If transcripts with no PC00010 site are also silenced, the repressor is
-    not the mechanism and the whole chain built here is wrong. dnag-generational-decay measured these
-    peers RISING, so the expectation is firm.
+    The discriminating control. If transcripts with no PC00010 site are also silenced, the repressor
+    is not the mechanism and the whole chain built here is wrong. dnag-generational-decay measured
+    these peers RISING, so the expectation is firm.
 
 
     Threshold provenance: theory. Two-sided, mirroring the controls in the previous three studies.'
   measure:
     kind: derived
-    path: median measured over in-force basal for idx_rprotein peers not regulated by PC00010, last generation
+    path: median measured over in-force basal for idx_rprotein peers not regulated by PC00010, last
+      generation
     detail: median transcription-to-basal ratio for unregulated peers in the last generation.
   pass_if:
     low: 0.67
@@ -160,13 +162,15 @@ behavior_tests:
   classification: supporting
   gate_class: acceptance_criterion
   question: Does any transcript receive a negative initiation probability?
-  description: 'EG10620_RNA[c]''s in-force delta is -1.000009252, i.e. below -1, so b*(1+delta) is NEGATIVE
-    (-9.25e-06 of b). The axis asks whether a negative per-promoter probability actually reaches the sampler.
+  description: 'EG10620_RNA[c]''s in-force delta is -1.000009252, i.e. below -1, so b*(1+delta) is
+    NEGATIVE (-9.25e-06 of b). The axis asks whether a negative per-promoter probability actually
+    reaches the sampler.
 
 
-    Found while closing the arithmetic and worth a graded axis rather than a footnote: a negative probability
-    is not a small numerical wrinkle but a term that a multinomial cannot accept, so either something
-    clips it silently or the distribution is malformed. Either answer is a defect worth naming.
+    Found while closing the arithmetic and worth a graded axis rather than a footnote: a negative
+    probability is not a small numerical wrinkle but a term that a multinomial cannot accept, so
+    either something clips it silently or the distribution is malformed. Either answer is a defect
+    worth naming.
 
 
     Threshold provenance: definitional. A probability is non-negative or it is not a probability.'
@@ -192,8 +196,8 @@ behavior_tests:
 
 
     POST-HOC: measured at 0.963 in seed 0 of dnag-promoter-availability. A pin so that a drift toward
-    full occupancy at generation 1 is caught, since that partial occupancy is exactly what leaves dnaG
-    any expression at all in the first generation.'
+    full occupancy at generation 1 is caught, since that partial occupancy is exactly what leaves
+    dnaG any expression at all in the first generation.'
   measure:
     kind: derived
     path: fraction of generation-1 timesteps with PC00010 bound at dnaG's promoter coordinate
@@ -218,28 +222,29 @@ preregistered:
       high: 1.5
       provenance:
         kind: theory
-        note: 'Two-sided and slightly asymmetric-tolerant: over- and under-prediction are equally informative,
-          and a chain spanning eight orders of magnitude that lands within 2x is closed.'
+        note: 'Two-sided and slightly asymmetric-tolerant: over- and under-prediction are equally
+          informative, and a chain spanning eight orders of magnitude that lands within 2x is closed.'
     occupancy-explains-the-generational-collapse:
       low: 0.5
       high: 1.5
       provenance:
         kind: theory
-        note: Two-sided; an occupancy model that over-predicts the collapse is as wrong as one that under-predicts
-          it.
+        note: Two-sided; an occupancy model that over-predicts the collapse is as wrong as one that
+          under-predicts it.
     the-near-total-repression-cohort-is-silenced:
       low: 8
       high: 10
       provenance:
         kind: theory
-        note: Bounded above by 10 by construction; 8 is the weakest count that still shows a class rather
-          than a scatter.
+        note: Bounded above by 10 by construction; 8 is the weakest count that still shows a class
+          rather than a scatter.
     unregulated-peers-are-unaffected:
       low: 0.67
       high: 1.5
       provenance:
         kind: theory
-        note: Two-sided so the control cannot be satisfied by the peers collapsing alongside the targets.
+        note: Two-sided so the control cannot be satisfied by the peers collapsing alongside the
+          targets.
     negative-initiation-probability:
       op: '>='
       value: 0.0
@@ -268,50 +273,51 @@ implementation_requirements:
   status: complete
   blocking: false
   summary: Extend generational_decay.py with occupancy and the in-force delta/basal terms.
-  detail: 'All six axes read one aggregation: per generation, per seed -- measured target, promoter count,
-    per-timestep in-force basal (reconstructed from the emitted ppgpp_conc, validated to 1.0003 against
-    the per-generation mean), and PC00010 occupancy per target TU derived from bound_TF_coordinates. No
-    new emission is needed.'
+  detail: 'All six axes read one aggregation: per generation, per seed -- measured target, promoter
+    count, per-timestep in-force basal (reconstructed from the emitted ppgpp_conc, validated to 1.0003
+    against the per-generation mean), and PC00010 occupancy per target TU derived from bound_TF_coordinates.
+    No new emission is needed.'
 - id: req-2
   status: complete
   blocking: false
   summary: 'NOT NEEDED: emitting ppgpp_state was attempted and abandoned.'
-  detail: 'inforce-basal-vector proposed emitting ppgpp_state.basal_prob from the ppgpp-initiation step''s
-    existing listeners port. It does not work: the listeners SCHEMA is declared centrally in composites/_helpers.py,
-    which is in cache_version.INPUT_FILES, so a step output has no leaf to land in and is silently dropped.
-    The edit was reverted. Emission proved unnecessary anyway -- reconstructing per-timestep from the
-    emitted ppgpp_conc agrees with the per-generation mean to 1.0003, so the Jensen concern that motivated
-    it is quantitatively negligible.'
+  detail: 'inforce-basal-vector proposed emitting ppgpp_state.basal_prob from the ppgpp-initiation
+    step''s existing listeners port. It does not work: the listeners SCHEMA is declared centrally
+    in composites/_helpers.py, which is in cache_version.INPUT_FILES, so a step output has no leaf
+    to land in and is silently dropped. The edit was reverted. Emission proved unnecessary anyway
+    -- reconstructing per-timestep from the emitted ppgpp_conc agrees with the per-generation mean
+    to 1.0003, so the Jensen concern that motivated it is quantitatively negligible.'
 alternative_hypotheses:
 - name: H1 the arithmetic closes and occupancy is the whole story
   discriminator: occupancy-explains-the-generational-collapse
-  statement: dnaG's transcription is b*(1-occupancy) to first order; the four-study 'generational decay'
-    is a repressor going from 96.3% to 100% bound. Predicts both quantitative axes PASS.
+  statement: dnaG's transcription is b*(1-occupancy) to first order; the four-study 'generational
+    decay' is a repressor going from 96.3% to 100% bound. Predicts both quantitative axes PASS.
 - name: H2 a term is still missing
   discriminator: arithmetic-predicts-dnag-transcription
   statement: The measured value stays outside 2x of the prediction, meaning something beyond b, delta
-    and occupancy is acting. The first pass showed predicted 4.3167e-08 against measured 2.2e-07, a 5x
-    gap; if occupancy does not absorb it, this hypothesis is live.
+    and occupancy is acting. The first pass showed predicted 4.3167e-08 against measured 2.2e-07,
+    a 5x gap; if occupancy does not absorb it, this hypothesis is live.
 - name: H3 a class-level representation defect
   discriminator: the-near-total-repression-cohort-is-silenced
-  statement: 10 of PC00010's 45 targets retain <1e-6 and one is NEGATIVE (-9.25e-06). If those are silenced
-    too, near-total repression is systematically mis-represented and the scope is far wider than dnaG.
-falsifiability: Both quantitative axes compare a prediction assembled from independently measured terms
-  against a measured outcome, so neither can be satisfied by restating the other. The cohort axis can
-  refute the class-level reading, and the unregulated-peer control can refute the entire repressor chain
-  in one measurement.
+  statement: 10 of PC00010's 45 targets retain <1e-6 and one is NEGATIVE (-9.25e-06). If those are
+    silenced too, near-total repression is systematically mis-represented and the scope is far wider
+    than dnaG.
+falsifiability: Both quantitative axes compare a prediction assembled from independently measured
+  terms against a measured outcome, so neither can be satisfied by restating the other. The cohort
+  axis can refute the class-level reading, and the unregulated-peer control can refute the entire
+  repressor chain in one measurement.
 assumptions:
 - assumption: The per-timestep reconstruction of the in-force basal is exact.
-  basis: synth_prob is deterministic in ppgpp_conc (copy_number is derived from it internally via tau),
-    and trna_attenuation -- the only other term that mutates basal_prob in ppgpp_initiation -- is off
-    by default. Reconstructing per timestep rather than at a per-generation mean changes the value by
-    a factor of 1.0003, so the nonlinearity is negligible at these concentrations.
+  basis: synth_prob is deterministic in ppgpp_conc (copy_number is derived from it internally via
+    tau), and trna_attenuation -- the only other term that mutates basal_prob in ppgpp_initiation
+    -- is off by default. Reconstructing per timestep rather than at a per-generation mean changes
+    the value by a factor of 1.0003, so the nonlinearity is negligible at these concentrations.
   risk: low
 - assumption: Coordinate matching identifies binding at dnaG's promoter.
-  basis: bound_TF_coordinates is matched to the TU's replication_coordinate (-715213) within +/-1. This
-    gave a clean signal -- only TF index 14 ever appears there, on 96.3% then 100% of timesteps -- but
-    it is a positional join, not a promoter identity, and a second TU at the same coordinate would be
-    indistinguishable.
+  basis: bound_TF_coordinates is matched to the TU's replication_coordinate (-715213) within +/-1.
+    This gave a clean signal -- only TF index 14 ever appears there, on 96.3% then 100% of timesteps
+    -- but it is a positional join, not a promoter identity, and a second TU at the same coordinate
+    would be indistinguishable.
   risk: medium
 simulation_set:
 - name: ppgpp-on-mechanistic
@@ -327,10 +333,11 @@ planned_runs:
 - name: reuse-promoter-availability
   status: planned
   n_steps: 0
-  details: 'NO NEW SIMULATION. Every quantity is already emitted in dnag-promoter-availability''s 6-seed
-    sweep: target_rna_synth_prob, promoter_copy_number, ppgpp_conc, and the bound_TF_* arrays the deriver
-    repair restored. The in-force basal is reconstructed per timestep from ppgpp_conc. This study is analysis
-    only, which is possible solely because the req-1 deriver repair landed before that sweep ran.'
+  details: 'NO NEW SIMULATION. Every quantity is already emitted in dnag-promoter-availability''s
+    6-seed sweep: target_rna_synth_prob, promoter_copy_number, ppgpp_conc, and the bound_TF_* arrays
+    the deriver repair restored. The in-force basal is reconstructed per timestep from ppgpp_conc.
+    This study is analysis only, which is possible solely because the req-1 deriver repair landed
+    before that sweep ran.'
 robustness:
   n_replicates: 6
   seeds:
@@ -341,8 +348,9 @@ robustness:
   - 4
   - 5
   parameter_sweep: false
-  note: The 6 independent seeds of dnag-promoter-availability. Occupancy is a stochastic binding outcome,
-    so seed variance matters here more than in the previous study, where the collapse was universal.
+  note: The 6 independent seeds of dnag-promoter-availability. Occupancy is a stochastic binding
+    outcome, so seed variance matters here more than in the previous study, where the collapse was
+    universal.
 controls:
 - name: unregulated-peers-are-unaffected
   kind: negative
@@ -352,50 +360,74 @@ controls:
   result: PASS
 - name: the-near-total-repression-cohort-is-silenced
   kind: positive
-  hypothesis: If the mechanism is real, PC00010's other near-totally-repressed targets should share dnaG's
-    fate.
+  hypothesis: If the mechanism is real, PC00010's other near-totally-repressed targets should share
+    dnaG's fate.
   expected: at least 8 of the 10 identified TUs below 1e-9 in the last generation.
   observed: All 10 of LexA's near-total-repression targets silenced below 1e-9 in every seed.
   result: PASS
 limitations:
+- "CORRECTION 2026-09-07 — this study's account of WHY LexA acts on the rpsU-dnaG-rpoD operon is\
+  \ wrong, and the wrongness is inherited, not original to it.\nStatements in this file to the effect\
+  \ that 'LexA regulates rpoD and dnaG is silenced as a passenger', or that a dnaG-bearing TU acquires\
+  \ LexA because it contains rpoD, do not match the model. They came from checking only fold_changes.tsv,\
+  \ which carries lexA->rpoD at log2FC -0.65 and no dnaG entry. There is a SECOND source, fold_changes_nca.tsv:\n\
+  \    lexA  dnaG  -1.71        lexA  rpsU  -1.89\nand it is the one in force. tf_to_fold_change['PC00010']\
+  \ holds EG10239_RNA (dnaG) at 0.30566, which is 2^-1.71 exactly, plus EG10896_RNA (rpsU) — and\
+  \ does NOT contain EG10920_RNA (rpoD) at all. target_tf likewise lists PC00010 for dnaG and rpsU,\
+  \ not rpoD. LexA is a DIRECT, cistron-level regulator of dnaG in this model. dnaG is not a passenger.\n\
+  The real structural defect is different and stronger: regulation is assigned per CISTRON and then\
+  \ unioned onto every TU containing that cistron (relation.py::_build_RNA_to_tf_mapping). dnaG's\
+  \ LexA edge therefore lands on whatever TU carries dnaG, and after the gene-set dedup there is\
+  \ exactly ONE such TU. The model cannot express 'LexA represses dnaG through this promoter but\
+  \ not that one' — TU-specific differential regulation is structurally impossible, not merely mis-assigned.\
+  \ It also means restoring the deduplicated promoters could not have separated them: all three TUs\
+  \ carry an identical cistron set, so cistron-level regulation attaches LexA to all three.\nWHAT\
+  \ THIS DOES AND DOES NOT INVALIDATE: measurements of the encoded delta, occupancy, the deficit\
+  \ and the lineage outcomes are unaffected — they measured the model as built. What is wrong is\
+  \ the causal STORY told about them. Any figure computed against rpoD's -0.65 as dnaG's input baseline\
+  \ is wrong and should be recomputed against -1.71; in this investigation that includes the fold-change-to-delta\
+  \ distortion, which is 7.08e+06-fold, not 1.48e+07.\nLeft in place rather than rewritten: the original\
+  \ text is preserved above so the record shows what was believed when the work was done."
 - PC00010 is the LexA dimer, identified from reconstruction/ecoli/flat/{complexation_reactions,transcription_factors}.tsv.
-  LexA reaches this TU via rpoD, which shares the operon with dnaG (TU00352 = rpsU-dnaG-rpoD), so dnaG
-  is repressed as an operon passenger rather than as a LexA target in its own right. Whether ~100% LexA
-  occupancy is biologically right is NOT settled here and is not this study's question.
-- Occupancy is inferred by matching bound_TF_coordinates to a TU's replication_coordinate. It is a positional
-  join; a second promoter at the same coordinate would be indistinguishable.
+  LexA reaches this TU via rpoD, which shares the operon with dnaG (TU00352 = rpsU-dnaG-rpoD), so
+  dnaG is repressed as an operon passenger rather than as a LexA target in its own right. Whether
+  ~100% LexA occupancy is biologically right is NOT settled here and is not this study's question.
+- Occupancy is inferred by matching bound_TF_coordinates to a TU's replication_coordinate. It is
+  a positional join; a second promoter at the same coordinate would be indistinguishable.
 - Everything is measured in a lineage that stalls by generation 4-5, so the terms are read from failing
   cells.
-- 'The study explains HOW dnaG is silenced. It does not establish whether the delta of -0.999999957 or
-  the ~100% occupancy is the thing that is wrong, and it cannot: that needs a reference for what dnaG''s
-  expression should be, which this investigation does not have.'
+- 'The study explains HOW dnaG is silenced. It does not establish whether the delta of -0.999999957
+  or the ~100% occupancy is the thing that is wrong, and it cannot: that needs a reference for what
+  dnaG''s expression should be, which this investigation does not have.'
 - Occupancy is per-TU, not per-promoter, because two copies of a promoter share a replication coordinate.
-  This is the identified cause of the arithmetic axis failing and cannot be resolved with current listeners.
-- The in-force basal is reconstructed from emitted ppgpp_conc (validated to 1.0003), not measured directly;
-  emitting it would require editing the cache-hashed _helpers.py.
-claim: LexA silences all ten of its near-total-repression targets and only its targets, dnaG among them;
-  the mechanism is confirmed but the arithmetic remains ~5x unclosed because occupancy can only be measured
-  per-TU.
-conclusion: 'Mixed, and the split is the useful part. The MECHANISM is confirmed: all 10 of LexA''s near-total-repression
-  targets are silenced below 1e-9 in every seed, the 41 unregulated rProtein peers retain 1.078 of their
-  assigned probability, and dnaG''s generation-1 occupancy of 0.988 -- with its ~1.2% unbound fraction
-  -- is exactly what leaves it any expression before occupancy closes to 1.000.
+  This is the identified cause of the arithmetic axis failing and cannot be resolved with current
+  listeners.
+- The in-force basal is reconstructed from emitted ppgpp_conc (validated to 1.0003), not measured
+  directly; emitting it would require editing the cache-hashed _helpers.py.
+claim: LexA silences all ten of its near-total-repression targets and only its targets, dnaG among
+  them; the mechanism is confirmed but the arithmetic remains ~5x unclosed because occupancy can
+  only be measured per-TU.
+conclusion: 'Mixed, and the split is the useful part. The MECHANISM is confirmed: all 10 of LexA''s
+  near-total-repression targets are silenced below 1e-9 in every seed, the 41 unregulated rProtein
+  peers retain 1.078 of their assigned probability, and dnaG''s generation-1 occupancy of 0.988 --
+  with its ~1.2% unbound fraction -- is exactly what leaves it any expression before occupancy closes
+  to 1.000.
 
-  The ARITHMETIC does not close. Prediction under-shoots measurement by ~5x, consistently and in one direction,
-  and the cause is identified rather than left open: occupancy is measured per-TU while delta is applied
-  per promoter, so a timestep with one of dnaG''s two promoters bound is scored as fully repressed. That
-  biases the prediction down, which is the direction seen. bound_TF_coordinates cannot fix it, because
-  two copies of one promoter share a coordinate; per-promoter occupancy would need a listener that does
-  not exist.
+  The ARITHMETIC does not close. Prediction under-shoots measurement by ~5x, consistently and in
+  one direction, and the cause is identified rather than left open: occupancy is measured per-TU
+  while delta is applied per promoter, so a timestep with one of dnaG''s two promoters bound is scored
+  as fully repressed. That biases the prediction down, which is the direction seen. bound_TF_coordinates
+  cannot fix it, because two copies of one promoter share a coordinate; per-promoter occupancy would
+  need a listener that does not exist.
 
   One clean negative result: the negative initiation probability that exists in the FIT never reaches
-  the sampler. It is floored at zero, so the defect''s runtime consequence is silencing rather than a
-  malformed distribution.'
+  the sampler. It is floored at zero, so the defect''s runtime consequence is silencing rather than
+  a malformed distribution.'
 confidence: Investigating
 preliminary_observations:
-- note: PC00010 = LexA dimer. My first search claimed it appeared in no flat file; that was WRONG -- I
-    searched a path that does not exist in this worktree plus a 3-file validation directory, while the
-    reconstruction data ships as an installed package (69 TSVs under .venv/lib/python3.12/site-packages/reconstruction/ecoli/flat).
+- note: PC00010 = LexA dimer. My first search claimed it appeared in no flat file; that was WRONG
+    -- I searched a path that does not exist in this worktree plus a 3-file validation directory,
+    while the reconstruction data ships as an installed package (69 TSVs under .venv/lib/python3.12/site-packages/reconstruction/ecoli/flat).
     Searched properly it resolves immediately in two files.
 runs:
 - name: pc00010-repression-arithmetic__analysis
@@ -403,11 +435,12 @@ runs:
   canonical: true
   started_at: '2026-09-04T03:00:00Z'
   started_at_iso: '2026-09-04T03:00:00Z'
-  note: 'NO NEW SIMULATION -- reuses dnag-promoter-availability''s 6 independent seeds. Every term measured:
-    in-force basal reconstructed per timestep from the emitted ppgpp_conc, occupancy from the deriver-repaired
-    bound_TF_coordinates, delta from the in-force matrix built with ppgpp=True (-0.999999957), and the
-    measured per-promoter probability as target/promoter_count. Occupancy is necessarily PER-TU, which
-    is this analysis''s main limitation and the identified cause of the arithmetic axis failing.'
+  note: 'NO NEW SIMULATION -- reuses dnag-promoter-availability''s 6 independent seeds. Every term
+    measured: in-force basal reconstructed per timestep from the emitted ppgpp_conc, occupancy from
+    the deriver-repaired bound_TF_coordinates, delta from the in-force matrix built with ppgpp=True
+    (-0.999999957), and the measured per-promoter probability as target/promoter_count. Occupancy
+    is necessarily PER-TU, which is this analysis''s main limitation and the identified cause of
+    the arithmetic axis failing.'
   outcomes:
     arithmetic-predicts-dnag-transcription: &id001
       result: FAIL
@@ -415,15 +448,15 @@ runs:
       evaluated_by: agent
       operator: derived/band [0.5, 1.5]
       gate_class: acceptance_criterion
-      detail: 'Predicted over measured is 0.211: the account UNDER-predicts dnaG''s transcription by ~5x,
-        consistently and in one direction (per-seed generation-1 values 0.43, 0.25, 0.27, 0.18, 0.29,
-        0.25). A consistent one-sided miss of a fixed size is a measurement defect, not a broken mechanism,
-        and the likely cause is identified: occupancy here is per-TU -- a timestep counts as occupied
-        if ANY promoter at dnaG''s coordinate carries LexA -- while the code applies delta PER PROMOTER.
-        dnaG holds ~2 promoters, so a timestep with one bound and one free is scored as fully repressed
-        while the free copy still contributes b. That biases the prediction DOWN, which is the direction
-        observed. Closing this needs per-promoter occupancy, which bound_TF_coordinates cannot supply
-        because two copies of one promoter share a coordinate.'
+      detail: 'Predicted over measured is 0.211: the account UNDER-predicts dnaG''s transcription
+        by ~5x, consistently and in one direction (per-seed generation-1 values 0.43, 0.25, 0.27,
+        0.18, 0.29, 0.25). A consistent one-sided miss of a fixed size is a measurement defect, not
+        a broken mechanism, and the likely cause is identified: occupancy here is per-TU -- a timestep
+        counts as occupied if ANY promoter at dnaG''s coordinate carries LexA -- while the code applies
+        delta PER PROMOTER. dnaG holds ~2 promoters, so a timestep with one bound and one free is
+        scored as fully repressed while the free copy still contributes b. That biases the prediction
+        DOWN, which is the direction observed. Closing this needs per-promoter occupancy, which bound_TF_coordinates
+        cannot supply because two copies of one promoter share a coordinate.'
     occupancy-explains-the-generational-collapse: &id002
       result: FAIL
       measured_value: 0.423
@@ -431,27 +464,30 @@ runs:
       operator: derived/band [0.5, 1.5]
       gate_class: acceptance_criterion
       detail: '0.423, just outside the band, and inherits the same per-TU occupancy defect: the occupancy-only
-        model predicts a steeper collapse than measured because it treats a partly-bound TU as fully repressed.
-        Directionally the account holds -- occupancy does rise to 1.000 in every seed and transcription
-        does collapse -- but occupancy as measured here does not carry the collapse quantitatively.'
+        model predicts a steeper collapse than measured because it treats a partly-bound TU as fully
+        repressed. Directionally the account holds -- occupancy does rise to 1.000 in every seed
+        and transcription does collapse -- but occupancy as measured here does not carry the collapse
+        quantitatively.'
     the-near-total-repression-cohort-is-silenced: &id003
       result: PASS
       measured_value: 10
       evaluated_by: agent
       operator: derived/band [8, 10]
       gate_class: acceptance_criterion
-      detail: ALL TEN of LexA's near-total-repression targets are silenced below 1e-9 in the last generation,
-        in every seed. dnaG is not a special case but one member of a class, exactly as foldchange-to-delta-fidelity
-        found at the fit level. This is the strongest single result here.
+      detail: ALL TEN of LexA's near-total-repression targets are silenced below 1e-9 in the last
+        generation, in every seed. dnaG is not a special case but one member of a class, exactly
+        as foldchange-to-delta-fidelity found at the fit level. This is the strongest single result
+        here.
     unregulated-peers-are-unaffected: &id004
       result: PASS
       measured_value: 1.0775
       evaluated_by: agent
       operator: derived/band [0.67, 1.5]
       gate_class: acceptance_criterion
-      detail: The control holds cleanly. NONE of the 41 idx_rprotein peers is a LexA target, and they
-        retain 1.078 of their in-force basal in the last generation -- i.e. they get what they are assigned.
-        Silencing is confined to LexA's targets, which rules out any global explanation of the collapse.
+      detail: The control holds cleanly. NONE of the 41 idx_rprotein peers is a LexA target, and
+        they retain 1.078 of their in-force basal in the last generation -- i.e. they get what they
+        are assigned. Silencing is confined to LexA's targets, which rules out any global explanation
+        of the collapse.
     negative-initiation-probability: &id005
       result: PASS
       measured_value: 0.0
@@ -461,8 +497,8 @@ runs:
       detail: EG10620_RNA[c]'s emitted target probability never goes below zero; its minimum is exactly
         0. So the negative delta that foldchange-to-delta-fidelity found in the FIT (-9.25e-06 implied
         retained) does not reach the sampler as a negative probability -- it is floored at zero somewhere
-        between the delta and the emitted target. The fit defect is real; its runtime consequence is silencing
-        rather than a malformed distribution.
+        between the delta and the emitted target. The fit defect is real; its runtime consequence
+        is silencing rather than a malformed distribution.
     dnag-occupancy-at-generation-1: &id006
       result: PASS
       measured_value: 0.9881
@@ -480,17 +516,17 @@ runs:
     negative-initiation-probability: *id005
     dnag-occupancy-at-generation-1: *id006
 findings:
-- summary: LexA silences all ten of its near-total-repression targets, and only its targets. dnaG is one
-    member of a class.
+- summary: LexA silences all ten of its near-total-repression targets, and only its targets. dnaG
+    is one member of a class.
   status: confirms
   evidence:
     from_test: the-near-total-repression-cohort-is-silenced
     observed: 10
     units: of 10 targets
     divergence_factor: 0.0
-  explanation: Every one of the 10 LexA targets whose encoded delta retains <1e-6 is silenced below 1e-9
-    in the last generation of every seed, while the 41 rProtein peers -- none of them LexA targets --
-    retain 1.078 of what they are assigned. The runtime confirms at the phenotype level what foldchange-to-delta-fidelity
+  explanation: Every one of the 10 LexA targets whose encoded delta retains <1e-6 is silenced below
+    1e-9 in the last generation of every seed, while the 41 rProtein peers -- none of them LexA targets
+    -- retain 1.078 of what they are assigned. The runtime confirms at the phenotype level what foldchange-to-delta-fidelity
     found at the fit level, and rules out any global explanation of the collapse.
   expected:
     range:
@@ -499,20 +535,22 @@ findings:
   provenance:
     run_ids:
     - pc00010-repression-arithmetic__analysis
-- summary: The quantitative account under-predicts dnaG's transcription ~5x, from a per-TU occupancy measure.
+- summary: The quantitative account under-predicts dnaG's transcription ~5x, from a per-TU occupancy
+    measure.
   status: partial
   evidence:
     from_test: arithmetic-predicts-dnag-transcription
     observed: 0.2107
     units: predicted/measured
     divergence_factor: 0.5786
-  explanation: 'The miss is consistent and one-sided (0.18-0.43 across seeds at generation 1), which points
-    at a measurement defect rather than a wrong mechanism. Occupancy is measured PER-TU -- any LexA at
-    dnaG''s coordinate marks the timestep occupied -- while the code applies delta PER PROMOTER. With
-    ~2 promoters, a timestep with one bound and one free is scored as fully repressed though the free
-    copy still contributes b, biasing the prediction down. bound_TF_coordinates cannot resolve this: two
-    copies of the same promoter share a coordinate. So the account is directionally right and quantitatively
-    unclosed, and saying so is more useful than reporting the mechanism as confirmed.'
+  explanation: 'The miss is consistent and one-sided (0.18-0.43 across seeds at generation 1), which
+    points at a measurement defect rather than a wrong mechanism. Occupancy is measured PER-TU --
+    any LexA at dnaG''s coordinate marks the timestep occupied -- while the code applies delta PER
+    PROMOTER. With ~2 promoters, a timestep with one bound and one free is scored as fully repressed
+    though the free copy still contributes b, biasing the prediction down. bound_TF_coordinates cannot
+    resolve this: two copies of the same promoter share a coordinate. So the account is directionally
+    right and quantitatively unclosed, and saying so is more useful than reporting the mechanism
+    as confirmed.'
   expected:
     range:
     - 0.5
@@ -520,37 +558,40 @@ findings:
   provenance:
     run_ids:
     - pc00010-repression-arithmetic__analysis
-- summary: The negative probability found in the FIT does not reach the sampler; it is floored at zero.
+- summary: The negative probability found in the FIT does not reach the sampler; it is floored at
+    zero.
   status: novel
   evidence:
     from_test: negative-initiation-probability
     observed: 0.0
     units: minimum emitted target
-  explanation: foldchange-to-delta-fidelity found six entries whose encoded delta implies a negative retained
-    fraction, EG10620_RNA[c] among them at -9.25e-06. At runtime its emitted target probability never
-    goes below zero -- the minimum is exactly 0 -- so something floors it between the delta and the emitted
-    target. The fit defect is real but its runtime consequence is total silencing, not a malformed distribution.
+  explanation: foldchange-to-delta-fidelity found six entries whose encoded delta implies a negative
+    retained fraction, EG10620_RNA[c] among them at -9.25e-06. At runtime its emitted target probability
+    never goes below zero -- the minimum is exactly 0 -- so something floors it between the delta
+    and the emitted target. The fit defect is real but its runtime consequence is total silencing,
+    not a malformed distribution.
   expected: {}
   provenance:
     run_ids:
     - pc00010-repression-arithmetic__analysis
-biological_summary: 'LexA is the repressor that keeps the cell''s DNA-damage response switched off until
-  it is needed. In these simulations it sits on dnaG''s promoter essentially permanently -- 98.8% of the
-  first generation and 100% afterwards -- and the model encodes its effect as near-total silencing. The
-  consequence is that dnaG, which the cell needs to start every round of DNA replication, is switched
-  off, and every one of the ten genes LexA represses this strongly goes silent with it. Genes LexA does
-  not regulate are untouched: the forty-one ribosomal-protein transcripts checked as controls receive
-  what they are assigned.
+biological_summary: 'LexA is the repressor that keeps the cell''s DNA-damage response switched off
+  until it is needed. In these simulations it sits on dnaG''s promoter essentially permanently --
+  98.8% of the first generation and 100% afterwards -- and the model encodes its effect as near-total
+  silencing. The consequence is that dnaG, which the cell needs to start every round of DNA replication,
+  is switched off, and every one of the ten genes LexA represses this strongly goes silent with it.
+  Genes LexA does not regulate are untouched: the forty-one ribosomal-protein transcripts checked
+  as controls receive what they are assigned.
 
 
-  dnaG is not even a LexA target. It shares an operon with rpoD, which is, and it is silenced as a passenger.
+  dnaG is not even a LexA target. It shares an operon with rpoD, which is, and it is silenced as
+  a passenger.
 
 
-  What is not settled is the exact size of the effect. Predicting dnaG''s transcription from the measured
-  repressor occupancy under-shoots what the simulation actually produces by about fivefold, and the reason
-  is known: occupancy can only be observed for the gene as a whole, while the model applies repression
-  to each copy of the promoter separately. A cell carrying two copies with one bound and one free looks
-  fully repressed to the measurement but is not fully repressed in the model.'
+  What is not settled is the exact size of the effect. Predicting dnaG''s transcription from the
+  measured repressor occupancy under-shoots what the simulation actually produces by about fivefold,
+  and the reason is known: occupancy can only be observed for the gene as a whole, while the model
+  applies repression to each copy of the promoter separately. A cell carrying two copies with one
+  bound and one free looks fully repressed to the measurement but is not fully repressed in the model.'
 conclusion_verdicts:
 - claim: LexA occupancy silences dnaG and its cohort
   verdict: supported
@@ -568,12 +609,13 @@ discovery_implications:
 - 'The causal chain is established end to end: ParCa misencodes lexA->rpoD, the delta silences TU00352,
   dnaG is silenced as an operon passenger, DnaG protein depletes, the replisome gate fails, the lineage
   stalls.'
-- Closing the arithmetic needs PER-PROMOTER occupancy, which no current listener provides -- two copies
-  of a promoter share a coordinate. That is a concrete, scoped instrumentation gap.
-- Negative probabilities in the fit are floored at zero at runtime, so they cause silencing rather than
-  crashes. That makes them easy to miss and worth an explicit check wherever deltas below -1 exist.
-- All 10 of LexA's strongly-repressed targets are silenced, so the phenotypic cost of the fit defect is
-  not confined to replication; it removes a whole regulon's basal expression.
+- Closing the arithmetic needs PER-PROMOTER occupancy, which no current listener provides -- two
+  copies of a promoter share a coordinate. That is a concrete, scoped instrumentation gap.
+- Negative probabilities in the fit are floored at zero at runtime, so they cause silencing rather
+  than crashes. That makes them easy to miss and worth an explicit check wherever deltas below -1
+  exist.
+- All 10 of LexA's strongly-repressed targets are silenced, so the phenotypic cost of the fit defect
+  is not confined to replication; it removes a whole regulon's basal expression.
 readouts:
 - name: lexa_occupancy_dnag
   units: fraction of timesteps
@@ -605,11 +647,11 @@ baseline:
 conclusion_logic:
   if_primary_tests_fail:
     diagnose:
-    - question: Why did pc00010-repression-arithmetic's primary criteria fail, and what does that leave
-        open?
+    - question: Why did pc00010-repression-arithmetic's primary criteria fail, and what does that
+        leave open?
       seeded_study: foldchange-to-delta-fidelity
-      note: Seeded from this study's declared successor (parent_studies relation leads-to/refines), not
-        invented to clear the flag.
+      note: Seeded from this study's declared successor (parent_studies relation leads-to/refines),
+        not invented to clear the flag.
 pipeline_gate:
   prerequisites:
   - study: dnag-promoter-availability
@@ -622,3 +664,15 @@ pipeline_gate:
     condition: complete
     relation: calibrates-threshold
     note: Its 47.4x peer deficit and the -0.999999957 delta set this study's bands.
+corrections:
+- date: '2026-09-07'
+  field: causal account of LexA at the rpsU-dnaG-rpoD operon
+  status: flagged, text preserved
+  summary: dnaG is a DIRECT LexA target (fold_changes_nca.tsv, log2FC -1.71), not an rpoD passenger.
+    The real defect is cistron-level regulation unioned to TUs with only one dnaG-bearing TU, making
+    TU-specific differential regulation structurally impossible.
+  raised_by: user
+  verified_against:
+  - fold_changes_nca.tsv
+  - tf_to_fold_change
+  - target_tf

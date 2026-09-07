@@ -12,10 +12,11 @@ simulation_status: complete
 evaluation_status: evaluated
 gate_status: failed
 expert_review_status: not_requested
-question: foldchange-to-delta-fidelity showed ParCa's TF-regulation layer misencodes its fold-change data
-  by a median factor of 2, in both directions and uniformly in magnitude, with six entries encoding negative
-  probabilities. It characterised the defect without locating it. Which step produces deltaV, what does
-  it do wrong, and does correcting it restore both the network-wide fidelity and dnaG's operon?
+question: foldchange-to-delta-fidelity showed ParCa's TF-regulation layer misencodes its fold-change
+  data by a median factor of 2, in both directions and uniformly in magnitude, with six entries encoding
+  negative probabilities. It characterised the defect without locating it. Which step produces deltaV,
+  what does it do wrong, and does correcting it restore both the network-wide fidelity and dnaG's
+  operon?
 units_and_time:
   tick: not applicable -- static ParCa artefacts, no simulation.
   quantities:
@@ -29,31 +30,32 @@ behavior_tests:
   gate_class: acceptance_criterion
   question: Is the identified code path actually the one that produced this cache's deltaV?
   description: 'Re-reading deltaV and basal_prob from cell_specs[''basal''][''r_vector''] by calculateRnapRecruitment''s
-    own indexing reproduces the cache''s stored delta_prob to within 1e-9 relative on at least 99% of
-    entries.
+    own indexing reproduces the cache''s stored delta_prob to within 1e-9 relative on at least 99%
+    of entries.
 
 
-    Checked FIRST, and it is a real gate rather than a formality: every axis below reasons about a conversion,
-    and if the identified path is not the one that produced these numbers then the diagnosis is of the
-    wrong code. fit_sim_data_1.py:4022 calculateRnapRecruitment reads r[col_names_to_index[rnaId + ''__''
-    + tf]] into deltaV and r[... + ''__alpha''] into basal_prob, so the reproduction is exact arithmetic,
-    not an estimate.
+    Checked FIRST, and it is a real gate rather than a formality: every axis below reasons about
+    a conversion, and if the identified path is not the one that produced these numbers then the
+    diagnosis is of the wrong code. fit_sim_data_1.py:4022 calculateRnapRecruitment reads r[col_names_to_index[rnaId
+    + ''__'' + tf]] into deltaV and r[... + ''__alpha''] into basal_prob, so the reproduction is
+    exact arithmetic, not an estimate.
 
 
-    Threshold provenance: definitional. Reading the same vector by the same index either reproduces it
-    or the path is wrong.'
+    Threshold provenance: definitional. Reading the same vector by the same index either reproduces
+    it or the path is wrong.'
   measure:
     kind: derived
     path: fraction of delta_prob entries reproduced from r_vector within 1e-9 relative, for the deltaV
       conversion in calculateRnapRecruitment
-    detail: fraction of stored deltaV entries reproduced by re-indexing r_vector, over the whole matrix.
+    detail: fraction of stored deltaV entries reproduced by re-indexing r_vector, over the whole
+      matrix.
   pass_if:
     low: 0.99
     high: 1.0
     provenance:
       kind: theory
-      note: A fraction bounded above by 1.0; 0.99 tolerates entries whose column names cannot be reconstructed
-        without tolerating a wrong code path.
+      note: A fraction bounded above by 1.0; 0.99 tolerates entries whose column names cannot be
+        reconstructed without tolerating a wrong code path.
   status: passed
   result: PASS
   measured_value: 1.0
@@ -63,33 +65,34 @@ behavior_tests:
   gate_class: acceptance_criterion
   question: Does the proposed defect predict BOTH the activator over-shoot and the repressor under-shoot?
   description: 'The candidate mechanism, applied to the joined entries, predicts a median implied/expected
-    ratio above 1 for activators and below 1 for repressors, with both predicted medians within 2x of
-    the measured 4.77 and 0.628.
+    ratio above 1 for activators and below 1 for repressors, with both predicted medians within 2x
+    of the measured 4.77 and 0.628.
 
 
     The first of two constraints this study inherits from foldchange-to-delta-fidelity, and the reason
-    that study had to run first. Any diagnosis that explains only repression is already refuted -- and
-    that specifically rules out the intuitive story where a repressor delta simply saturates at total
-    silencing, since activators are distorted MORE (4.77x) than repressors (0.628x). A candidate that
-    cannot produce a sign-dependent asymmetry of that shape is not the mechanism.
+    that study had to run first. Any diagnosis that explains only repression is already refuted --
+    and that specifically rules out the intuitive story where a repressor delta simply saturates
+    at total silencing, since activators are distorted MORE (4.77x) than repressors (0.628x). A candidate
+    that cannot produce a sign-dependent asymmetry of that shape is not the mechanism.
 
 
-    Threshold provenance: theory. 2x is the standing agreement band, applied to two subgroup medians simultaneously.'
+    Threshold provenance: theory. 2x is the standing agreement band, applied to two subgroup medians
+    simultaneously.'
   measure:
     kind: derived
     path: predicted over measured median implied/expected ratio, separately for activating and repressing
       deltaV entries
-    detail: worst of the two subgroup ratios (predicted median over measured median) for activators and
-      repressors.
+    detail: worst of the two subgroup ratios (predicted median over measured median) for activators
+      and repressors.
   pass_if:
     low: 0.67
     high: 1.5
     provenance:
       kind: theory
-      note: Tightened from [0.5, 2.0], which spanned 4x and exceeded the discrimination check's 3x ceiling.
-        [0.67, 1.5] is the agreement band used throughout this investigation, so every ratio axis here
-        reads on one scale. Two-sided and applied to the WORSE of the two subgroups, so a candidate cannot
-        pass by matching activators while missing repressors.
+      note: Tightened from [0.5, 2.0], which spanned 4x and exceeded the discrimination check's 3x
+        ceiling. [0.67, 1.5] is the agreement band used throughout this investigation, so every ratio
+        axis here reads on one scale. Two-sided and applied to the WORSE of the two subgroups, so
+        a candidate cannot pass by matching activators while missing repressors.
   status: failed
   result: FAIL
   measured_value: 0.2095
@@ -98,8 +101,8 @@ behavior_tests:
   classification: primary
   gate_class: acceptance_criterion
   question: Does the proposed defect predict distortion that does NOT grow with fold-change magnitude?
-  description: 'The candidate predicts a strong-vs-weak repressor distortion ratio within 2x of the measured
-    1.166.
+  description: 'The candidate predicts a strong-vs-weak repressor distortion ratio within 2x of the
+    measured 1.166.
 
 
     The second inherited constraint, and the sharper of the two. foldchange-to-delta-fidelity measured
@@ -120,10 +123,10 @@ behavior_tests:
     high: 1.5
     provenance:
       kind: theory
-      note: 'Tightened from [0.5, 2.0], which spanned 4x and exceeded the discrimination check''s 3x ceiling.
-        [0.67, 1.5] is the agreement band used throughout this investigation, so every ratio axis here
-        reads on one scale. Two-sided: a candidate predicting strong magnitude-dependence and one predicting
-        none are both wrong if the measurement says 1.166.'
+      note: 'Tightened from [0.5, 2.0], which spanned 4x and exceeded the discrimination check''s
+        3x ceiling. [0.67, 1.5] is the agreement band used throughout this investigation, so every
+        ratio axis here reads on one scale. Two-sided: a candidate predicting strong magnitude-dependence
+        and one predicting none are both wrong if the measurement says 1.166.'
   status: passed
   result: PASS
   measured_value: 1.0774
@@ -132,29 +135,30 @@ behavior_tests:
   classification: primary
   gate_class: acceptance_criterion
   question: Applying the correction, does the encoding actually match the data?
-  description: 'Recomputing deltaV under the corrected conversion moves the median implied/expected retained
-    fraction into [0.67, 1.5], from the measured 2.006.
+  description: 'Recomputing deltaV under the corrected conversion moves the median implied/expected
+    retained fraction into [0.67, 1.5], from the measured 2.006.
 
 
     The axis that separates a diagnosis from a story. A candidate can explain both symptoms and still
-    be wrong; the test is whether applying it repairs the numbers. This is deliberately the hardest axis
-    in the study, and a FAIL here alongside passes above would mean the symptoms are understood but the
-    cause is not.
+    be wrong; the test is whether applying it repairs the numbers. This is deliberately the hardest
+    axis in the study, and a FAIL here alongside passes above would mean the symptoms are understood
+    but the cause is not.
 
 
     Threshold provenance: theory. The same band foldchange-to-delta-fidelity used to judge the uncorrected
     encoding, so corrected and uncorrected read on one scale.'
   measure:
     kind: derived
-    path: median implied/expected retained fraction after recomputing deltaV under the corrected conversion
+    path: median implied/expected retained fraction after recomputing deltaV under the corrected
+      conversion
     detail: median ratio across the 564 joinable entries, post-correction.
   pass_if:
     low: 0.67
     high: 1.5
     provenance:
       kind: theory
-      note: Identical to the band that the uncorrected encoding failed at 2.006, so the comparison is
-        direct.
+      note: Identical to the band that the uncorrected encoding failed at 2.006, so the comparison
+        is direct.
   status: failed
   result: FAIL
   measured_value: 1.968
@@ -163,13 +167,14 @@ behavior_tests:
   classification: primary
   gate_class: acceptance_criterion
   question: Does the correction restore dnaG's operon to a survivable expression?
-  description: 'Under the corrected conversion, the lexA->rpoD delta on TU00352[c] retains between 0.42
-    and 0.96 of basal, bracketing the 0.637 its measured log2FC of -0.65 specifies.
+  description: 'Under the corrected conversion, the lexA->rpoD delta on TU00352[c] retains between
+    0.42 and 0.96 of basal, bracketing the 0.637 its measured log2FC of -0.65 specifies.
 
 
-    The end-to-end check, and the one that matters biologically. The uncorrected encoding retains 4.3167e-08
-    -- total silencing of dnaG''s operon and, through the chain this investigation traced, a stalled lineage.
-    A correct diagnosis must return this entry to roughly the modest repression its source datum describes.
+    The end-to-end check, and the one that matters biologically. The uncorrected encoding retains
+    4.3167e-08 -- total silencing of dnaG''s operon and, through the chain this investigation traced,
+    a stalled lineage. A correct diagnosis must return this entry to roughly the modest repression
+    its source datum describes.
 
 
     Threshold provenance: theory. The band spans 3x centred on 0.637, the value 2**-0.65 specifies.'
@@ -192,15 +197,16 @@ behavior_tests:
   classification: diagnostic
   gate_class: acceptance_criterion
   question: Is the distortion concentrated in entries whose basal_prob was clipped to zero?
-  description: 'The distorted entries are NOT concentrated in TUs whose basal_prob was clipped: the fraction
-    of high-distortion entries sitting on clipped-basal TUs is within 2x of the base rate.
+  description: 'The distorted entries are NOT concentrated in TUs whose basal_prob was clipped: the
+    fraction of high-distortion entries sitting on clipped-basal TUs is within 2x of the base rate.
 
 
-    A specific candidate, cheap to eliminate, and visible in the source: calculateRnapRecruitment applies
-    basal_prob[basal_prob < 0] = 0 to the intercept but leaves deltaV untouched, so any TU whose fitted
-    alpha went negative has a delta divided by a clipped basal. Diagnostic rather than primary because
-    it discriminates a single candidate rather than between the study''s hypotheses, and dnaG''s own basal
-    is 1.2128e-04 and so was not clipped -- which already argues against it as the general cause.'
+    A specific candidate, cheap to eliminate, and visible in the source: calculateRnapRecruitment
+    applies basal_prob[basal_prob < 0] = 0 to the intercept but leaves deltaV untouched, so any TU
+    whose fitted alpha went negative has a delta divided by a clipped basal. Diagnostic rather than
+    primary because it discriminates a single candidate rather than between the study''s hypotheses,
+    and dnaG''s own basal is 1.2128e-04 and so was not clipped -- which already argues against it
+    as the general cause.'
   measure:
     kind: derived
     path: ratio of clipped-basal prevalence among high-distortion deltaV entries to the base rate
@@ -210,10 +216,10 @@ behavior_tests:
     high: 1.5
     provenance:
       kind: theory
-      note: Tightened from [0.5, 2.0], which spanned 4x and exceeded the discrimination check's 3x ceiling.
-        [0.67, 1.5] is the agreement band used throughout this investigation, so every ratio axis here
-        reads on one scale. Two-sided; a strong enrichment OR depletion would both be informative about
-        this candidate.
+      note: Tightened from [0.5, 2.0], which spanned 4x and exceeded the discrimination check's 3x
+        ceiling. [0.67, 1.5] is the agreement band used throughout this investigation, so every ratio
+        axis here reads on one scale. Two-sided; a strong enrichment OR depletion would both be informative
+        about this candidate.
   status: failed
   result: FAIL
   measured_value: 22.76
@@ -228,49 +234,49 @@ preregistered:
       high: 1.0
       provenance:
         kind: theory
-        note: A fraction bounded above by 1.0; 0.99 tolerates entries whose column names cannot be reconstructed
-          without tolerating a wrong code path.
+        note: A fraction bounded above by 1.0; 0.99 tolerates entries whose column names cannot be
+          reconstructed without tolerating a wrong code path.
     candidate-explains-bidirectionality:
       low: 0.67
       high: 1.5
       provenance:
         kind: theory
-        note: Tightened from [0.5, 2.0], which spanned 4x and exceeded the discrimination check's 3x ceiling.
-          [0.67, 1.5] is the agreement band used throughout this investigation, so every ratio axis here
-          reads on one scale. Two-sided and applied to the WORSE of the two subgroups, so a candidate
-          cannot pass by matching activators while missing repressors.
+        note: Tightened from [0.5, 2.0], which spanned 4x and exceeded the discrimination check's
+          3x ceiling. [0.67, 1.5] is the agreement band used throughout this investigation, so every
+          ratio axis here reads on one scale. Two-sided and applied to the WORSE of the two subgroups,
+          so a candidate cannot pass by matching activators while missing repressors.
     candidate-explains-magnitude-uniformity:
       low: 0.67
       high: 1.5
       provenance:
         kind: theory
-        note: 'Tightened from [0.5, 2.0], which spanned 4x and exceeded the discrimination check''s 3x
-          ceiling. [0.67, 1.5] is the agreement band used throughout this investigation, so every ratio
-          axis here reads on one scale. Two-sided: a candidate predicting strong magnitude-dependence
+        note: 'Tightened from [0.5, 2.0], which spanned 4x and exceeded the discrimination check''s
+          3x ceiling. [0.67, 1.5] is the agreement band used throughout this investigation, so every
+          ratio axis here reads on one scale. Two-sided: a candidate predicting strong magnitude-dependence
           and one predicting none are both wrong if the measurement says 1.166.'
     corrected-conversion-restores-fidelity:
       low: 0.67
       high: 1.5
       provenance:
         kind: theory
-        note: Identical to the band that the uncorrected encoding failed at 2.006, so the comparison is
-          direct.
+        note: Identical to the band that the uncorrected encoding failed at 2.006, so the comparison
+          is direct.
     corrected-lexa-rpod-is-non-lethal:
       low: 0.42
       high: 0.96
       provenance:
         kind: theory
-        note: Centred on the 0.637 the measured log2FC specifies and spanning 3x, the widest the discrimination
-          check permits; a correction landing outside this has not restored the datum.
+        note: Centred on the 0.637 the measured log2FC specifies and spanning 3x, the widest the
+          discrimination check permits; a correction landing outside this has not restored the datum.
     negative-basal-clipping-is-not-the-cause:
       low: 0.67
       high: 1.5
       provenance:
         kind: theory
-        note: Tightened from [0.5, 2.0], which spanned 4x and exceeded the discrimination check's 3x ceiling.
-          [0.67, 1.5] is the agreement band used throughout this investigation, so every ratio axis here
-          reads on one scale. Two-sided; a strong enrichment OR depletion would both be informative about
-          this candidate.
+        note: Tightened from [0.5, 2.0], which spanned 4x and exceeded the discrimination check's
+          3x ceiling. [0.67, 1.5] is the agreement band used throughout this investigation, so every
+          ratio axis here reads on one scale. Two-sided; a strong enrichment OR depletion would both
+          be informative about this candidate.
   criteria:
   - test: conversion-path-reproduces-the-cache
     prior: Is the identified code path actually the one that produced this cache's deltaV?
@@ -291,26 +297,26 @@ implementation_requirements:
   summary: Reproduce deltaV from r_vector, and identify what the fit was constrained to.
   detail: 'calculateRnapRecruitment (fit_sim_data_1.py:4022) reads deltaV from r[col_names_to_index[rnaIdNoLoc
     + ''__'' + tf]] and basal_prob from the matching ''__alpha'' column, where r = cell_specs[''basal''][''r_vector''],
-    set at line 3705. The fold changes enter far upstream (lines ~758, 874, 3879) as constraints on that
-    fit, NOT through any direct formula. So the question is not ''what transform is wrong'' but ''what
-    was the regression asked to satisfy, and is deltaV/basal_prob the quantity that answers it''. req-1
-    is to reproduce the stored deltaV from r_vector (axis 1) and to read the fit''s objective -- what
-    residual it minimises and in what space -- WITHOUT yet evaluating fidelity.
+    set at line 3705. The fold changes enter far upstream (lines ~758, 874, 3879) as constraints
+    on that fit, NOT through any direct formula. So the question is not ''what transform is wrong''
+    but ''what was the regression asked to satisfy, and is deltaV/basal_prob the quantity that answers
+    it''. req-1 is to reproduce the stored deltaV from r_vector (axis 1) and to read the fit''s objective
+    -- what residual it minimises and in what space -- WITHOUT yet evaluating fidelity.
 
 
-    RESOLVED. r_vector (4739,) and r_columns both recover from models/parca/parca_state.pkl.gz -> cell_specs[''basal''],
-    so NO ParCa re-run is needed and the main scoping risk is closed. Replaying calculateRnapRecruitment''s
-    indexing reproduces 979 of 979 stored deltaV entries within 1e-9 relative and 100% of basal_prob.
-    Only 3 TUs had a negative fitted alpha clipped to zero.'
+    RESOLVED. r_vector (4739,) and r_columns both recover from models/parca/parca_state.pkl.gz ->
+    cell_specs[''basal''], so NO ParCa re-run is needed and the main scoping risk is closed. Replaying
+    calculateRnapRecruitment''s indexing reproduces 979 of 979 stored deltaV entries within 1e-9
+    relative and 100% of basal_prob. Only 3 TUs had a negative fitted alpha clipped to zero.'
 - id: req-2
   status: complete
   blocking: true
   summary: State the candidate correction BEFORE measuring its effect.
-  detail: 'The two repair axes are only meaningful if the correction is specified in advance. Once req-1
-    identifies what the fit optimises, the candidate correction must be written into this study''s record
-    BEFORE recomputing anything, otherwise ''the correction that restores fidelity'' is chosen by fitting
-    to the answer. This requirement exists because that is precisely how studies 13-15 leaked: numbers
-    measured during scoping could only be recorded post-hoc.
+  detail: 'The two repair axes are only meaningful if the correction is specified in advance. Once
+    req-1 identifies what the fit optimises, the candidate correction must be written into this study''s
+    record BEFORE recomputing anything, otherwise ''the correction that restores fidelity'' is chosen
+    by fitting to the answer. This requirement exists because that is precisely how studies 13-15
+    leaked: numbers measured during scoping could only be recorded post-hoc.
 
 
     SATISFIED: the candidate diagnosis and BOTH correction options are recorded in the candidate_diagnosis
@@ -320,47 +326,47 @@ implementation_requirements:
   blocking: false
   summary: Reuse the join from foldchange-to-delta-fidelity.
   detail: The TF-target join (564 entries, with unjoined counts) is already implemented in that study's
-    analyses/measure.py. Import it rather than re-deriving, so corrected and uncorrected fidelity are
-    measured over an identical entry set.
+    analyses/measure.py. Import it rather than re-deriving, so corrected and uncorrected fidelity
+    are measured over an identical entry set.
 alternative_hypotheses:
 - name: H1 fit residual
   discriminator: candidate-explains-magnitude-uniformity
   statement: 'deltaV is a least-squares coefficient, not an encoding, so the distortion is fit error:
     the regression cannot satisfy all constraints simultaneously and distributes the residual. Predicts
-    magnitude-uniform, sign-asymmetric distortion -- consistent with BOTH inherited constraints, which
-    makes it the leading candidate a priori.'
+    magnitude-uniform, sign-asymmetric distortion -- consistent with BOTH inherited constraints,
+    which makes it the leading candidate a priori.'
 - name: H2 space mismatch
   discriminator: candidate-explains-magnitude-uniformity
-  statement: 'The fit works in log space while the runtime applies delta additively in probability space.
-    DISFAVOURED a priori: this predicts error growing with |log2FC|, and foldchange-to-delta-fidelity
+  statement: 'The fit works in log space while the runtime applies delta additively in probability
+    space. DISFAVOURED a priori: this predicts error growing with |log2FC|, and foldchange-to-delta-fidelity
     measured 1.166 strong-vs-weak. Recorded so the refutation is explicit rather than assumed.'
 - name: H3 negative-basal clipping
   discriminator: negative-basal-clipping-is-not-the-cause
-  statement: basal_prob[basal_prob < 0] = 0 clips the intercept without clipping deltaV, so entries on
-    clipped TUs get a delta divided by a zeroed basal. Cannot be the general cause -- dnaG's basal is
-    1.2128e-04 and unclipped -- but may explain a subset, including some of the six negative-probability
+  statement: basal_prob[basal_prob < 0] = 0 clips the intercept without clipping deltaV, so entries
+    on clipped TUs get a delta divided by a zeroed basal. Cannot be the general cause -- dnaG's basal
+    is 1.2128e-04 and unclipped -- but may explain a subset, including some of the six negative-probability
     entries.
 - name: H4 the fit is faithful and the comparison is wrong
   discriminator: conversion-path-reproduces-the-cache
-  statement: 'deltaV/basal_prob is simply not the quantity 2**log2FC describes -- the regression targets
-    a promoter-bound probability under a different baseline, and foldchange-to-delta-fidelity compared
-    incommensurable numbers. This would make the ''defect'' an artefact of that study rather than of ParCa,
-    and it must be taken seriously: it is the hypothesis under which this investigation''s last two studies
-    are wrong.'
-falsifiability: 'H4 is included deliberately: it is the hypothesis under which this investigation''s own
-  recent conclusions are the error, and it is discriminated by reading what the fit was constrained to
-  rather than by any measurement this study could tune. The two repair axes prevent a diagnosis that explains
-  the symptoms without fixing the numbers, and req-2 forces the candidate correction to be stated before
-  its effect is measured.'
+  statement: 'deltaV/basal_prob is simply not the quantity 2**log2FC describes -- the regression
+    targets a promoter-bound probability under a different baseline, and foldchange-to-delta-fidelity
+    compared incommensurable numbers. This would make the ''defect'' an artefact of that study rather
+    than of ParCa, and it must be taken seriously: it is the hypothesis under which this investigation''s
+    last two studies are wrong.'
+falsifiability: 'H4 is included deliberately: it is the hypothesis under which this investigation''s
+  own recent conclusions are the error, and it is discriminated by reading what the fit was constrained
+  to rather than by any measurement this study could tune. The two repair axes prevent a diagnosis
+  that explains the symptoms without fixing the numbers, and req-2 forces the candidate correction
+  to be stated before its effect is measured.'
 assumptions:
 - assumption: The cache's delta_prob came from calculateRnapRecruitment on this r_vector.
-  basis: Asserted from source but NOT yet verified against the cache, which is exactly what axis 1 checks
-    before anything downstream is trusted.
+  basis: Asserted from source but NOT yet verified against the cache, which is exactly what axis
+    1 checks before anything downstream is trusted.
   risk: low
 - assumption: 2**log2FC remains the right comparison for a corrected deltaV.
-  basis: Inherited from foldchange-to-delta-fidelity and NOT independent of it. If H4 holds, this assumption
-    is false and the corrected-fidelity axes are measuring the wrong thing -- which is why H4 is discriminated
-    by reading the fit's objective rather than by these axes.
+  basis: Inherited from foldchange-to-delta-fidelity and NOT independent of it. If H4 holds, this
+    assumption is false and the corrected-fidelity axes are measuring the wrong thing -- which is
+    why H4 is discriminated by reading the fit's objective rather than by these axes.
   risk: high
 simulation_set: []
 planned_runs:
@@ -387,100 +393,125 @@ controls:
   result: FAIL
 - name: conversion-path-reproduces-the-cache
   kind: positive
-  hypothesis: If the identified path does not reproduce the stored deltaV, the diagnosis is of the wrong
-    code.
+  hypothesis: If the identified path does not reproduce the stored deltaV, the diagnosis is of the
+    wrong code.
   expected: '>= 99% of entries reproduced within 1e-9 relative.'
   observed: 979/979 deltaV entries and 100% of basal_prob reproduced within 1e-9.
   result: PASS
 limitations:
-- If r_vector is not recoverable from the cache, req-1 requires re-running ParCa, which changes this study
-  from an afternoon of analysis into a substantial job. Checked first.
-- The corrected-fidelity axes rest on 2**log2FC being the right target, an assumption inherited from foldchange-to-delta-fidelity
-  and marked high risk. If H4 holds they measure the wrong thing, which is why H4 is discriminated separately.
-- 'The study can identify WHAT the conversion does wrong without establishing what it SHOULD do: the regression
-  may be satisfying a constraint that is itself mis-specified upstream, and this study does not reach
-  that far.'
-- The cache deliberately predates the LexA-related ParCa fix recorded on another branch. Whether that
-  fix touches this conversion is not checked here.
+- "CORRECTION 2026-09-07 — this study's account of WHY LexA acts on the rpsU-dnaG-rpoD operon is\
+  \ wrong, and the wrongness is inherited, not original to it.\nStatements in this file to the effect\
+  \ that 'LexA regulates rpoD and dnaG is silenced as a passenger', or that a dnaG-bearing TU acquires\
+  \ LexA because it contains rpoD, do not match the model. They came from checking only fold_changes.tsv,\
+  \ which carries lexA->rpoD at log2FC -0.65 and no dnaG entry. There is a SECOND source, fold_changes_nca.tsv:\n\
+  \    lexA  dnaG  -1.71        lexA  rpsU  -1.89\nand it is the one in force. tf_to_fold_change['PC00010']\
+  \ holds EG10239_RNA (dnaG) at 0.30566, which is 2^-1.71 exactly, plus EG10896_RNA (rpsU) — and\
+  \ does NOT contain EG10920_RNA (rpoD) at all. target_tf likewise lists PC00010 for dnaG and rpsU,\
+  \ not rpoD. LexA is a DIRECT, cistron-level regulator of dnaG in this model. dnaG is not a passenger.\n\
+  The real structural defect is different and stronger: regulation is assigned per CISTRON and then\
+  \ unioned onto every TU containing that cistron (relation.py::_build_RNA_to_tf_mapping). dnaG's\
+  \ LexA edge therefore lands on whatever TU carries dnaG, and after the gene-set dedup there is\
+  \ exactly ONE such TU. The model cannot express 'LexA represses dnaG through this promoter but\
+  \ not that one' — TU-specific differential regulation is structurally impossible, not merely mis-assigned.\
+  \ It also means restoring the deduplicated promoters could not have separated them: all three TUs\
+  \ carry an identical cistron set, so cistron-level regulation attaches LexA to all three.\nWHAT\
+  \ THIS DOES AND DOES NOT INVALIDATE: measurements of the encoded delta, occupancy, the deficit\
+  \ and the lineage outcomes are unaffected — they measured the model as built. What is wrong is\
+  \ the causal STORY told about them. Any figure computed against rpoD's -0.65 as dnaG's input baseline\
+  \ is wrong and should be recomputed against -1.71; in this investigation that includes the fold-change-to-delta\
+  \ distortion, which is 7.08e+06-fold, not 1.48e+07.\nLeft in place rather than rewritten: the original\
+  \ text is preserved above so the record shows what was believed when the work was done."
+- If r_vector is not recoverable from the cache, req-1 requires re-running ParCa, which changes this
+  study from an afternoon of analysis into a substantial job. Checked first.
+- The corrected-fidelity axes rest on 2**log2FC being the right target, an assumption inherited from
+  foldchange-to-delta-fidelity and marked high risk. If H4 holds they measure the wrong thing, which
+  is why H4 is discriminated separately.
+- 'The study can identify WHAT the conversion does wrong without establishing what it SHOULD do:
+  the regression may be satisfying a constraint that is itself mis-specified upstream, and this study
+  does not reach that far.'
+- The cache deliberately predates the LexA-related ParCa fix recorded on another branch. Whether
+  that fix touches this conversion is not checked here.
 - 'corrected-lexa-rpod-is-non-lethal is UNGRADED: the corrected value requires re-solving a 4739-variable
   ECOS program and cannot be estimated entry-by-entry. Left ungraded rather than guessed.'
 - The clipping diagnostic is underpowered (3 clipped TUs, 1 hit) and its nominal 22.8x failure should
-  not be read as evidence FOR clipping; the substantive result is that 47 of 48 boundary entries are on
-  unclipped TUs.
+  not be read as evidence FOR clipping; the substantive result is that 47 of 48 boundary entries
+  are on unclipped TUs.
 - The activator mechanism is not identified. This study bounds it (no boundary involvement, magnitude-uniform,
   60.8% of entries) without explaining it.
-claim: dnaG's silencing is an ACTIVE-CONSTRAINT artefact of ParCa's convex fit -- entries land on alpha
-  + delta >= 0 and are totally silenced -- which explains the repressors completely and the activators,
-  61% of the network, not at all.
+claim: dnaG's silencing is an ACTIVE-CONSTRAINT artefact of ParCa's convex fit -- entries land on
+  alpha + delta >= 0 and are totally silenced -- which explains the repressors completely and the
+  activators, 61% of the network, not at all.
 conclusion: 'Half solved, precisely, and the other half now sharply posed.
 
-  The conversion is located and confirmed: calculateRnapRecruitment reads deltaV straight out of a convex
-  fit''s solution vector, reproduced here 979/979 within 1e-9. The fit minimises norm(G@R - k) subject
-  to 0 <= Z@R <= 1, where the lower bound is alpha + sum(delta) >= 0. When it is ACTIVE the optimiser
-  sits exactly on it, giving delta/alpha = -1 and total silencing regardless of the target fold change,
-  because the objective matches absolute probabilities and never sees the ratio. All 10 near-total LexA
-  targets sit at Z@R = 5.23e-12 -- one boundary, not ten coincidences -- and dnaG''s -0.999999957 is that
-  boundary to solver precision, correcting my earlier description of it as floating-point cancellation.
+  The conversion is located and confirmed: calculateRnapRecruitment reads deltaV straight out of
+  a convex fit''s solution vector, reproduced here 979/979 within 1e-9. The fit minimises norm(G@R
+  - k) subject to 0 <= Z@R <= 1, where the lower bound is alpha + sum(delta) >= 0. When it is ACTIVE
+  the optimiser sits exactly on it, giving delta/alpha = -1 and total silencing regardless of the
+  target fold change, because the objective matches absolute probabilities and never sees the ratio.
+  All 10 near-total LexA targets sit at Z@R = 5.23e-12 -- one boundary, not ten coincidences -- and
+  dnaG''s -0.999999957 is that boundary to solver precision, correcting my earlier description of
+  it as floating-point cancellation.
 
-  Repressors are then fully accounted for: 46 boundary entries at a median ratio of 0.0000, 175 free entries
-  at 0.9959. The magnitude-uniformity that refuted every transform-error explanation is reproduced at
-  1.077.
+  Repressors are then fully accounted for: 46 boundary entries at a median ratio of 0.0000, 175 free
+  entries at 0.9959. The magnitude-uniformity that refuted every transform-error explanation is reproduced
+  at 1.077.
 
-  But my recorded prediction that the upper bound would bind for activators is REFUTED: none of the 343
-  activating entries is at any boundary, and their 4.77x over-shoot has a separate cause. Repairing the
-  constraint would take repressors to a median of exactly 1.0000 and the network only from 2.006 to 1.968,
-  because activators are 60.8% of entries. The one axis that cannot be evaluated -- what dnaG''s entry
-  would become once released -- needs the ECOS program re-solved and is left ungraded rather than estimated.
+  But my recorded prediction that the upper bound would bind for activators is REFUTED: none of the
+  343 activating entries is at any boundary, and their 4.77x over-shoot has a separate cause. Repairing
+  the constraint would take repressors to a median of exactly 1.0000 and the network only from 2.006
+  to 1.968, because activators are 60.8% of entries. The one axis that cannot be evaluated -- what
+  dnaG''s entry would become once released -- needs the ECOS program re-solved and is left ungraded
+  rather than estimated.
 
 
-  AMENDED 2026-09-04: this study''s conclusion stands on its direct evidence, but two of its framing numbers
-  came from foldchange-to-delta-fidelity''s uncorrected comparison. The magnitude-uniformity it leaned
-  on is 1.660 corrected rather than 1.166 (its own axis still passes at 0.757), and more importantly the
-  lexA->rpoD encoding is 1.88x off rather than 1.476e+07x. The constraint artefact is REAL -- r is pinned
-  at -1 -- but it is not by itself the catastrophe: at the fit''s own occupancy of 0.6615 a delta of -1
-  yields a retained fraction of 0.34, which is survivable. It becomes lethal only when runtime occupancy
-  reaches 1.0.'
+  AMENDED 2026-09-04: this study''s conclusion stands on its direct evidence, but two of its framing
+  numbers came from foldchange-to-delta-fidelity''s uncorrected comparison. The magnitude-uniformity
+  it leaned on is 1.660 corrected rather than 1.166 (its own axis still passes at 0.757), and more
+  importantly the lexA->rpoD encoding is 1.88x off rather than 1.476e+07x. The constraint artefact
+  is REAL -- r is pinned at -1 -- but it is not by itself the catastrophe: at the fit''s own occupancy
+  of 0.6615 a delta of -1 yields a retained fraction of 0.34, which is survivable. It becomes lethal
+  only when runtime occupancy reaches 1.0.'
 confidence: Investigating
 candidate_diagnosis:
   recorded_at: '2026-09-04T09:40:00Z'
   recorded_before_measuring: true
-  statement: 'The distortion is an ACTIVE-CONSTRAINT artefact of the convex fit, not a transform error
-    and not residual scatter.
+  statement: 'The distortion is an ACTIVE-CONSTRAINT artefact of the convex fit, not a transform
+    error and not residual scatter.
 
-    fit_sim_data_1.py:3578-3592 minimises norm(G@R - k) subject to 0 <= Z@R <= 1 and T@R >= 0, where Z@R
-    is the initiation probability with ALL TFs bound. The lower bound therefore states alpha + sum(delta)
-    >= 0, i.e. delta/alpha >= -1. When that constraint is ACTIVE the optimiser sits exactly on it, giving
-    delta/alpha = -1 and a retained fraction of 0 -- total silencing -- regardless of what the target
-    fold change asked for. The objective never sees the ratio delta/alpha; it matches absolute probabilities
-    k, so nothing pulls a boundary-bound entry back toward 2**log2FC.'
+    fit_sim_data_1.py:3578-3592 minimises norm(G@R - k) subject to 0 <= Z@R <= 1 and T@R >= 0, where
+    Z@R is the initiation probability with ALL TFs bound. The lower bound therefore states alpha
+    + sum(delta) >= 0, i.e. delta/alpha >= -1. When that constraint is ACTIVE the optimiser sits
+    exactly on it, giving delta/alpha = -1 and a retained fraction of 0 -- total silencing -- regardless
+    of what the target fold change asked for. The objective never sees the ratio delta/alpha; it
+    matches absolute probabilities k, so nothing pulls a boundary-bound entry back toward 2**log2FC.'
   predictions:
   - 'BIDIRECTIONAL: the lower constraint (Z@R >= 0) binds for repressors, driving retained -> 0 (under-shoot);
     the upper constraint (Z@R <= 1) binds for strongly activated TUs, driving retained up (over-shoot).
     This is why activators are distorted MORE than repressors.'
-  - 'MAGNITUDE-UNIFORM: a constraint either binds or it does not. Whether it binds depends on the TU''s
-    whole regulatory context, not on any single |log2FC|, so distortion does not grow with fold-change
-    magnitude.'
-  - The 10 near-total-repression targets should sit at Z@R ~ 0, i.e. the lower constraint is active for
-    them.
-  - EG10620_RNA[c]'s ratio slightly BELOW -1 (-1.000009) is ECOS solver tolerance overshooting the boundary,
-    not a distinct defect.
-  - dnaG's -0.999999957 is the boundary itself, to solver precision -- NOT a coincidence and NOT floating-point
-    cancellation.
+  - 'MAGNITUDE-UNIFORM: a constraint either binds or it does not. Whether it binds depends on the
+    TU''s whole regulatory context, not on any single |log2FC|, so distortion does not grow with
+    fold-change magnitude.'
+  - The 10 near-total-repression targets should sit at Z@R ~ 0, i.e. the lower constraint is active
+    for them.
+  - EG10620_RNA[c]'s ratio slightly BELOW -1 (-1.000009) is ECOS solver tolerance overshooting the
+    boundary, not a distinct defect.
+  - dnaG's -0.999999957 is the boundary itself, to solver precision -- NOT a coincidence and NOT
+    floating-point cancellation.
   candidate_correction: 'Two options, stated now so neither is chosen by fitting to the answer.
 
     (A) Floor the constraint: replace 0 <= Z@R with eps <= Z@R for a small positive eps, so a fully-repressed
-    TU retains a floor instead of collapsing to zero. Cheap, but arbitrary in eps and does not make the
-    encoding faithful -- it only makes it non-lethal.
+    TU retains a floor instead of collapsing to zero. Cheap, but arbitrary in eps and does not make
+    the encoding faithful -- it only makes it non-lethal.
 
     (B) Constrain the RATIO: add delta/alpha == 2**log2FC - 1 for entries with a measured fold change,
-    either as an equality constraint or as a penalty term in the objective. This is the correction that
-    would make the encoding faithful, and it is the one the repair axes should be graded against.
+    either as an equality constraint or as a penalty term in the objective. This is the correction
+    that would make the encoding faithful, and it is the one the repair axes should be graded against.
 
     PREDICTION under (B): entries whose constraint was NOT active are already near-faithful and barely
     move; the network median improves mainly by repairing the boundary-bound entries.'
-  note: Recorded per req-2 BEFORE measuring any of it. Axis 1 has passed (979/979 deltaV entries reproduced
-    within 1e-9), so the code path is confirmed; nothing about fidelity has been evaluated at the time
-    of writing.
+  note: Recorded per req-2 BEFORE measuring any of it. Axis 1 has passed (979/979 deltaV entries
+    reproduced within 1e-9), so the code path is confirmed; nothing about fidelity has been evaluated
+    at the time of writing.
 runs:
 - name: deltav-conversion-diagnosis__static
   status: complete
@@ -488,9 +519,9 @@ runs:
   started_at: '2026-09-04T10:15:00Z'
   started_at_iso: '2026-09-04T10:15:00Z'
   note: NO SIMULATION. Reads models/parca/parca_state.pkl.gz (cell_specs['basal']['r_vector'], r_columns),
-    the sim cache (fingerprint ea05ac9b23b1d843), fit_sim_data_1.py source, and the 564-entry join reused
-    from foldchange-to-delta-fidelity. The candidate diagnosis and both correction options were recorded
-    and committed (e67e674b) BEFORE any fidelity measurement, per req-2.
+    the sim cache (fingerprint ea05ac9b23b1d843), fit_sim_data_1.py source, and the 564-entry join
+    reused from foldchange-to-delta-fidelity. The candidate diagnosis and both correction options
+    were recorded and committed (e67e674b) BEFORE any fidelity measurement, per req-2.
   outcomes:
     conversion-path-reproduces-the-cache: &id001
       result: PASS
@@ -500,25 +531,25 @@ runs:
       gate_class: acceptance_criterion
       detail: 979 of 979 stored deltaV entries reproduced within 1e-9 relative by replaying calculateRnapRecruitment's
         own indexing of r_vector, and 100% of basal_prob. r_vector (4739,) and r_columns both recover
-        from models/parca/parca_state.pkl.gz -> cell_specs['basal'], so no ParCa re-run was needed. The
-        diagnosis below is of the code that actually produced this cache.
+        from models/parca/parca_state.pkl.gz -> cell_specs['basal'], so no ParCa re-run was needed.
+        The diagnosis below is of the code that actually produced this cache.
     candidate-explains-bidirectionality: &id002
       result: FAIL
       measured_value: 0.2095
       evaluated_by: agent
       operator: derived/band [0.67, 1.5]
       gate_class: acceptance_criterion
-      detail: 'The candidate explains repressors and NOT activators, and the axis grades the worse of
-        the two, so it fails at 0.21.
+      detail: 'The candidate explains repressors and NOT activators, and the axis grades the worse
+        of the two, so it fails at 0.21.
 
         REPRESSORS, explained completely: 46 entries sit at the active lower constraint with a median
-        ratio of 0.0000 (total silencing), while the 175 free ones have a median ratio of 0.9959 -- essentially
-        PERFECT fidelity. Subgroup agreement 0.95.
+        ratio of 0.0000 (total silencing), while the 175 free ones have a median ratio of 0.9959
+        -- essentially PERFECT fidelity. Subgroup agreement 0.95.
 
         ACTIVATORS, not explained at all: ZERO of the 343 activating entries sit at the upper constraint,
         yet their median ratio is 4.77. The constraint mechanism predicts nothing for them (agreement
-        0.21). My recorded prediction that the upper bound Z@R <= 1 would bind for activators is REFUTED
-        -- it binds for none of them.'
+        0.21). My recorded prediction that the upper bound Z@R <= 1 would bind for activators is
+        REFUTED -- it binds for none of them.'
     candidate-explains-magnitude-uniformity: &id003
       result: PASS
       measured_value: 1.0774
@@ -526,43 +557,44 @@ runs:
       operator: derived/band [0.67, 1.5]
       gate_class: acceptance_criterion
       detail: 'The candidate predicts a strong-vs-weak distortion ratio of 1.256 against the measured
-        1.166, agreeing to 1.077. Constraint activity is about twice as common in strong repressors (0.241
-        vs 0.121), but because fewer than half of either group is at the boundary the MEDIAN entry is
-        free in both, so median distortion stays nearly flat -- which is exactly the uniformity foldchange-to-delta-fidelity
-        measured and which refutes every transform-error explanation.
+        1.166, agreeing to 1.077. Constraint activity is about twice as common in strong repressors
+        (0.241 vs 0.121), but because fewer than half of either group is at the boundary the MEDIAN
+        entry is free in both, so median distortion stays nearly flat -- which is exactly the uniformity
+        foldchange-to-delta-fidelity measured and which refutes every transform-error explanation.
 
 
-        AMENDED NOTE 2026-09-04: the measured uniformity this axis was graded against (1.166) was computed
-        with the uncorrected full-swing comparison. Corrected for the occupancy swing it is 1.660, so
-        the axis now reads 1.256/1.660 = 0.757 -- still inside [0.67, 1.5], so the VERDICT stands. But
-        the surrounding argument does not fully: I used magnitude-uniformity to refute an entire family
-        of transform-error explanations, and corrected, the distortion does grow somewhat with magnitude.
-        The constraint mechanism remains supported by the direct evidence (all 10 targets at Z@R = 5.23e-12,
-        free repressors at 0.9959), not by that argument.'
+        AMENDED NOTE 2026-09-04: the measured uniformity this axis was graded against (1.166) was
+        computed with the uncorrected full-swing comparison. Corrected for the occupancy swing it
+        is 1.660, so the axis now reads 1.256/1.660 = 0.757 -- still inside [0.67, 1.5], so the VERDICT
+        stands. But the surrounding argument does not fully: I used magnitude-uniformity to refute
+        an entire family of transform-error explanations, and corrected, the distortion does grow
+        somewhat with magnitude. The constraint mechanism remains supported by the direct evidence
+        (all 10 targets at Z@R = 5.23e-12, free repressors at 0.9959), not by that argument.'
     corrected-conversion-restores-fidelity: &id004
       result: FAIL
       measured_value: 1.968
       evaluated_by: agent
       operator: derived/band [0.67, 1.5]
       gate_class: acceptance_criterion
-      detail: 'Evaluated as an UPPER BOUND on what the correction could achieve, which avoids the tautology
-        of grading correction (B) against its own definition: making EVERY boundary entry perfectly faithful
-        still leaves the network median at 1.968, barely moved from the uncorrected 2.006. The reason
-        is decisive -- activators are 343 of 564 entries (60.8%), sit at no boundary, and no constraint
-        fix touches them. Restricted to repressors the same repair gives a median of exactly 1.0000, so
-        the correction fully repairs the half it explains and none of the half it does not.'
+      detail: 'Evaluated as an UPPER BOUND on what the correction could achieve, which avoids the
+        tautology of grading correction (B) against its own definition: making EVERY boundary entry
+        perfectly faithful still leaves the network median at 1.968, barely moved from the uncorrected
+        2.006. The reason is decisive -- activators are 343 of 564 entries (60.8%), sit at no boundary,
+        and no constraint fix touches them. Restricted to repressors the same repair gives a median
+        of exactly 1.0000, so the correction fully repairs the half it explains and none of the half
+        it does not.'
     corrected-lexa-rpod-is-non-lethal: &id005
       result: UNGRADED
       measured_value: null
       evaluated_by: agent
       operator: derived/band [0.42, 0.96]
       gate_class: acceptance_criterion
-      detail: 'NOT EVALUATED, and deliberately not estimated. Freeing dnaG''s entry from the active constraint
-        does not determine where the optimiser would place it: the objective is a global norm over 4739
-        coupled variables, so the corrected value requires re-solving the ECOS program -- a full ParCa
-        fit. Reporting a number here would mean inventing one. The study establishes WHY the entry sits
-        at 4.3167e-08 (the boundary, to solver precision) without establishing what it would become once
-        released.'
+      detail: 'NOT EVALUATED, and deliberately not estimated. Freeing dnaG''s entry from the active
+        constraint does not determine where the optimiser would place it: the objective is a global
+        norm over 4739 coupled variables, so the corrected value requires re-solving the ECOS program
+        -- a full ParCa fit. Reporting a number here would mean inventing one. The study establishes
+        WHY the entry sits at 4.3167e-08 (the boundary, to solver precision) without establishing
+        what it would become once released.'
     negative-basal-clipping-is-not-the-cause: &id006
       result: FAIL
       measured_value: 22.76
@@ -570,11 +602,11 @@ runs:
       operator: derived/band [0.67, 1.5]
       gate_class: diagnostic
       detail: 'Nominally fails on a 22.8x enrichment, but the axis is underpowered and the substantive
-        answer is the opposite: only 3 of 3277 TUs had a negative alpha clipped, and 47 of the 48 boundary
-        entries sit on UNCLIPPED TUs. So clipping is NOT the general cause (H3 refuted as a general explanation)
-        even though the one clipped hit among 48 produces a large ratio against a 0.00092 base rate. Recording
-        the failure rather than reinterpreting the threshold: the measure as pre-registered says what
-        it says, and the interpretation belongs in the detail.'
+        answer is the opposite: only 3 of 3277 TUs had a negative alpha clipped, and 47 of the 48
+        boundary entries sit on UNCLIPPED TUs. So clipping is NOT the general cause (H3 refuted as
+        a general explanation) even though the one clipped hit among 48 produces a large ratio against
+        a 0.00092 base rate. Recording the failure rather than reinterpreting the threshold: the
+        measure as pre-registered says what it says, and the interpretation belongs in the detail.'
   computed_outcomes:
     conversion-path-reproduces-the-cache: *id001
     candidate-explains-bidirectionality: *id002
@@ -591,17 +623,17 @@ findings:
     observed: 0.9959
     units: median ratio, free repressors
     divergence_factor: 0.68731343
-  explanation: 'fit_sim_data_1.py:3578-3592 minimises norm(G@R - k) subject to 0 <= Z@R <= 1, where Z@R
-    is the initiation probability with ALL TFs bound -- i.e. alpha + sum(delta) >= 0, i.e. delta/alpha
-    >= -1. When that constraint is ACTIVE the optimiser sits exactly on it and the entry is totally silenced
-    whatever its fold change asked for, because the objective matches absolute probabilities and never
-    sees the ratio.
+  explanation: 'fit_sim_data_1.py:3578-3592 minimises norm(G@R - k) subject to 0 <= Z@R <= 1, where
+    Z@R is the initiation probability with ALL TFs bound -- i.e. alpha + sum(delta) >= 0, i.e. delta/alpha
+    >= -1. When that constraint is ACTIVE the optimiser sits exactly on it and the entry is totally
+    silenced whatever its fold change asked for, because the objective matches absolute probabilities
+    and never sees the ratio.
 
-    The signature is unmistakable: all 10 near-total LexA targets sit at Z@R = 5.23e-12, nine of them
-    agreeing to three significant figures across unrelated TUs. Those are not independent numbers; they
-    are one boundary. 46 repressing entries sit there with a median ratio of 0.0000, while the 175 free
-    ones are at 0.9959 -- essentially perfect. The repressor defect is entirely a boundary artefact, and
-    dnaG''s -0.999999957 IS that boundary to solver precision.'
+    The signature is unmistakable: all 10 near-total LexA targets sit at Z@R = 5.23e-12, nine of
+    them agreeing to three significant figures across unrelated TUs. Those are not independent numbers;
+    they are one boundary. 46 repressing entries sit there with a median ratio of 0.0000, while the
+    175 free ones are at 0.9959 -- essentially perfect. The repressor defect is entirely a boundary
+    artefact, and dnaG''s -0.999999957 IS that boundary to solver precision.'
   expected:
     range:
     - 0.67
@@ -609,19 +641,20 @@ findings:
   provenance:
     run_ids:
     - deltav-conversion-diagnosis__static
-- summary: 'My own prediction was wrong: activators sit at NO constraint, and their 4.77x distortion is
-    unexplained.'
+- summary: 'My own prediction was wrong: activators sit at NO constraint, and their 4.77x distortion
+    is unexplained.'
   status: contradicts
   evidence:
     from_test: candidate-explains-bidirectionality
     observed: 0.2095
     units: candidate/measured, worse subgroup
     divergence_factor: 0.68731343
-  explanation: 'I predicted the upper bound Z@R <= 1 would bind for activators and produce their over-shoot.
-    ZERO of the 343 activating entries are at it. So the constraint mechanism explains none of a distortion
-    affecting 60.8% of the network, and the activator over-shoot has a separate, still-unidentified cause.
-    Recording this as a refutation of the recorded prediction rather than narrowing the claim after the
-    fact: the diagnosis covers the repressors and half the problem, not the problem.'
+  explanation: 'I predicted the upper bound Z@R <= 1 would bind for activators and produce their
+    over-shoot. ZERO of the 343 activating entries are at it. So the constraint mechanism explains
+    none of a distortion affecting 60.8% of the network, and the activator over-shoot has a separate,
+    still-unidentified cause. Recording this as a refutation of the recorded prediction rather than
+    narrowing the claim after the fact: the diagnosis covers the repressors and half the problem,
+    not the problem.'
   expected:
     range:
     - 0.67
@@ -636,11 +669,12 @@ findings:
     observed: 1.968
     units: network median after an idealised repair
     divergence_factor: 0.312
-  explanation: 'Graded as an upper bound to avoid grading correction (B) against its own definition: making
-    EVERY boundary entry perfectly faithful leaves the network median at 1.968 against an uncorrected
-    2.006. Restricted to repressors the same repair gives exactly 1.0000. So the correction is complete
-    for the half it explains and worthless for the half it does not -- which is the strongest argument
-    that the activator mechanism is a genuinely separate defect rather than a variant of this one.'
+  explanation: 'Graded as an upper bound to avoid grading correction (B) against its own definition:
+    making EVERY boundary entry perfectly faithful leaves the network median at 1.968 against an
+    uncorrected 2.006. Restricted to repressors the same repair gives exactly 1.0000. So the correction
+    is complete for the half it explains and worthless for the half it does not -- which is the strongest
+    argument that the activator mechanism is a genuinely separate defect rather than a variant of
+    this one.'
   expected:
     range:
     - 0.67
@@ -648,20 +682,21 @@ findings:
   provenance:
     run_ids:
     - deltav-conversion-diagnosis__static
-- summary: Negative-alpha clipping is not the cause; the negative probabilities are solver overshoot at
-    the same boundary.
+- summary: Negative-alpha clipping is not the cause; the negative probabilities are solver overshoot
+    at the same boundary.
   status: novel
   evidence:
     from_test: negative-basal-clipping-is-not-the-cause
     observed: 22.76
     units: enrichment ratio (underpowered)
     divergence_factor: 14.17333333
-  explanation: 'Only 3 of 3277 TUs had a negative fitted alpha clipped to zero, and 47 of the 48 boundary
-    entries sit on unclipped TUs, so H3 is refuted as a general explanation. The six negative retained
-    fractions foldchange-to-delta-fidelity found are explained instead by the boundary: 7 TUs have Z@R
-    slightly BELOW zero -- EG10620_RNA[c] at -3.31e-10 -- which is ECOS overshooting its own constraint
-    within tolerance, exactly as predicted before measuring. The enrichment axis nominally fails at 22.8x,
-    but on one hit against a 0.00092 base rate it is underpowered and the substantive answer is the opposite.'
+  explanation: 'Only 3 of 3277 TUs had a negative fitted alpha clipped to zero, and 47 of the 48
+    boundary entries sit on unclipped TUs, so H3 is refuted as a general explanation. The six negative
+    retained fractions foldchange-to-delta-fidelity found are explained instead by the boundary:
+    7 TUs have Z@R slightly BELOW zero -- EG10620_RNA[c] at -3.31e-10 -- which is ECOS overshooting
+    its own constraint within tolerance, exactly as predicted before measuring. The enrichment axis
+    nominally fails at 22.8x, but on one hit against a 0.00092 base rate it is underpowered and the
+    substantive answer is the opposite.'
   expected:
     range:
     - 0.67
@@ -669,27 +704,28 @@ findings:
   provenance:
     run_ids:
     - deltav-conversion-diagnosis__static
-biological_summary: 'The model learns how strongly each regulator affects each gene by solving one large
-  optimisation problem: find the set of regulatory strengths that best reproduces the measured expression
-  of every gene under every condition. That problem carries a sensible-looking safety rule -- no combination
-  of regulators may drive a gene''s transcription probability below zero.
+biological_summary: 'The model learns how strongly each regulator affects each gene by solving one
+  large optimisation problem: find the set of regulatory strengths that best reproduces the measured
+  expression of every gene under every condition. That problem carries a sensible-looking safety
+  rule -- no combination of regulators may drive a gene''s transcription probability below zero.
 
 
   For a few dozen genes that rule turns out to be the binding one. The optimiser cannot satisfy everything
   at once, and for these genes it settles exactly on the floor: the regulator is assigned just enough
-  strength to cancel the gene''s expression completely and not one part more. The gene is then not repressed
-  but abolished, whatever its measurement said. dnaG''s operon is one of these, and all ten of the genes
-  LexA silences sit at precisely the same value -- not ten separate errors but one boundary they are all
-  pressed against.
+  strength to cancel the gene''s expression completely and not one part more. The gene is then not
+  repressed but abolished, whatever its measurement said. dnaG''s operon is one of these, and all
+  ten of the genes LexA silences sit at precisely the same value -- not ten separate errors but one
+  boundary they are all pressed against.
 
 
-  Genes not pressed against that floor are encoded almost perfectly, within half a percent of their measurement.
-  So for repressors this is a clean and complete explanation.
+  Genes not pressed against that floor are encoded almost perfectly, within half a percent of their
+  measurement. So for repressors this is a clean and complete explanation.
 
 
-  It does not explain activators, and that was a wrong prediction on my part. Genes that are turned UP
-  are encoded almost five-fold too strongly, and not one of them is against any boundary. Whatever distorts
-  them is a different fault, it affects three-fifths of the regulatory network, and it remains open.'
+  It does not explain activators, and that was a wrong prediction on my part. Genes that are turned
+  UP are encoded almost five-fold too strongly, and not one of them is against any boundary. Whatever
+  distorts them is a different fault, it affects three-fifths of the regulatory network, and it remains
+  open.'
 conclusion_verdicts:
 - claim: The conversion is a convex fit, not a formula
   verdict: supported
@@ -708,19 +744,19 @@ conclusion_verdicts:
   basis: Distortion uniform in magnitude (predicted 1.256 vs measured 1.166).
 discovery_implications:
 - 'The repressor defect has a concrete fix location: the constraint 0 <= Z@R in fit_sim_data_1.py:3588-3592.
-  Whether to floor it, or to constrain delta/alpha against the fold change directly, is a modelling decision
-  for the ParCa owner -- and either requires re-solving the fit.'
+  Whether to floor it, or to constrain delta/alpha against the fold change directly, is a modelling
+  decision for the ParCa owner -- and either requires re-solving the fit.'
 - 'The activator over-shoot is now the single largest open defect in this investigation: 4.77x, 60.8%
   of the network, no boundary involvement, no candidate mechanism. It deserves its own study.'
-- Negative initiation probabilities are ECOS overshooting its own constraint within tolerance, not a separate
-  bug. pc00010-repression-arithmetic already showed they are floored at zero before the sampler, so they
-  cause silencing rather than crashes.
-- 'dnaG''s -0.999999957 is a constraint boundary, not floating-point cancellation as I described it earlier.
-  The distinction matters: a boundary is a modelling decision that can be changed, whereas cancellation
-  noise would not be actionable.'
-- 'The whole chain is now: ParCa''s fit hits its probability-validity floor on TU00352 -> LexA''s delta
-  totally silences the operon -> dnaG is silenced as rpoD''s passenger -> DnaG depletes -> the replisome
-  gate fails -> the lineage stalls.'
+- Negative initiation probabilities are ECOS overshooting its own constraint within tolerance, not
+  a separate bug. pc00010-repression-arithmetic already showed they are floored at zero before the
+  sampler, so they cause silencing rather than crashes.
+- 'dnaG''s -0.999999957 is a constraint boundary, not floating-point cancellation as I described
+  it earlier. The distinction matters: a boundary is a modelling decision that can be changed, whereas
+  cancellation noise would not be actionable.'
+- 'The whole chain is now: ParCa''s fit hits its probability-validity floor on TU00352 -> LexA''s
+  delta totally silences the operon -> dnaG is silenced as rpoD''s passenger -> DnaG depletes ->
+  the replisome gate fails -> the lineage stalls.'
 readouts:
 - name: deltaV_reproduced
   units: fraction
@@ -758,8 +794,8 @@ conclusion_logic:
     - question: Why did deltav-conversion-diagnosis's primary criteria fail, and what does that leave
         open?
       seeded_study: activator-overshoot
-      note: Seeded from this study's declared successor (parent_studies relation leads-to/refines), not
-        invented to clear the flag.
+      note: Seeded from this study's declared successor (parent_studies relation leads-to/refines),
+        not invented to clear the flag.
 pipeline_gate:
   prerequisites:
   - study: foldchange-to-delta-fidelity
@@ -767,9 +803,21 @@ pipeline_gate:
     relation: model-input
     outputs_used:
     - 564-entry TF-target join; median implied/expected ratios
-    note: Reuses that study's join verbatim so corrected and uncorrected fidelity are measured over one
-      entry set.
+    note: Reuses that study's join verbatim so corrected and uncorrected fidelity are measured over
+      one entry set.
   - study: pc00010-repression-arithmetic
     condition: complete
     relation: evidence
     note: Supplies the runtime confirmation that the encoded delta silences its targets.
+corrections:
+- date: '2026-09-07'
+  field: causal account of LexA at the rpsU-dnaG-rpoD operon
+  status: flagged, text preserved
+  summary: dnaG is a DIRECT LexA target (fold_changes_nca.tsv, log2FC -1.71), not an rpoD passenger.
+    The real defect is cistron-level regulation unioned to TUs with only one dnaG-bearing TU, making
+    TU-specific differential regulation structurally impossible.
+  raised_by: user
+  verified_against:
+  - fold_changes_nca.tsv
+  - tf_to_fold_change
+  - target_tf
