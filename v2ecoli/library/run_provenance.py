@@ -123,18 +123,59 @@ def _cache_fingerprint(cache_dir: str | None) -> dict:
     }
 
 
+def sim_data_ref(cache_dir: str | None = None,
+                 sim_data_uri: str | None = None) -> dict:
+    """A RESOLVABLE pointer to the sim_data this run used, so a later STANDALONE
+    analysis of the sweep can find it without the study context.
+
+    The molecular Analysis steps (ptools_*, mass fractions, ...) need the ParCa
+    ``simData.cPickle`` to map ids/masses, but a sweep does not carry it. When
+    you run the study all at once the cache is right there; when you run the sim
+    first and analyse the sweep later, resolution has nothing to go on. Recording
+    the pointer here (consumed by ``analysis_runner.resolve_sim_data``) closes
+    that gap. Precedence, most explicit first:
+      1. ``sim_data_uri`` — an explicit path/URI the caller knows (e.g. the
+         dispatch's staged S3 cache). Recorded verbatim.
+      2. ``$V2ECOLI_SIM_DATA`` — the same override the analysis side honors.
+      3. ``$RAY_STAGE_S3`` / ``$CONTAINER_STAGE_S3`` + ``simData.cPickle`` — the
+         S3 cache a remote dispatch staged from (resolvable off-node).
+      4. ``cache_dir/simData.cPickle`` — the local build (a local sim's cache is
+         a real path a later local analysis can read). ``exists`` is recorded so
+         a stale/missing pointer is debuggable rather than silently wrong.
+    """
+    import os as _os
+    if sim_data_uri:
+        return {"uri": sim_data_uri, "source": "explicit"}
+    env = _os.environ.get("V2ECOLI_SIM_DATA")
+    if env:
+        return {"uri": env, "source": "V2ECOLI_SIM_DATA"}
+    stage = _os.environ.get("RAY_STAGE_S3") or _os.environ.get("CONTAINER_STAGE_S3")
+    if stage:
+        return {"uri": stage.rstrip("/") + "/simData.cPickle", "source": "stage_s3"}
+    if cache_dir:
+        p = _os.path.join(str(cache_dir), "simData.cPickle")
+        return {"uri": p, "source": "cache_dir", "exists": _os.path.isfile(p)}
+    return {"uri": None, "source": None}
+
+
 def build_run_identity(*, repo_root: Path | str | None = None,
                        cache_dir: str | None = None,
-                       design: dict | None = None) -> dict:
+                       design: dict | None = None,
+                       sim_data_uri: str | None = None) -> dict:
     """One record combining code identity + cache content fingerprint +
-    design/grid metadata, for any ``run_*`` entrypoint to write alongside its
-    own output (v2ecoli#472/#473).
+    design/grid metadata + a sim_data pointer, for any ``run_*`` entrypoint to
+    write alongside its own output (v2ecoli#472/#473).
 
     ``design`` is whatever grid/config metadata is already available at the
     call site (``experiment_id``, ``variant``, ``lineage_seed``,
     ``generation``, seed/generation counts, ...) — the cheap write-side half
     of #473; the statistical reduction that consumes it is a separate,
     later piece of work and is explicitly out of scope here.
+
+    ``sim_data`` records a resolvable pointer to the run's ParCa sim_data (see
+    :func:`sim_data_ref`) so a standalone analysis of the sweep resolves it the
+    same way the all-at-once study does. Pass ``sim_data_uri`` when the caller
+    knows the resolvable location (e.g. a dispatch's staged S3 cache).
     """
     if repo_root is None:
         repo_root = Path(__file__).resolve().parents[2]
@@ -142,6 +183,7 @@ def build_run_identity(*, repo_root: Path | str | None = None,
         "code": code_provenance(Path(repo_root)),
         "cache_version": _cache_fingerprint(cache_dir),
         "design": dict(design) if design else {},
+        "sim_data": sim_data_ref(cache_dir, sim_data_uri),
     }
 
 
@@ -180,7 +222,8 @@ def write_run_identity_record(out_dir: str, record: dict) -> None:
 
 def write_run_identity(out_dir: str, *, repo_root: Path | str | None = None,
                        cache_dir: str | None = None,
-                       design: dict | None = None) -> dict:
+                       design: dict | None = None,
+                       sim_data_uri: str | None = None) -> dict:
     """Compute ``build_run_identity(...)`` and write it to
     ``<out_dir>/run_identity.json``. Returns the record written.
 
@@ -188,9 +231,12 @@ def write_run_identity(out_dir: str, *, repo_root: Path | str | None = None,
     computation — a run identity that silently failed to compute would be
     exactly the "looks recorded but isn't" failure this brief exists to
     close, so errors from ``build_run_identity`` propagate.
+
+    ``sim_data_uri`` is threaded into the recorded ``sim_data`` pointer so a
+    standalone analysis of the sweep can resolve the run's sim_data.
     """
     record = build_run_identity(repo_root=repo_root, cache_dir=cache_dir,
-                                design=design)
+                                design=design, sim_data_uri=sim_data_uri)
     write_run_identity_record(out_dir, record)
     return record
 

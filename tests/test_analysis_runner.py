@@ -197,7 +197,7 @@ def test_duckdb_only_analyses_skip_timeseries_extraction(tmp_path, monkeypatch):
     # no sim_data present the run fails resolving it — and that is the point:
     # reaching sim_data resolution proves record building was skipped, since
     # _boom would have fired first otherwise.
-    with pytest.raises(FileNotFoundError, match="no sim_data pickle"):
+    with pytest.raises(FileNotFoundError, match="could not resolve sim_data"):
         ar.run_analyses(
             str(tmp_path),
             {"multiseed": {"central_carbon_metabolism_scatter": {}}})

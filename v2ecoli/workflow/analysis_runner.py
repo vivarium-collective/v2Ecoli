@@ -265,6 +265,20 @@ def resolve_sim_data(sweep_dir: str):
         return LoadSimData(sim_data_path=localize(env)).sim_data
     if env and os.path.isfile(env):
         return LoadSimData(sim_data_path=env).sim_data
+    # The sweep's own provenance: run_identity.json records a resolvable sim_data
+    # pointer (run_provenance.sim_data_ref) so a STANDALONE analysis resolves the
+    # run's sim_data the same way the all-at-once study does -- no manual
+    # $V2ECOLI_SIM_DATA needed. Works for a local sim (cache_dir/simData.cPickle)
+    # and a remote one (the dispatch's staged S3 cache), and reads the sidecar
+    # from a local OR s3:// sweep.
+    ref = _sim_data_uri_from_identity(sweep_dir)
+    if ref:
+        path = localize(ref) if is_s3_uri(ref) else ref
+        if os.path.isfile(path):
+            print(f"  sim_data: resolved from the sweep's run_identity.json -> {ref!r}")
+            return LoadSimData(sim_data_path=path).sim_data
+        print(f"  sim_data: run_identity.json points at {ref!r}, but it is not "
+              f"readable from here; falling through.")
     for fallback in (os.path.join("out", "kb", "simData.cPickle"),
                      os.path.join("out", "workflow", "simData.cPickle")):
         if os.path.isfile(fallback):
@@ -273,8 +287,77 @@ def resolve_sim_data(sweep_dir: str):
                   f"(set $V2ECOLI_SIM_DATA to override).")
             return LoadSimData(sim_data_path=fallback).sim_data
     raise FileNotFoundError(
-        f"no sim_data pickle under {sweep_dir!r}, no $V2ECOLI_SIM_DATA, and no "
-        f"out/kb/simData.cPickle (needed by Analysis steps)")
+        f"could not resolve sim_data for {sweep_dir!r} (the Analysis steps need "
+        f"the ParCa simData.cPickle). Checked, in order: a sweep-local "
+        f"sim_data*.cPickle; $V2ECOLI_SIM_DATA; the sweep's run_identity.json "
+        f"'sim_data' pointer; and out/kb|workflow/simData.cPickle. To fix: run "
+        f"the sim with a run_identity.json that records sim_data (v2ecoli's "
+        f"run_* entrypoints do this automatically), or set $V2ECOLI_SIM_DATA to "
+        f"the matching simData.cPickle (local path or s3:// URI).")
+
+
+def _sim_data_uri_from_identity(sweep_dir: str) -> "str | None":
+    """The resolvable sim_data URI recorded in the sweep's run_identity.json, or
+    None. Reads the sidecar from a local OR s3:// sweep (a standalone analysis
+    may point at either).
+
+    Checks the sweep ROOT first, then any nested sidecar: some dispatchers write
+    ``run_identity.json`` per-seed (compose writes ``seed_00/run_identity.json``)
+    rather than at the sweep root, so a root-only lookup silently misses a
+    recorded pointer. Returns the first sidecar that carries a ``sim_data.uri``.
+    """
+    for ident_uri in _run_identity_candidates(sweep_dir):
+        uri = _read_sim_data_uri(ident_uri)
+        if uri:
+            return uri
+    return None
+
+
+def _read_sim_data_uri(ident_uri: str) -> "str | None":
+    """``sim_data.uri`` from a single ``run_identity.json`` (local path or s3://
+    URI), or None if absent/unreadable."""
+    try:
+        path = localize(ident_uri) if is_s3_uri(ident_uri) else ident_uri
+        with open(path, encoding="utf-8") as fh:
+            ident = json.load(fh)
+    except Exception:
+        return None
+    if not isinstance(ident, dict):
+        return None
+    sd = ident.get("sim_data")
+    return sd.get("uri") if isinstance(sd, dict) else None
+
+
+def _run_identity_candidates(sweep_dir: str) -> "list[str]":
+    """``run_identity.json`` locations under ``sweep_dir``, sweep ROOT first then
+    any nested sidecar (a dispatcher may write it per-seed, e.g.
+    ``seed_00/run_identity.json``). Local paths for a local sweep, ``s3://`` URIs
+    for a remote one."""
+    base = sweep_dir.rstrip("/")
+    root = base + "/run_identity.json"
+    if not is_s3_uri(sweep_dir):
+        nested = glob.glob(os.path.join(sweep_dir, "**", "run_identity.json"),
+                           recursive=True)
+        ordered = [root, *sorted(p for p in nested if os.path.abspath(p) != os.path.abspath(root))]
+        return [p for p in ordered if os.path.isfile(p)]
+    # DuckDB's glob() lists object storage through httpfs -- no extra dependency,
+    # no download, same mechanism history_files() uses.
+    import tempfile
+
+    from viva_emitters import create_duckdb_conn
+
+    conn = create_duckdb_conn(temp_dir=tempfile.gettempdir())
+    configure_duckdb_s3(conn)
+    try:
+        rows = conn.sql(
+            f"SELECT file FROM glob('{base}/**/run_identity.json')").fetchall()
+    except Exception:
+        return [root]
+    finally:
+        conn.close()
+    found = sorted(r[0] for r in rows)
+    # sweep ROOT first, so an authoritative top-level sidecar wins over per-seed.
+    return sorted(found, key=lambda p: (p.rstrip("/") != root, p)) or [root]
 
 
 def resolve_validation_data(sim_data):

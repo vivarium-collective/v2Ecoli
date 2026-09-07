@@ -76,10 +76,12 @@ def test_all_connection_sites_use_configured_factory_not_bare_connect():
         inspect.getsource(mod).count("create_duckdb_conn(temp_dir=")
         for mod in (ar, sio)
     )
-    assert connect_call_count == 4, (
-        "expected all 4 known connection sites (sweep_io.history_files, "
+    assert connect_call_count == 5, (
+        "expected all 5 known connection sites (sweep_io.history_files, "
         "sweep_io.connect_for, analysis_runner.build_cell_records, "
-        "analysis_runner.run_analyses._analysis_ctx) to use "
+        "analysis_runner.run_analyses._analysis_ctx, and "
+        "analysis_runner._run_identity_candidates -- the S3 run_identity.json "
+        "glob) to use "
         f"create_duckdb_conn(temp_dir=...), found {connect_call_count}"
     )
 
