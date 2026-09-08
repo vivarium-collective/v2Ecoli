@@ -883,3 +883,32 @@ def test_no_output_glob_can_match_its_own_port_manifest(core) -> None:
                 f"{step.__name__}.{port}: output glob {glob!r} also matches the run_step "
                 f"manifest {manifest!r}; every task would emit it and the gather collides"
             )
+
+
+def test_the_gather_stages_the_parca_cache_for_sim_data(core) -> None:
+    """Blocker 7: the first gather ever to stage cleanly (simulation 570) died in
+    analysis_runner.resolve_sim_data -- the sweeps carry no simData.cPickle and no
+    run_identity.json, and $V2ECOLI_SIM_DATA is only threaded on the Ray path. The
+    ParCa cache holds the pickle and is already staged into every lineage; the
+    gather must receive it the same way."""
+    doc = build_workflow_nf(n_seeds=2, n_generations=1, include_analysis=True)
+    analysis = doc["state"]["analysis"]
+    assert analysis["inputs"]["cache_v0"] == ["cache_v0"], analysis["inputs"]
+    rendered = _render(core, doc)
+    block = rendered.split("process analysis {", 1)[1].split("\n}", 1)[0]
+    assert "path cache_v0" in block, block
+    # and the workflow actually passes the ParCa channel into the gather
+    call = [
+        ln for ln in rendered.splitlines() if "analysis(" in ln and "process" not in ln
+    ]
+    assert call and "cache" in call[0], call
+
+
+def test_multi_variant_gather_stages_every_variants_cache(core) -> None:
+    doc = build_workflow_nf(
+        n_seeds=1,
+        include_analysis=True,
+        variants=[{"variant_name": "a"}, {"variant_name": "b"}],
+    )
+    inputs = doc["state"]["analysis"]["inputs"]
+    assert inputs["cache_v0"] == ["cache_v0"] and inputs["cache_v1"] == ["cache_v1"]
