@@ -141,7 +141,15 @@ class LineageStep(Step):
     # names expressible at all.
     nextflow_port_decls = {
         "cache_dir": "path cache_dir",
-        "sweep_dir": 'path "sweep_*"',
+        # `type: "dir"` is load-bearing, not decoration. run_step writes the port's
+        # value manifest as `<port>.json` -- here `sweep_dir.json` -- into the SAME
+        # work dir, and a bare `path "sweep_*"` glob matches it too. Every lineage
+        # then emits an identically named manifest alongside its distinct
+        # directory, and the gather collides on the manifest exactly as it once
+        # collided on the directory ("input file name collision: sweep_dir.json",
+        # simulation 562, after 3 x 94-minute lineages had SUCCEEDED). The value
+        # of this port IS a directory; say so, and no file can match.
+        "sweep_dir": 'path "sweep_*", type: "dir"',
     }
     # A whole lineage is the long-running task on this path -- hours, not
     # minutes -- so it is the one that most needs the profile's `time` and
