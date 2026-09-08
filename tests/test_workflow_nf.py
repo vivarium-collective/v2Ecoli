@@ -785,20 +785,11 @@ _REACHABLE_VIA_INJECTED_PROCESSES = {
     "polypeptide_initiation_mode",
 }
 
-# Read straight off `self.config` with no escape hatch, and not declared: a
-# campaign CANNOT set these. Documented rather than asserted away -- `media` and
-# `time_step` are the ones that bite (CD2 Run 4's minimal-vs-tryptophan split is
-# exactly a media choice), and `emit_paths` is the undeclared-emission hole
-# behind viva-api#475's global_time-only parquet.
-_KNOWN_UNREACHABLE = {
-    "time_step",
-    "media",
-    "emitter",
-    "emitter_arg",
-    "single_daughters",
-    "checkpoint_dir",
-    "emit_paths",
-}
+# Formerly seven keys a campaign could not set at all (`media`, `time_step`,
+# `emitter`, `emitter_arg`, `single_daughters`, `checkpoint_dir`, `emit_paths`);
+# all are declared generator parameters now. Kept as a set so the classification
+# test keeps its shape -- and so it is loud if it ever grows again.
+_KNOWN_UNREACHABLE: set[str] = set()
 
 
 def _declared_parameters() -> set[str]:
@@ -836,26 +827,53 @@ def test_every_forwarded_key_is_classified() -> None:
     )
 
 
-def test_the_known_gaps_have_not_silently_grown() -> None:
-    """_KNOWN_UNREACHABLE is a debt list, not a dumping ground. Shrinking it is
-    the goal; growing it should require editing this test deliberately."""
+def test_no_forwarded_key_is_unreachable_any_more() -> None:
+    """The strong form, now that it holds: every `_FORWARDED` key is either
+    derived by the generator or a declared parameter. `_KNOWN_UNREACHABLE` must
+    stay empty -- growing it is the bug class this file exists to stop."""
     from v2ecoli.workflow.lineage_step import _FORWARDED
 
-    still_unreachable = {
-        k
-        for k in _KNOWN_UNREACHABLE
-        if k not in _declared_parameters()
-        and k not in _DERIVED_BY_GENERATOR
-        and k not in _REACHABLE_VIA_INJECTED_PROCESSES
+    assert _KNOWN_UNREACHABLE == set()
+    unreachable = set(_FORWARDED) - _DERIVED_BY_GENERATOR - _declared_parameters()
+    assert not unreachable, (
+        f"forwarded by LineageStep, not settable by a campaign: {sorted(unreachable)}"
+    )
+
+
+def test_campaign_knobs_reach_every_lineage_and_are_absent_when_unset(core) -> None:
+    """Sim 679 lost two KPIs because `exchange_fluxes` could only ride inside a
+    variant's `injected_processes` and the dispatch forgot it. Set at campaign
+    level, each knob must land in EVERY lineage config; unset, it must be ABSENT
+    so LineageStep's own default applies (the founders discipline)."""
+    from v2ecoli.composites.workflow_nf import _LINEAGE_KNOBS
+
+    knobs = {
+        "media": "rich",
+        "time_step": 2.0,
+        "emitter": "both",
+        "emit_paths": ["listeners.mass"],
+        "exchange_fluxes": {
+            "glucose_exchange": "GLC",
+            "violacein_exchange": "VIOLACEIN",
+        },
+        "exchange_flux_basis": "gdcw",
+        "ppgpp_regulation": False,
     }
-    assert still_unreachable == _KNOWN_UNREACHABLE, (
-        "these became reachable -- drop them from _KNOWN_UNREACHABLE: "
-        f"{sorted(_KNOWN_UNREACHABLE - still_unreachable)}"
+    doc = build_workflow_nf(
+        n_seeds=2, variants=[{"variant_name": "a"}, {"variant_name": "b"}], **knobs
     )
-    assert set(_FORWARDED) >= _KNOWN_UNREACHABLE, (
-        "a key left _FORWARDED entirely; the gap list is stale: "
-        f"{sorted(_KNOWN_UNREACHABLE - set(_FORWARDED))}"
-    )
+    for v in (0, 1):
+        inner = doc["state"][f"runs_v{v}"]["config"]["state"]
+        for k, node in inner.items():
+            if not k.startswith("lineage"):
+                continue
+            for name, value in knobs.items():
+                assert node["config"][name] == value, (k, name)
+
+    plain = build_workflow_nf(n_seeds=1)
+    cfg = plain["state"]["runs_v0"]["config"]["state"]["lineage_v0_s0"]["config"]
+    leaked = [k for k in _LINEAGE_KNOBS if k in cfg]
+    assert not leaked, f"unset knobs must not appear in the config: {leaked}"
 
 
 def test_no_output_glob_can_match_its_own_port_manifest(core) -> None:
