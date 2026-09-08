@@ -175,7 +175,25 @@ behavior_tests:
       kind: theory
       note: 0.5 dex is about 3x. Above it, a 2x model discrepancy cannot be distinguished from measurement
         disagreement.
-  status: pending
+  status: failed
+  result: FAIL
+  measured_value: 0.5296
+  evaluated_by: agent
+  detail: "0.5296 dex (3.39x) against a band of <= 0.5 dex. FAIL by 0.03, recorded as pre-registered.\n\
+    Schmidt 2016 Glucose against Maeck 2015 M9, 1464 genes measured in both:\n  p25 0.287 dex (1.94x)\
+    \ | median 0.530 (3.39x) | p75 0.857 (7.19x) | p90 1.356 (22.7x)\n  agreeing within 2x: 26.4%\
+    \   within 3x: 44.7%\nTwo independent absolute proteomes of the same organism in comparable minimal\
+    \ media disagree by 3.4x at the median, and three quarters of genes disagree by more than 2x.\
+    \ That is the floor against which any model-vs-experiment claim must be read.\nWHAT IT DOES AND\
+    \ DOES NOT INVALIDATE. It does NOT mechanically kill the cohort axes: those compare MEDIAN |log10\
+    \ error| aggregated over ~190 and ~1993 genes, and an aggregate can resolve a difference below\
+    \ per-gene noise provided the noise is unbiased between cohorts. It DOES mean the pre-registered\
+    \ 1.3x cohort band sits well inside the per-gene measurement noise, so a cohort result near that\
+    \ boundary cannot be distinguished from dataset choice. H3 — that the comparison cannot adjudicate\
+    \ — is partially supported and must be carried into the cohort verdicts rather than mentioned\
+    \ once here.\nMori 2021 could not serve as a second check: it reports MASS FRACTIONS, not copies\
+    \ per cell, and converting needs total protein mass and per-protein molecular weights, assumptions\
+    \ this study has not made."
 - name: underdetermined-cohort-is-worse
   classification: primary
   gate_class: acceptance_criterion
@@ -421,6 +439,15 @@ implementation_requirements:
     not to the shipped model. Distilled to out/model-vs-experimental-proteome-distilled with monomer_counts
     kept (19.6 GB -> 8.7 MB).'
 limitations:
+- 'EXTRACTION BUG, found and fixed before any number was recorded, and worth carrying as a warning.
+  Schmidt Table S6 contains THREE sections with IDENTICAL column names — ''Protein copies/cell''
+  at column 7, ''Protein Mass (fg)/Cell'' at 29, ''Coefficient of Variance (%)'' at 51. Selecting
+  a condition by column NAME returns the LAST match, so the first extraction read coefficients of
+  variation as if they were copy numbers and produced a 101x noise floor. Sections are now selected
+  by POSITION from the row-1 labels. Any future use of this workbook must do the same.
+
+  A second bug in the same pass: the Maeck gene-symbol parser had an inverted predicate and selected
+  JW locus tags instead of symbols, cutting the Schmidt overlap to 515 genes. Fixed, overlap is 1465.'
 - 'The tuning inventory was built twice. A first pass used a narrow keyword list and found only the
   adjustments/ directory, missing fold_changes_removed.tsv and complexation_reactions_removed.tsv
   entirely — the second of which protects essential-subunit pools and is directly relevant here.
