@@ -408,7 +408,7 @@ implementation_requirements:
   summary: Reuse the existing monomer-count reader.
   detail: listeners.monomer_counts via the distilled runs; do not re-derive counts from expression.
 - id: req-5
-  status: in-progress
+  status: done
   blocking: true
   summary: Simulate the SHIPPED model (out/cache, default config) and extract counts.
   detail: 'Resolved by the correction above: the baseline arm is out/cache in its default configuration,
@@ -416,6 +416,10 @@ implementation_requirements:
 
     Note the earlier framing of this requirement assumed a choice between a short window and a corrected
     model. Both horns were artefacts of running mechanistic_replisome=True.'
+  finding: 'Shipped model, DEFAULT configuration, 3 seeds x 12 generations: 12/12 divided in every
+    seed. No arrest — direct confirmation that the arrest belongs to mechanistic_replisome=True and
+    not to the shipped model. Distilled to out/model-vs-experimental-proteome-distilled with monomer_counts
+    kept (19.6 GB -> 8.7 MB).'
 limitations:
 - 'The tuning inventory was built twice. A first pass used a narrow keyword list and found only the
   adjustments/ directory, missing fold_changes_removed.tsv and complexation_reactions_removed.tsv
@@ -440,6 +444,11 @@ limitations:
   the baseline''s 0.4955. Tuned genes are disproportionately abundant and well-measured, so if they
   show better agreement it may reflect abundance and measurement quality rather than the tuning.
   The control should be compared against an abundance-matched baseline subset, not the whole baseline.'
+- 'The shipped model does not hold a true steady state over 12 generations: generation time rises
+  43 -> 55-59 min, dry mass falls ~700 -> ~600 fg, and total protein burden falls ~18%, reproducibly
+  across seeds. Counts are compared in the most stable window available (generations 4-12, ~6% burden
+  drift), but the comparison is against a slowly shrinking cell rather than the balanced exponential
+  growth Schmidt measured.'
 discovery_implications:
   resolved_uncertainties: []
   remaining_uncertainties:
@@ -523,6 +532,30 @@ count_extraction:
     The mechanistic_replisome=True arms become a SEPARATE question — does the accuracy picture change
     under subunit gating — rather than the baseline. Framing them as the baseline would have compared
     Schmidt''s steady-state proteome against a model in replication arrest.'
+  window:
+    generations: 4-12 inclusive
+    excluded: 1-3 (transient), 13 (birth stub)
+    seeds: 3
+    statistic: generation mean per gene, then median across generations and seeds
+    evidence: "Measured on the shipped-default runs rather than assumed.\n  median |log10(gen_n /\
+      \ gen_2)| per gene:\n    seed0  g3 0.126  g4 0.188  g5-g12 0.196-0.217  g13 0.305\n    seed1\
+      \  g3 0.128  g4 0.207  g5-g12 0.182-0.216  g13 0.282\n    seed2  g3 0.144  g4 0.214  g5-g12\
+      \ 0.180-0.207  g13 0.268\nCounts move away from generation 2 and then PLATEAU from generation\
+      \ 4 — they settle to a level, they do not keep migrating. Generations 2-3 are still transient,\
+      \ so the window opens at 4.\nGeneration 13 is a BIRTH STUB, not a generation: a 12-generation\
+      \ request records 13 partitions because the final daughter emits one tick. Its total protein\
+      \ burden is 3.59M against ~5M for a real generation — half a cell. Including it would drag\
+      \ every gene's mean down by roughly a third."
+    caveat: 'The window is stable but not stationary. Across generations 4-12 total protein burden
+      declines from 5.31M to 4.98M, about 6%, and over the full run from 6.08M — roughly 18%. Generation
+      time rises 43 -> 55-59 min and dry mass falls ~700 -> ~600 fg over the same span, consistently
+      across all three seeds, so this is a property of the model rather than seed noise.
+
+      The shipped model is therefore slowly SHRINKING over twelve generations rather than sitting
+      at balanced growth. Schmidt 2016 measured balanced exponential growth, so the comparison is
+      against a model state that is close to but not exactly the experimental condition. A ~6% drift
+      within the window is small against the 1.3x noise floors already recorded, but it means the
+      choice of window shifts absolute counts and must be stated, not buried.'
 corrections:
 - date: '2026-09-08'
   field: what "the shipped model" does
