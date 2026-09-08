@@ -437,6 +437,25 @@ EXTRA_AGENT_PATHS: dict[str, list[str]] = {
     ],
 }
 
+# Variants whose PARQUET emit set is the composite's DECLARED set (v2ecoli#743:
+# the generator's @composite_generator(emitters=[...]) -- bulk + listeners +
+# boundary per cell, plus reactor / population / lineage at the document level,
+# one hive row per tick) instead of the reduced COMMON_AGENT_PATHS allow-list.
+# The runner passes an EMPTY emit_paths + the generator to run_multigen_parquet,
+# which is what "empty = declared" means there.
+#
+# ONLY the single-lineage coupled batch run opts in. It follows ONE cell
+# (single_daughters=True), so the declared set is one cell's bulk per tick --
+# the normal whole-cell volume -- and it is the run whose ptools omics views
+# (rna / rxns / proteins / metabolites) need bulk__id / bulk__count /
+# listeners__fba_results__base_reaction_fluxes. Every other variant is a
+# population run and keeps its explicit reduced list on purpose: full
+# bulk x agents x generations is exactly the emit-path blow-up the reduced list
+# exists to avoid. Do not widen COMMON_AGENT_PATHS for this; add a variant here.
+DECLARED_EMIT_VARIANTS: frozenset[str] = frozenset({
+    "reactor-bird-coupled-batch-multigen",
+})
+
 # Per-variant duration / generation defaults, applied only when the caller did
 # NOT pass the corresponding flag. mbp-04's window is a study-enforced param
 # (240 sim-min), not a runner preference -- the global 120-min default would
@@ -507,6 +526,16 @@ def _run_one_variant(
     # the observables only one variant needs (see its docstring for why
     # mbp-04 carries the gate booleans).
     agent_paths = COMMON_AGENT_PATHS + EXTRA_AGENT_PATHS.get(sim_name, [])
+    # v2ecoli#743: the single-lineage coupled run emits its composite's
+    # DECLARED set (empty emit_paths + the generator) on the parquet path; the
+    # sqlite path and every population variant keep the explicit reduced list.
+    use_declared_emit = emitter == "parquet" and sim_name in DECLARED_EMIT_VARIANTS
+    declared_generator = _composite_of(builder_fn) if use_declared_emit else None
+    if use_declared_emit and declared_generator is None:
+        raise ValueError(
+            f"{sim_name!r} is in DECLARED_EMIT_VARIANTS but {builder_fn.__name__} "
+            "wraps no composite _composite_of() knows; register it there so the "
+            "runner can read the generator's emitters= declaration.")
     # v2ecoli#591: the in-composite LineageBookkeeper is opt-in on the COMPOSITE's
     # own single_daughters flag. A runner run with single_daughters=True against a
     # composite built with the default False silently gets the OLD chunk-dependent
@@ -610,12 +639,17 @@ def _run_one_variant(
         parquet_root = _parquet_root_for(study_slug)
         parquet_root.mkdir(parents=True, exist_ok=True)
 
+        print("  emit set: "
+              + ("DECLARED (generator emitters=; empty emit_paths)"
+                 if use_declared_emit
+                 else f"explicit allow-list ({len(agent_paths)} agent paths)"))
         t_run = time.time()
         result = run_multigen_parquet(
             composite,
             experiment_id=simulation_id,
             out_dir=str(parquet_root),
-            emit_paths=agent_paths,
+            emit_paths=[] if use_declared_emit else agent_paths,
+            declared_generator=declared_generator,
             extra_root_paths=extra_root_paths,
             max_steps=duration_sec,
             max_generations=max_generations,
@@ -647,6 +681,10 @@ def _run_one_variant(
                 "max_generations": max_generations,
                 "chunk": chunk,
                 "single_daughters": single_daughters,
+                # Which emit set this hive carries (v2ecoli#743): "declared"
+                # = the generator's emitters= set (bulk/listeners/... + the
+                # document stores), "explicit" = the runner's reduced list.
+                "emit_set": "declared" if use_declared_emit else "explicit",
                 # The EFFECTIVE value, not the requested one. Reaching here
                 # with _arrest_forwarded False means the arrest was inapplicable
                 # to this variant (the NOTE above) -- it may well have been
