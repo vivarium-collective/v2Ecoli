@@ -708,7 +708,7 @@ def test_the_output_declaration_is_a_pattern_not_a_fixed_name(core) -> None:
     per-lineage `out_dir` expressible at all."""
     rendered = _render(core, build_workflow_nf(n_seeds=2, n_generations=1))
     block = rendered.split("process lineage_v0_s0 {", 1)[1].split("\n}", 1)[0]
-    assert 'path "sweep_*"' in block
+    assert 'path "sweep_*", type: "dir"' in block
     assert 'path "sweep"' not in block, "a fixed name collides across tasks"
 
 
@@ -856,3 +856,59 @@ def test_the_known_gaps_have_not_silently_grown() -> None:
         "a key left _FORWARDED entirely; the gap list is stale: "
         f"{sorted(_KNOWN_UNREACHABLE - set(_FORWARDED))}"
     )
+
+
+def test_no_output_glob_can_match_its_own_port_manifest(core) -> None:
+    """Blocker 6, found by the first campaign to clear blocker 5. `run_step` writes
+    each output port's value as `<port>.json` into the task work dir; an output
+    glob that matches that file makes every task emit an identically named
+    manifest next to its real output, and an N-to-1 gather collides on it. The
+    guard is structural: for every Step that declares Nextflow output ports, the
+    declared glob must not match `<port>.json` -- or must be typed `dir`, which
+    excludes files outright."""
+    import fnmatch
+    import re
+
+    from v2ecoli.composites.workflow_nf import AnalysisTaskStep, ParcaTaskStep
+    from v2ecoli.workflow.lineage_step import LineageStep
+
+    for step in (LineageStep, ParcaTaskStep, AnalysisTaskStep):
+        for port, decl in step.nextflow_port_decls.items():
+            m = re.match(r'path\s+"([^"]+)"(.*)', decl)
+            if not m:
+                continue  # an unquoted `path name` is an input wire, not an output glob
+            glob, rest = m.group(1), m.group(2)
+            manifest = f"{port}.json"
+            assert not fnmatch.fnmatch(manifest, glob) or 'type: "dir"' in rest, (
+                f"{step.__name__}.{port}: output glob {glob!r} also matches the run_step "
+                f"manifest {manifest!r}; every task would emit it and the gather collides"
+            )
+
+
+def test_the_gather_stages_the_parca_cache_for_sim_data(core) -> None:
+    """Blocker 7: the first gather ever to stage cleanly (simulation 570) died in
+    analysis_runner.resolve_sim_data -- the sweeps carry no simData.cPickle and no
+    run_identity.json, and $V2ECOLI_SIM_DATA is only threaded on the Ray path. The
+    ParCa cache holds the pickle and is already staged into every lineage; the
+    gather must receive it the same way."""
+    doc = build_workflow_nf(n_seeds=2, n_generations=1, include_analysis=True)
+    analysis = doc["state"]["analysis"]
+    assert analysis["inputs"]["cache_v0"] == ["cache_v0"], analysis["inputs"]
+    rendered = _render(core, doc)
+    block = rendered.split("process analysis {", 1)[1].split("\n}", 1)[0]
+    assert "path cache_v0" in block, block
+    # and the workflow actually passes the ParCa channel into the gather
+    call = [
+        ln for ln in rendered.splitlines() if "analysis(" in ln and "process" not in ln
+    ]
+    assert call and "cache" in call[0], call
+
+
+def test_multi_variant_gather_stages_every_variants_cache(core) -> None:
+    doc = build_workflow_nf(
+        n_seeds=1,
+        include_analysis=True,
+        variants=[{"variant_name": "a"}, {"variant_name": "b"}],
+    )
+    inputs = doc["state"]["analysis"]["inputs"]
+    assert inputs["cache_v0"] == ["cache_v0"] and inputs["cache_v1"] == ["cache_v1"]
