@@ -64,8 +64,10 @@ _FRESH_ENVIRONMENT_SUBSTORES = ("exchange_data",)
 
 
 def _debug_build_composite_dumping_species_paths(doc, core):
-    """LINEAGE_DEBUG_SPECIES_AMBIGUITY=1 diagnostic (temporary, throwaway --
-    not for merge). Investigating a real, still-open AmbiguousLookupError on
+    """LINEAGE_DEBUG_DIVISION=1 diagnostic (temporary, throwaway -- not for
+    merge; piggybacks on the existing, already-deployed v2ecoli#733/viva-api
+    lineage_debug_division passthrough rather than adding a new one).
+    Investigating a real, still-open AmbiguousLookupError on
     ``jump(Empty, Key('species'))`` inside ``Composite(doc, core=core).initialize()``
     (CD2 Run 3, Dispatch 579/682/685; sms-ecoli#291/#292 fixed two known
     ``species``-keyed orphan wires but the ambiguity still reproduces). The real
@@ -497,7 +499,7 @@ class LineageProcess(Process):
             agent["listeners"]["mass"] = {"dry_mass": 0.0, "cell_mass": 0.0}
             seed_mass_listener(agent, core)
 
-        if os.environ.get("LINEAGE_DEBUG_SPECIES_AMBIGUITY") == "1":
+        if os.environ.get("LINEAGE_DEBUG_DIVISION") == "1":
             self._composite = _debug_build_composite_dumping_species_paths(doc, core)
         else:
             self._composite = Composite(doc, core=core)
