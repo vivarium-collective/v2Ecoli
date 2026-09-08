@@ -219,6 +219,15 @@ class LineageProcess(Process):
         # injected_processes below). Threaded to the per-generation parquet
         # emitter override, which honors it via _merge_emit_paths.
         "emit_paths": {"_type": "quote", "_default": []},
+        # A generation that ran and emitted NOTHING is a failed generation, not
+        # a successful one. Checked at the end of every generation, inside the
+        # process every lineage shape passes through (LineageStep/Nextflow,
+        # lineage_ray_batch, chain-dispatch's BatchBaselineRunner, the local
+        # meta-composite) -- so an empty emit fails loud at its source, with
+        # the generation/agent/out_dir in the message, instead of surfacing as
+        # a generic "no emitted output" from a downstream gate (or not at all).
+        # See _assert_generation_emitted. Opt out ONLY for a stubbed test.
+        "require_output": {"_type": "boolean", "_default": True},
         # `quote` (NOT a bare {"_default": {}}): the injected-processes block is a
         # heterogeneous, config-shaped dict — it carries each injected process's
         # own `process_configs`, some of which are list- or nested-shaped (e.g. a
@@ -305,6 +314,12 @@ class LineageProcess(Process):
         self._xarray_pending = False  # True → open on first populated emit tick
         self._xarray_view = None  # filtered view in use for this lineage
         self._xarray_store = None  # zarr store path (stable across gens)
+        # Emitted-output bookkeeping for _assert_generation_emitted: the parquet
+        # emitter the current generation's inner composite was built with
+        # (captured at build time, since Division may pop it from the registry
+        # before the generation ends), and the number of populated xarray emits.
+        self._parquet_em = None
+        self._xarray_emits = 0
 
     def _is_xarray(self) -> bool:
         """True when this lineage drives the external XArrayEmitter."""
@@ -332,6 +347,9 @@ class LineageProcess(Process):
         core = build_core()
         gen_seed = (int(self.config["seed"]) + self._generation) % (2**31)
         overrides = dict(self.config.get("config_overrides") or {})
+        # Fresh emitted-output bookkeeping for this generation.
+        self._parquet_em = None
+        self._xarray_emits = 0
 
         # Forward baseline()'s feature-selection kwargs from the config so an
         # injected candidate arm actually engages the features it declares. The
@@ -417,6 +435,15 @@ class LineageProcess(Process):
                 doc = baseline(core=core, seed=gen_seed, **_bio_kwargs)
             finally:
                 set_parquet_emitter_override(None)
+            # Capture THIS generation's emitter now: the build registered it
+            # under self._agent_id, and Division may finalize + pop it before
+            # the generation ends (see _finalize_parquet), so a lookup at the
+            # end would miss generation 0. None here means the inner composite
+            # was built WITHOUT a parquet sink -- which the end-of-generation
+            # check refuses (require_output).
+            from v2ecoli.composites._helpers import get_parquet_emitter
+
+            self._parquet_em = get_parquet_emitter(self._agent_id)
         else:
             from v2ecoli.composites._helpers import set_null_emitter_override
 
@@ -570,6 +597,7 @@ class LineageProcess(Process):
                     "agents": {self._agent_id: payload},
                 }
             )
+            self._xarray_emits += 1
         except Exception as e:
             warnings.warn(
                 f"LineageProcess: xarray emit failed at generation "
@@ -621,6 +649,110 @@ class LineageProcess(Process):
                 f"LineageProcess: parquet finalize failed for "
                 f"generation {self._generation} ({self._agent_id}): {e}"
             )
+
+    def _assert_generation_emitted(self) -> None:
+        """Refuse to close a generation that ran and emitted nothing.
+
+        This is the emit-path guard at its SOURCE. Every lineage shape passes
+        through this process -- LineageStep (Nextflow), ``lineage_ray_batch``
+        (pbg-native), chain-dispatch's ``BatchBaselineRunner`` and the local
+        meta-composite -- so a generation whose sink received no rows, or whose
+        rows never reached storage, fails here with the generation, agent id and
+        destination named, rather than (at best) as a generic "no emitted output"
+        from a downstream gate that cannot say WHICH generation or WHY.
+
+        What is checked, per sink:
+
+        * **parquet** (``emitter`` = ``parquet``/``both``): the inner composite
+          must have been built WITH the lineage's parquet sink (``_parquet_em``
+          captured at build time), that sink must have received at least one
+          row (``num_emits``), and its history partition must hold at least one
+          non-empty ``*.pq`` -- listed through the emitter's own fsspec
+          filesystem, so an ``s3://`` out_dir is checked for real rather than
+          assumed. "Could not list" is reported as a warning, not a failure:
+          "no output" and "could not look" are different answers.
+        * **xarray-only** (``emitter`` = ``xarray``): at least one populated emit
+          reached the XArrayEmitter. An empty view (every leaf filtered out) is
+          exactly the metadata-only zarr store CD2 Run 4 produced.
+
+        ``emitter="null"`` lineages emit nothing BY DESIGN (model browsing,
+        division-behaviour tests) and are not checked. ``require_output=False``
+        disables the check -- for stubbed unit tests only.
+        """
+        if not self.config.get("require_output", True):
+            return
+        where = (
+            f"generation {self._generation} (agent_id={self._agent_id!r}, "
+            f"experiment_id={self.config.get('experiment_id')!r}, "
+            f"out_dir={self.config.get('out_dir')!r})"
+        )
+        if self._is_parquet():
+            em = self._parquet_em
+            if em is None:
+                raise RuntimeError(
+                    f"LineageProcess: {where} completed but its inner composite was "
+                    f"built WITHOUT the lineage's parquet emitter (no ParquetEmitter "
+                    f"was registered for this generation's agent_id). Nothing this "
+                    f"generation computed was persisted -- refusing to report it as "
+                    f"a completed generation. Set require_output=False only for a "
+                    f"stubbed test."
+                )
+            num_emits = int(getattr(em, "num_emits", 0) or 0)
+            if num_emits <= 0:
+                raise RuntimeError(
+                    f"LineageProcess: {where} completed but its parquet emitter "
+                    f"received 0 rows over {self._gen_elapsed:.0f}s of simulated "
+                    f"time. The 'emitter' step never fired, so the generation ran "
+                    f"unobserved -- refusing to report it as a completed generation."
+                )
+            self._assert_history_landed(em, where, num_emits)
+        elif self._is_xarray():
+            if self._xarray_emits <= 0:
+                raise RuntimeError(
+                    f"LineageProcess: {where} completed but 0 populated emits "
+                    f"reached the XArrayEmitter (store={self._xarray_store!r}). "
+                    f"An empty view (every declared leaf filtered out of the "
+                    f"composite state) leaves a metadata-only zarr store with no "
+                    f"data chunk -- refusing to report it as a completed generation."
+                )
+
+    @staticmethod
+    def _assert_history_landed(em, where: str, num_emits: int) -> None:
+        """Verify at least one non-empty history parquet exists for ``em``'s
+        partition, through the emitter's own filesystem (local or s3)."""
+        out_uri = getattr(em, "out_uri", None)
+        fs = getattr(em, "filesystem", None)
+        if not out_uri or fs is None:
+            return  # a duck-typed stand-in without a filesystem: nothing to list
+        history_dir = os.path.join(
+            str(out_uri),
+            str(getattr(em, "experiment_id", "") or "default"),
+            "history",
+            str(getattr(em, "partitioning_path", "") or ""),
+        )
+        try:
+            entries = fs.ls(history_dir, detail=True)
+        except FileNotFoundError:
+            entries = []
+        except Exception as e:  # noqa: BLE001 -- "could not look" is not "no output"
+            warnings.warn(
+                f"LineageProcess: could not list {history_dir!r} to verify that "
+                f"{where} persisted its {num_emits} emitted row(s): {e!r}. The "
+                f"generation is recorded, but its output is UNVERIFIED."
+            )
+            return
+        for entry in entries or []:
+            name = str(entry.get("name", "") if isinstance(entry, dict) else entry)
+            size = int(entry.get("size", 0) or 0) if isinstance(entry, dict) else 1
+            if name.endswith((".pq", ".parquet")) and size > 0:
+                return
+        raise RuntimeError(
+            f"LineageProcess: {where} emitted {num_emits} row(s) but no non-empty "
+            f"history parquet exists under {history_dir!r} after the flush. The "
+            f"rows never reached storage (a failed background write, or a sink "
+            f"pointed somewhere else) -- refusing to report it as a completed "
+            f"generation."
+        )
 
     def _run_until_division(self, interval):
         """Run the internal composite for ``interval`` seconds. Returns
@@ -760,6 +892,10 @@ class LineageProcess(Process):
             f"{time.monotonic() - _t_flush:.1f}s",
             flush=True,
         )
+        # AFTER the flush (the trailing batch is what lands a short
+        # generation's history at all), BEFORE the summary/checkpoint: a
+        # generation that emitted nothing must not be recorded as completed.
+        self._assert_generation_emitted()
         self._summaries.append(
             {
                 "generation": self._generation,

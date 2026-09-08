@@ -149,6 +149,17 @@ def build_lineage_ray_batch_document(
     Per-seed lineage_seed follows ``base_seed + i`` (mirrors ``BatchBaselineRunner``'s own
     ``seeds = list(range(base_seed, base_seed + n_seeds))`` convention, so results stay directly
     comparable against the existing mechanism).
+
+    The returned document carries that requirement machine-readably as a top-level
+    ``required_run_interval`` (= ``n_generations * max_duration_per_gen``), which
+    ``Composite`` ignores. A runner that calls ``Composite.run(n)`` with ``n`` below
+    it invokes NOTHING: process-bigraph only invokes a process whose next event
+    (``time + interval``) lies within the run window, so with every node's
+    ``interval = max_duration_per_gen`` a ``run(1)`` advances global_time 0 -> 1,
+    builds no cell, emits no row and returns cleanly -- the CD2 K4 canary /
+    dispatch-438 "no emitted output" failure (thirteen dispatches carried ``-n 1``).
+    A generic runner should run ``max(steps, document['required_run_interval'])``
+    or refuse a shorter request; see :func:`required_run_interval`.
     """
     if n_seeds < 1:
         raise ValueError(f"build_lineage_ray_batch_document: n_seeds must be >= 1, got {n_seeds}")
@@ -257,7 +268,19 @@ def build_lineage_ray_batch_document(
                 },
             }
 
-    return {"state": state}
+    return {
+        "state": state,
+        "required_run_interval": required_run_interval(
+            n_generations=n_generations, max_duration_per_gen=max_duration_per_gen),
+    }
+
+
+def required_run_interval(*, n_generations: int, max_duration_per_gen: float) -> float:
+    """The TOTAL SIMULATED TIME ``Composite.run`` must be given for a lineage-batch
+    document to invoke every generation of every lineage: one ``max_duration_per_gen``
+    per generation. Anything shorter than ONE generation invokes nothing at all (see
+    :func:`build_lineage_ray_batch_document`)."""
+    return float(int(n_generations) * float(max_duration_per_gen))
 
 
 def build_lineage_ray_composite(
