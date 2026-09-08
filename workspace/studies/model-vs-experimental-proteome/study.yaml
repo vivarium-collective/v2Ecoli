@@ -1,0 +1,398 @@
+schema_version: 4
+name: model-vs-experimental-proteome
+created: '2026-09-08'
+status: planned
+phase: Design
+baseline:
+- name: ecoli_baseline
+  composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  params: {}
+variants: []
+title: Does the identifiability defect show up against measured protein counts?
+investigation: transcription-rewiring
+study_type: validation
+design_status: complete
+implementation_status: not_started
+simulation_status: not_started
+evaluation_status: not_evaluated
+gate_status: pending
+expert_review_status: not_requested
+question: 'Every finding in this investigation so far compares the model to ITSELF or to a database:
+  the 7.08e+06x fold-change-to-delta discrepancy is against the model''s own input, the 474 contradicted
+  regulatory edges are against EcoCyc, and the 307 underdetermined TUs, 86%-liftable zeros and 23%
+  protein movement are all the model against the model. Nothing has been compared to a measurement.
+
+  That matters because the defects are established but their CONSEQUENCE is not. If genes sitting
+  on underdetermined TUs, or carrying regulation EcoCyc contradicts, are no further from measured
+  protein abundance than the rest of the model, then the defects are real, provable and immaterial
+  — and the months of structural work the May impact assessment scoped as Option 3 would not be warranted.
+  If they are systematically worse, that is the externally-validated case for doing it.
+
+  Are the affected cohorts measurably further from experimental protein counts than the model at
+  large?'
+units_and_time:
+  tick: 1 s of simulated time; the comparison reads generation-mean protein counts at steady state.
+  quantities:
+    protein count: 'molecules per cell (model: listeners.monomer_counts; experiment: copies/cell)'
+    log-ratio error: log10(model count / measured count), signed; 0 = exact agreement
+    cohort: a set of genes defined by which defect touches them
+    hand-adjusted: a molecule whose expression, translation efficiency or degradation rate was tuned
+      by hand in the flat files
+datasets:
+- name: Schmidt 2016
+  role: PRIMARY validation
+  independent: true
+  path: ~/Documents/Proteomics data/schmidt et al 2016/41587_2016_BFnbt3418_MOESM18_ESM (1).xlsx
+  note: The anchor. v2ecoli's protein abundances are NOT seeded from it — they emerge from RNA-seq
+    expression x Li 2014 translation efficiency / SILAC degradation, so agreement is prediction,
+    not calibration. Multiple conditions available; use the one matching the simulated medium and
+    say which.
+- name: Mori 2021
+  role: comparison
+  independent: true
+  path: ~/Documents/Proteomics data/mori et al 2021/
+  note: 'Second independent proteome. Its value is disagreement: where Schmidt and Mori differ for
+    a gene, the model cannot be scored against either without saying so, and that between-dataset
+    spread is the noise floor for the whole comparison.'
+- name: Maeck 2015
+  role: comparison
+  independent: true
+  path: ~/Documents/Proteomics data/maeck et al 2015/
+  note: Third independent proteome; same role as Mori, coverage permitting.
+- name: Li 2014
+  role: NOT VALIDATION — model input
+  independent: false
+  path: ~/Documents/Proteomics data/Li et al 2014/
+  note: EXCLUDED from validation by construction. Li 2014 ribosome profiling IS a ParCa input, via
+    flat/translation_efficiency.tsv. Scoring the model against it would measure how well ParCa reproduces
+    its own input. Retained only to check whether the affected cohorts are unusual in translation
+    efficiency, which is a different question.
+cohorts:
+- name: underdetermined-tu
+  n_expected: 307
+  definition: genes whose TU sits in a rank-deficient NNLS block (tu-expression-identifiability)
+  note: the identifiability cohort; their TU expression is a solver artefact
+- name: contradicted-regulation
+  n_expected: 473
+  definition: genes on a TU carrying a regulatory edge EcoCyc places on a different TU of the same
+    operon
+  note: the misattribution cohort (promoter-specific-regulation)
+- name: hand-adjusted
+  n_expected: 65
+  definition: molecules tuned by hand in flat/adjustments/ — rna_expression_adjustments (10), translation_efficiencies_adjustments
+    (25), balanced_translation_efficiencies (28), rna_deg_rates_adjustments (3), protein_deg_rates_adjustments
+    (1) — plus the 26 targets whose regulatory edges were deleted in fold_changes_removed.tsv to
+    fix expression
+  note: EXCLUSION cohort, and the reason this study needed its premise checked before scoping. For
+    these the model was tuned toward the right answer, with comments saying so explicitly — 'Adjusted
+    to prevent severe underexpression of 30S ribosomal proteins', 'Remove to increase ribosome counts'.
+    Agreement with experiment is partly circular for them. They are scored SEPARATELY and excluded
+    from the headline comparison; including them would inflate baseline accuracy and understate the
+    affected cohorts by contrast.
+- name: baseline
+  definition: every remaining gene with a measured abundance in the primary dataset
+  note: the reference distribution the cohorts are compared against
+behavior_tests:
+- name: coverage-is-sufficient-to-compare
+  classification: supporting
+  gate_class: acceptance_criterion
+  question: Do enough genes in each cohort have a measured abundance to compare at all?
+  description: 'At least 50% of each cohort''s genes have a Schmidt 2016 measurement in the matched
+    condition.
+
+
+    The gate on the whole study. A cohort with sparse coverage cannot be compared to baseline, and
+    a difference measured on 30 of 307 genes is not a model-wide claim.
+
+
+    Threshold provenance: theory. 50% is the floor below which any cohort-level statistic is dominated
+    by which genes happen to be detected rather than by the model.'
+  measure:
+    kind: derived
+    path: minimum, over cohorts, of the fraction of genes with a primary-dataset measurement
+    detail: gene-symbol join to Schmidt 2016; unmatched genes reported, never silently dropped.
+  pass_if:
+    low: 0.5
+    high: 1.0
+    provenance:
+      kind: theory
+      note: Bounded above by 1.0; below 0.5 a cohort statistic reflects detection bias more than
+        the model.
+  status: pending
+- name: between-dataset-spread-sets-the-noise-floor
+  classification: supporting
+  gate_class: acceptance_criterion
+  question: How much do the experimental datasets disagree with each other?
+  description: 'Median |log10(Schmidt / Mori)| over genes measured in both, reported as the floor
+    against which any model-vs-experiment difference must be judged.
+
+
+    Without this the study can report a model error that is smaller than the disagreement between
+    two measurements of the same quantity, which would be meaningless. Recorded as an acceptance
+    criterion rather than a pin because a large value would invalidate the comparison, not merely
+    qualify it.
+
+
+    Threshold provenance: theory. Proteomics replicates across labs are commonly within a few-fold;
+    above 0.5 dex (about 3x) the datasets are too inconsistent to adjudicate a 2x model error.'
+  measure:
+    kind: derived
+    path: median |log10(Schmidt / Mori)| across genes present in both
+    detail: same condition where available; state the condition pairing explicitly.
+  pass_if:
+    op: <=
+    value: 0.5
+    provenance:
+      kind: theory
+      note: 0.5 dex is about 3x. Above it, a 2x model discrepancy cannot be distinguished from measurement
+        disagreement.
+  status: pending
+- name: underdetermined-cohort-is-worse
+  classification: primary
+  gate_class: acceptance_criterion
+  question: Are genes on underdetermined TUs further from measured abundance than the rest of the
+    model?
+  description: 'Ratio of median |log10 error| for the underdetermined-TU cohort over the baseline
+    cohort, on genes measured in Schmidt 2016, excluding hand-adjusted molecules.
+
+
+    THE axis. tu-expression-identifiability showed the tie-break moves 23% of affected proteins by
+    more than 2x BETWEEN TWO EQUALLY-VALID MODEL ARMS. It could not say whether either arm is right.
+    This asks whether the arbitrariness costs accuracy against measurement.
+
+
+    Band is two-sided so that BOTH answers are informative: at or below 1.0 the defect is immaterial
+    to predictive accuracy and the structural fix is not warranted on these grounds; materially above
+    1.0 it is. Anchored at 1.3 because a 30% inflation of median error is the smallest effect worth
+    acting on given the between-dataset noise floor.
+
+
+    Threshold provenance: theory, stated before measurement.'
+  measure:
+    kind: derived
+    path: median |log10(model/measured)| for the underdetermined cohort over the same for baseline
+    detail: Schmidt 2016 primary; hand-adjusted molecules excluded from both cohorts; Mori 2021 as
+      a repeat.
+  pass_if:
+    low: 0.7
+    high: 1.3
+    provenance:
+      kind: theory
+      note: Two-sided about parity. PASS means the cohort is indistinguishable from baseline — the
+        defect does not cost accuracy. FAIL above 1.3 means it does. FAIL below 0.7 would mean affected
+        genes are BETTER predicted, which would itself need explaining.
+  status: pending
+- name: contradicted-regulation-cohort-is-worse
+  classification: primary
+  gate_class: acceptance_criterion
+  question: Are genes whose regulation EcoCyc contradicts further from measured abundance?
+  description: 'Same construction for the 473 contradicted-regulation genes.
+
+
+    promoter-specific-regulation removed those edges and the lineage survived, but survival is a
+    weak test — it says the cell lives, not that abundances improved. If this cohort is no worse
+    than baseline, the misattribution is real and cheap; if it is worse, the correction has an externally-measurable
+    benefit and that is the argument for adopting it by default rather than behind a flag.
+
+
+    Threshold provenance: theory, same band and reasoning as the axis above.'
+  measure:
+    kind: derived
+    path: median |log10(model/measured)| for the contradicted cohort over baseline
+    detail: same exclusions and repeat dataset.
+  pass_if:
+    low: 0.7
+    high: 1.3
+    provenance:
+      kind: theory
+      note: As above; two-sided about parity.
+  status: pending
+- name: hand-adjusted-cohort-is-better
+  classification: primary
+  gate_class: acceptance_criterion
+  question: Does the hand-tuning show up as better agreement, confirming it must be excluded?
+  description: 'Ratio of median |log10 error| for the 65 hand-adjusted molecules over baseline. Predicted
+    BELOW 1.0 — they should agree better, because they were tuned toward agreement.
+
+
+    The control that validates the exclusion. If hand-adjusted molecules are NOT better predicted,
+    the adjustments are not doing what their comments claim and the exclusion is over-cautious. If
+    they ARE, the exclusion is necessary and the headline comparison is clean.
+
+
+    Threshold provenance: theory. PASS requires demonstrably better agreement, which is what justifies
+    removing them from the other axes.'
+  measure:
+    kind: derived
+    path: median |log10(model/measured)| for hand-adjusted molecules over baseline
+    detail: the 65 molecules from flat/adjustments/ plus the 26 fold_changes_removed targets, scored
+      separately.
+  pass_if:
+    op: <=
+    value: 0.8
+    provenance:
+      kind: theory
+      note: At least 20% lower median error than baseline, the minimum that demonstrates the tuning
+        took effect.
+  status: pending
+- name: model-wide-accuracy-baseline
+  classification: supporting
+  gate_class: regression_pin
+  question: How well does the model predict measured protein abundance overall?
+  description: Median |log10(model/measured)| across all comparable genes. A PIN — it has never been
+    measured in this workspace, so no threshold can be pre-registered honestly. It exists so every
+    cohort ratio above has a stated denominator, and so the number cannot drift unnoticed.
+  measure:
+    kind: derived
+    path: median |log10(model/measured)| over all genes with a Schmidt measurement
+    detail: excluding hand-adjusted molecules; reported with the interquartile range.
+  pass_if:
+    op: <=
+    value: 2.0
+    provenance:
+      kind: post_hoc
+      note: 2.0 dex (100x) is a deliberately loose drift guard, not a quality claim. Replace with
+        a real pin once measured.
+  status: pending
+preregistered:
+  declared_before_runs: true
+  date: '2026-09-08'
+  criteria:
+  - test: coverage-is-sufficient-to-compare
+    prior: Schmidt 2016 covers over half of each cohort; this is a gate, not a finding
+  - test: between-dataset-spread-sets-the-noise-floor
+    prior: independent proteomes agree within about 3x, so a 2x model effect is adjudicable
+  - test: underdetermined-cohort-is-worse
+    prior: genuinely uncertain. The tie-break moves 23% of these proteins >2x between arms, so a
+      real accuracy cost is plausible; but ParCa refits downstream and may absorb it. I am not predicting
+      a direction.
+  - test: contradicted-regulation-cohort-is-worse
+    prior: I expect a modest excess error, since these genes carry regulation applied to the wrong
+      promoter, but the effect is likely smaller than the identifiability one because most contradicted
+      edges are on well-determined TUs
+  - test: hand-adjusted-cohort-is-better
+    prior: they should be better predicted; that is what the adjustments were for, and their comments
+      say so
+alternative_hypotheses:
+- name: H1 the defects cost predictive accuracy
+  discriminator: underdetermined-cohort-is-worse
+  statement: Affected cohorts sit measurably further from measured abundance, giving an externally-validated
+    case for the structural fix the May impact assessment scoped as Option 3.
+- name: H2 real but absorbed
+  discriminator: underdetermined-cohort-is-worse
+  statement: 'The defects are real in the parameters but ParCa''s downstream refitting absorbs them,
+    so predicted abundances are no worse. Plausible: the fit re-balances mass and expression after
+    the TU split, and tu-expression-identifiability found growth completely unaffected (tau ratio
+    0.978). This would make the identifiability work a correctness argument, not an accuracy one.'
+- name: H3 the comparison cannot adjudicate
+  discriminator: between-dataset-spread-sets-the-noise-floor
+  statement: 'Independent proteomes disagree by more than the effect being measured, so neither H1
+    nor H2 is decidable from this data. A real outcome, not a failure mode to hide: it would redirect
+    effort to a condition-matched or targeted measurement rather than a genome-wide comparison.'
+- name: H4 baseline accuracy is too poor to resolve cohorts
+  discriminator: model-wide-accuracy-baseline
+  statement: If the model is already many-fold off for most genes, a 30% difference in median error
+    between cohorts is noise. This is why the baseline is pinned rather than assumed.
+falsifiability: 'The study fails at its own gate if Schmidt 2016 covers under half of any cohort,
+  or if independent proteomes disagree by more than 0.5 dex — in either case no cohort claim is supportable
+  and that is the finding. The hand-adjusted control is the internal check: if molecules explicitly
+  tuned toward experimental agreement are NOT better predicted, the join or the count extraction
+  is wrong and every other number in the study is suspect.'
+controls:
+- name: hand-adjusted cohort (positive)
+  kind: positive
+  detail: Molecules tuned toward agreement must show better agreement. If they do not, the pipeline
+    is broken, not the model.
+- name: second independent proteome (replication)
+  kind: replication
+  detail: Every cohort ratio repeated on Mori 2021. A conclusion holding on one dataset only is reported
+    as such.
+- name: Li 2014 exclusion (negative)
+  kind: negative
+  detail: Li 2014 is a ParCa INPUT via translation_efficiency.tsv. Scoring against it would measure
+    ParCa reproducing its own input and should show near-perfect agreement; if it does not, the extraction
+    is wrong. Used as a diagnostic, never as validation.
+assumptions:
+- name: Schmidt 2016 is independent of the model
+  detail: Protein abundances emerge from RNA-seq expression x Li 2014 translation efficiency / SILAC
+    degradation. Schmidt is not among ParCa's inputs. The 65 hand-adjusted molecules are the known
+    exception and are excluded.
+  risk: low
+- name: the hand-adjustment inventory is complete
+  detail: Compiled from flat/adjustments/ (5 files) and fold_changes_removed.tsv. Other tuning may
+    exist elsewhere in ParCa code rather than data — fit_sim_data_1.py is named as the source in
+    several _comments fields, so code-level adjustments are likely and are NOT yet enumerated.
+  risk: medium
+- name: gene-symbol join is reliable
+  detail: Model uses EcoCyc frame ids; proteomes use gene symbols or UniProt. The join is the most
+    likely source of silent error, and this investigation has already lost a whole afternoon to a
+    name-matching bug (the 9-of-23 TF figure). Unmatched genes are reported, never dropped silently.
+  risk: high
+- name: condition matching
+  detail: Schmidt 2016 reports many growth conditions. The comparison must use the one matching the
+    simulated medium and say which; comparing glucose-minimal model output to an LB proteome would
+    be a category error.
+  risk: medium
+implementation_requirements:
+- id: req-1
+  status: not_started
+  blocking: true
+  summary: Extract and cache the proteomics datasets as tidy TSVs with provenance.
+  detail: Read the four xlsx sources into references/proteomics/<dataset>.tsv keyed on gene symbol
+    + UniProt where available, recording sheet name, column and condition. The xlsx files stay outside
+    the repo; the derived tables are small enough to commit and make the join auditable.
+- id: req-2
+  status: not_started
+  blocking: true
+  summary: Build the frame-id to gene-symbol map and REPORT its failures.
+  detail: Highest-risk step. Emit matched and unmatched counts per cohort; a cohort losing most of
+    its genes to the join is a coverage failure, not a small-n result.
+- id: req-3
+  status: not_started
+  blocking: true
+  summary: Enumerate CODE-level parameter adjustments, not just data-level ones.
+  detail: Several _comments name fit_sim_data_1.py as the source, so the 65-molecule inventory from
+    flat/adjustments/ is a lower bound. Any molecule tuned in code must join the exclusion cohort
+    before the headline comparison is graded.
+- id: req-4
+  status: not_started
+  blocking: false
+  summary: Reuse the existing monomer-count reader.
+  detail: listeners.monomer_counts via the distilled runs; do not re-derive counts from expression.
+limitations:
+- Protein counts are compared at one condition. A cohort effect could be condition-specific and this
+  design would miss it.
+- The hand-adjustment inventory covers DATA-level tuning only. Code-level adjustments in fit_sim_data_1.py
+  are named in the comments and not yet enumerated (req-3), so the exclusion cohort is a lower bound
+  and baseline accuracy may be flattered.
+- 'A null result — cohorts indistinguishable from baseline — bounds the defects'' cost at this resolution.
+  It does not show they are harmless: a gene can be predicted to the right abundance through compensating
+  errors, and dnaG itself is a case where the phenotype, not the count, was the observable that mattered.'
+- Schmidt 2016 measures a population average. The model is single-cell; heterogeneity is invisible
+  to this comparison.
+discovery_implications:
+  resolved_uncertainties: []
+  remaining_uncertainties:
+  - Whether the identifiability and misattribution defects cost measurable predictive accuracy —
+    the study's whole point.
+  - Whether promoter-resolved apportionment (per_promoter_ratios.tsv, Thomason 2015) would improve
+    agreement; this study sets the baseline that question needs but does not answer it.
+  followup_study_proposals:
+  - id: promoter-ratios-improve-accuracy
+    title: Does per-promoter apportionment improve agreement with measured abundance?
+    motivation: 'per_promoter_ratios.tsv already exists in sibling worktrees, carrying Thomason 2015
+      TSS step heights (rpsU-dnaG-rpoD: 0.721 / 0.279 / 0.000). If this study finds the underdetermined
+      cohort is measurably worse, the direct test is whether real apportionment closes the gap where
+      the arbitrary tie-break does not. If this study finds no cohort effect, that follow-up is not
+      worth running, which is exactly the decision this study exists to inform.'
+    mechanism: Replace the NNLS vertex with measured per-promoter shares and re-measure the cohort
+      error.
+parent_studies:
+- study: tu-expression-identifiability
+  condition: complete
+  relation: leads-to
+  note: Supplies the 307-gene cohort and the finding that the tie-break moves 23% of their proteins.
+- study: promoter-specific-regulation
+  condition: complete
+  relation: leads-to
+  note: Supplies the 473-gene contradicted-regulation cohort.
