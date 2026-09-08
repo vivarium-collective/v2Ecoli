@@ -676,3 +676,183 @@ def test_no_cache_uri_still_runs_parca(core) -> None:
     block = _parca_block(core)
     assert "v2ecoli-parca" in block
     assert "aws s3 cp" not in block
+
+
+# --- N seeds in ONE variant: the shape every earlier test missed -------------
+
+
+def test_lineages_in_one_variant_emit_DISTINCT_output_names(core) -> None:
+    """The gap that let the collision ship. Every earlier multi-* test used
+    multiple VARIANTS with one seed each, so no two tasks ever shared an output
+    name. Three seeds inside one variant is the first shape that collides:
+
+        Process `analysis` input file name collision --
+          There are multiple input files for each of the following file names: sweep
+
+    Two failures, one cause -- `path sweep_v0` stages the gather's inputs under
+    their OWN names, so N directories called `sweep` cannot be staged; and N
+    concurrent publishDir copies to one destination name race (measured: only 2 of
+    3 seeds published)."""
+    doc = build_workflow_nf(n_seeds=3, n_generations=1)
+    inner = doc["state"]["runs_v0"]["config"]["state"]
+    out_dirs = [inner[k]["config"]["out_dir"] for k in inner if k.startswith("lineage")]
+    assert len(out_dirs) == 3
+    assert len(set(out_dirs)) == 3, f"names must differ across tasks: {out_dirs}"
+    assert set(out_dirs) == {"sweep_v0_s0", "sweep_v0_s1", "sweep_v0_s2"}
+
+
+def test_the_output_declaration_is_a_pattern_not_a_fixed_name(core) -> None:
+    """`nextflow_port_decls` is read via `_class_annotation` ->
+    `getattr(type(instance), ...)`, i.e. off the CLASS, so it cannot vary per
+    instance -- a property would return the descriptor. A glob is what makes the
+    per-lineage `out_dir` expressible at all."""
+    rendered = _render(core, build_workflow_nf(n_seeds=2, n_generations=1))
+    block = rendered.split("process lineage_v0_s0 {", 1)[1].split("\n}", 1)[0]
+    assert 'path "sweep_*"' in block
+    assert 'path "sweep"' not in block, "a fixed name collides across tasks"
+
+
+def test_distinct_names_survive_across_variants_too(core) -> None:
+    """Run 4 is 84 variants x N seeds; the name must be unique over BOTH axes."""
+    doc = build_workflow_nf(
+        n_seeds=2, variants=[{"variant_name": "a"}, {"variant_name": "b"}]
+    )
+    names = [
+        doc["state"][f"runs_v{v}"]["config"]["state"][k]["config"]["out_dir"]
+        for v in (0, 1)
+        for k in doc["state"][f"runs_v{v}"]["config"]["state"]
+        if k.startswith("lineage")
+    ]
+    assert len(names) == 4 and len(set(names)) == 4, names
+
+
+@pytest.mark.skipif(shutil.which("nextflow") is None, reason="nextflow not installed")
+def test_a_multiseed_single_variant_render_compiles(core, tmp_path) -> None:
+    """The render-shape assertions above cannot tell a valid script from one
+    Nextflow rejects -- which is how this and process-bigraph#205 both shipped."""
+    main_nf = tmp_path / "main.nf"
+    main_nf.write_text(
+        _render(
+            core, build_workflow_nf(n_seeds=3, n_generations=1, include_analysis=True)
+        )
+    )
+    r = subprocess.run(
+        ["nextflow", "run", str(main_nf), "-preview"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=300,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+# --- the structural check for a bug class that has now escaped four times -----
+#
+# `analysis_options` (#730), `independent_founders` (#731) and `cache_uri` (#732)
+# were three separate fixes for ONE bug: a value LineageStep forwards, that the
+# generator never declares, so a dispatch asking for it is silently ignored.
+# `build_workflow_nf` ends in `**_ignored: Any`, which is what makes it silent --
+# an undeclared parameter is swallowed, not rejected.
+#
+# Vigilance has now failed four times, so this pins the classification instead.
+# Every `_FORWARDED` key must be in exactly one bucket, and adding a new one
+# forces the choice rather than defaulting to "silently unreachable".
+
+# Set per lineage node by the generator itself -- correctly NOT campaign knobs.
+_DERIVED_BY_GENERATOR = {
+    "seed",
+    "lineage_seed",
+    "generations",
+    "out_dir",
+    "variant_index",
+    "variant_name",
+    "founder_sim_data",
+}
+
+# Reachable per variant through `injected_processes`, via LineageProcess's
+# `_feature_flag` (`_injected.get(k, self.config.get(k, default))`).
+_REACHABLE_VIA_INJECTED_PROCESSES = {
+    "features",
+    "ppgpp_regulation",
+    "trna_attenuation",
+    "supercoiling",
+    "mass_conservation",
+    "exchange_fluxes",
+    "exchange_flux_basis",
+    "transcript_initiation_mode",
+    "polypeptide_initiation_mode",
+}
+
+# Read straight off `self.config` with no escape hatch, and not declared: a
+# campaign CANNOT set these. Documented rather than asserted away -- `media` and
+# `time_step` are the ones that bite (CD2 Run 4's minimal-vs-tryptophan split is
+# exactly a media choice), and `emit_paths` is the undeclared-emission hole
+# behind viva-api#475's global_time-only parquet.
+_KNOWN_UNREACHABLE = {
+    "time_step",
+    "media",
+    "emitter",
+    "emitter_arg",
+    "single_daughters",
+    "checkpoint_dir",
+    "emit_paths",
+}
+
+
+def _declared_parameters() -> set[str]:
+    import inspect
+
+    from v2ecoli.workflow.lineage_step import LineageStep  # noqa: F401
+
+    sig = inspect.signature(build_workflow_nf)
+    return {
+        n
+        for n, p in sig.parameters.items()
+        if p.kind not in (p.VAR_KEYWORD, p.VAR_POSITIONAL)
+    }
+
+
+def test_every_forwarded_key_is_classified() -> None:
+    """Each `_FORWARDED` key is a declared parameter, derived by the generator,
+    reachable via injected_processes, or a known gap -- never unclassified.
+
+    A new forwarded key landing in none of these buckets is the exact shape of
+    #730/#731/#732: expressible at every hop but the one that matters."""
+    from v2ecoli.workflow.lineage_step import _FORWARDED
+
+    classified = (
+        _declared_parameters()
+        | _DERIVED_BY_GENERATOR
+        | _REACHABLE_VIA_INJECTED_PROCESSES
+        | _KNOWN_UNREACHABLE
+    )
+    unclassified = set(_FORWARDED) - classified
+    assert not unclassified, (
+        f"{sorted(unclassified)} are forwarded by LineageStep but reach no hop of "
+        "build_workflow_nf. Declare them as generator parameters, or add them to "
+        "_KNOWN_UNREACHABLE with a reason. `**_ignored` will NOT raise on them."
+    )
+
+
+def test_the_known_gaps_have_not_silently_grown() -> None:
+    """_KNOWN_UNREACHABLE is a debt list, not a dumping ground. Shrinking it is
+    the goal; growing it should require editing this test deliberately."""
+    from v2ecoli.workflow.lineage_step import _FORWARDED
+
+    still_unreachable = {
+        k
+        for k in _KNOWN_UNREACHABLE
+        if k not in _declared_parameters()
+        and k not in _DERIVED_BY_GENERATOR
+        and k not in _REACHABLE_VIA_INJECTED_PROCESSES
+    }
+    assert still_unreachable == _KNOWN_UNREACHABLE, (
+        "these became reachable -- drop them from _KNOWN_UNREACHABLE: "
+        f"{sorted(_KNOWN_UNREACHABLE - still_unreachable)}"
+    )
+    assert set(_FORWARDED) >= _KNOWN_UNREACHABLE, (
+        "a key left _FORWARDED entirely; the gap list is stale: "
+        f"{sorted(_KNOWN_UNREACHABLE - set(_FORWARDED))}"
+    )

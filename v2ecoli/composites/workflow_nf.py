@@ -453,10 +453,13 @@ def build_workflow_nf(
                 "generations": int(n_generations),
                 "max_duration_per_gen": float(max_duration_per_gen),
                 "experiment_id": experiment_id,
-                # Task-local, matching `path "sweep"` -- see the ParCa note above.
-                # Identity is preserved by the hive partitioning the emitters write
-                # (experiment_id/variant/lineage_seed/generation), not by this name.
-                "out_dir": "sweep",
+                # Task-local AND per-lineage, matching LineageStep's `path "sweep_*"`.
+                # The name must differ across tasks: `path sweep_v{i}` stages the
+                # gather's inputs under their own names, so N directories all called
+                # `sweep` cannot be staged ("input file name collision"), and N
+                # publishDir copies to one destination name race. Both were measured
+                # on the first 3-seed campaign.
+                "out_dir": f"sweep_v{vi}_s{seed}",
                 "variant_index": vi,
                 "variant_name": vname,
             }
