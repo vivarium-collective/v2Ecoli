@@ -104,6 +104,20 @@ MASS_UNITS = units.g               # mass basis (for dry cell weight)
 TIME_UNITS = units.s               # simulation time basis
 CONC_UNITS = COUNTS_UNITS / VOLUME_UNITS   # mmol/L = mM
 CONVERSION_UNITS = MASS_UNITS * TIME_UNITS / VOLUME_UNITS  # g*s/L
+
+
+def _mM_magnitude(value):
+    """External concentrations are declared ``float[mM]`` in the ports schema and
+    are compared here against the plain-float ``import_constraint_threshold``.
+    The amino-acid-supplemented media path (e.g. ``basal_with_trp``) can leave a
+    pint ``Quantity`` in ``boundary.external`` instead of a bare float, and pint
+    refuses ``Quantity > float`` — the ``metabolism.py:841`` crash that fails the
+    ``_with_trp`` arm while plain ``minimal`` (no AA keys) never hits this path.
+    Return the mM magnitude whether the stored value is already a float or a
+    unit-carrying Quantity, so the availability test is unit-safe either way.
+    Mirrors the ``hasattr(q, "magnitude")`` idiom used elsewhere in this module.
+    """
+    return value.to("mM").magnitude if hasattr(value, "magnitude") else value
 GDCW_BASIS = units.mmol / units.g / units.h  # FBA flux units
 
 USE_KINETICS = True
@@ -838,7 +852,7 @@ class Metabolism(Step):
         if self.mechanistic_aa_transport:
             aa_in_media = np.array(
                 [
-                    states["boundary"]["external"][aa_name]
+                    _mM_magnitude(states["boundary"]["external"][aa_name])
                     > self.import_constraint_threshold
                     for aa_name in self.aa_environment_names
                 ]
