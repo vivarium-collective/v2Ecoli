@@ -19,7 +19,7 @@ import pandas as pd
 from duckdb import DuckDBPyConnection
 
 from v2ecoli.workflow.analysis import Analysis
-from v2ecoli.workflow.analyses._helpers import ptools_heatmap_view
+from v2ecoli.workflow.analyses._helpers import ptools_heatmap_view, available_columns
 from v2ecoli.workflow.analyses._shims import bulk_count_matrix, ACTIVE_RIBOSOME_SQL
 
 
@@ -35,14 +35,40 @@ def _flat_dir() -> str:
     return str((_ir.files(_flat_pkg) / "transcription_units.tsv").parent)
 
 
-def build_query(columns, history_sql):
-    """Generate SQL query for user-specified parquet columns."""
+def build_query(columns, history_sql, include_generation=False):
+    """Generate SQL query for user-specified parquet columns.
+
+    When ``include_generation`` is set, also carries ``generation`` (a hive
+    partition column) so per-generation consolidation can align rows to
+    generation boundaries. Callers detect the column's presence first — synthetic
+    or narrowed histories (e.g. some tests) may not have it.
+    """
+    gen = ", generation" if include_generation else ""
     query_sql = f"""
-        SELECT {",".join(columns)}, global_time AS time
+        SELECT {",".join(columns)}, global_time AS time{gen}
         FROM ({history_sql})
         ORDER BY time
     """
     return query_sql
+
+
+def _groupby_time_keep_generation(outputs_df):
+    """Collapse to one row per ``time`` while keeping a per-time ``generation``.
+
+    The data columns are summed (element-wise for list/array columns), matching
+    vEcoli semantics. ``generation`` (if present) must NOT be summed — it is a
+    label, so it is carried through as the min generation seen at each ``time``
+    (one cell per time on a single-daughter lineage, so this is exact). Callers
+    that opt into per-generation consolidation read this column back.
+    """
+    gen_by_time = None
+    if "generation" in outputs_df.columns:
+        gen_by_time = outputs_df.groupby("time")["generation"].min()
+        outputs_df = outputs_df.drop(columns=["generation"])
+    outputs_df = outputs_df.groupby("time", as_index=False).sum()
+    if gen_by_time is not None:
+        outputs_df["generation"] = outputs_df["time"].map(gen_by_time).values
+    return outputs_df
 
 
 def read_outputs(
@@ -57,13 +83,13 @@ def read_outputs(
             "bulk__count",
             "listeners__rna_counts__full_mRNA_counts",
         ]
-    query_sql = build_query(columns, history_sql)
+    incl_gen = "generation" in available_columns(conn, history_sql)
+    query_sql = build_query(columns, history_sql, incl_gen)
     outputs_df = conn.sql(query_sql).df()
     # For list/array columns, groupby sum works via element-wise numpy addition.
     # With a single-cell (single scale) query there is typically one row per
     # timestep, so this is effectively identity but preserves vEcoli semantics.
-    outputs_df = outputs_df.groupby("time", as_index=False).sum()
-    return outputs_df
+    return _groupby_time_keep_generation(outputs_df)
 
 
 def retrieve_tu_source(wd_raw):
@@ -133,8 +159,31 @@ def build_bulk2monomers_matrix(sim_data):
     return bulk2monomers, all_monomers
 
 
-def consolidate_timepoints(state_mtx, n_tp, normalized=False):
-    """Generate consolidated relative time points."""
+def consolidate_timepoints(state_mtx, n_tp, normalized=False, generations=None):
+    """Consolidate a time-ordered state matrix into fewer columns.
+
+    Default (``generations=None``): ``n_tp`` evenly-spaced checkpoints by tick,
+    summing (or averaging, ``normalized=True``) each block between them.
+
+    Per-generation (``generations`` = a per-row generation-label array aligned to
+    ``state_mtx`` rows, used by the multigeneration scale): ONE block per
+    generation — each output column is the sum/mean over that generation's ticks,
+    aligned to generation boundaries (not the drifting evenly-spaced checkpoints).
+    Returns ``(blocks, idx)`` where ``idx`` are the first-row indices of each
+    generation, so callers' time-column labelling still works.
+    """
+    if generations is not None:
+        gens = np.asarray(generations)
+        uniq = sorted(set(gens.tolist()))
+        blocks, idx = [], []
+        for g in uniq:
+            mask = gens == g
+            rows = state_mtx[mask]
+            block = rows.sum(axis=0) / len(rows) if normalized else rows.sum(axis=0)
+            blocks.append(block)
+            idx.append(int(np.flatnonzero(mask)[0]))
+        return np.stack(blocks, axis=0), np.array(idx, dtype=int)
+
     checkpoints = np.linspace(0, np.shape(state_mtx)[0] - 1, n_tp, dtype=int)
 
     if normalized:
@@ -167,7 +216,12 @@ class PtoolsRna(Analysis):
 
     name = "ptools_rna"
     scale = "single"
-    config_schema = {"n_tp": "integer", "time_unit": "string"}
+    config_schema = {
+        "n_tp": "integer",
+        "time_unit": "string",
+        "per_generation": "boolean",
+        "skip_n_gens": "integer",
+    }
 
     def _do_read_outputs(
         self,
@@ -380,9 +434,14 @@ class PtoolsRna(Analysis):
         rna_counts_gene = np.matmul(tu_counts_mtx, tu_gene_mtx)
 
         n_tp = int(params["n_tp"])
+        gens = (
+            output_df["generation"].values
+            if params.get("per_generation") and "generation" in output_df.columns
+            else None
+        )
 
         rna_counts_gene_blocksum, tp_idx = consolidate_timepoints(
-            rna_counts_gene, n_tp, normalized=True
+            rna_counts_gene, n_tp, normalized=True, generations=gens
         )
 
         tp_checkpoints = output_df["time"].values[tp_idx]

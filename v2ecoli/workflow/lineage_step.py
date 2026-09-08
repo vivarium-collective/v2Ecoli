@@ -123,9 +123,33 @@ class LineageStep(Step):
     }
 
     # How the renderer declares this task's ports in the emitted process block.
+    # A GLOB, not a fixed name. Every lineage used to emit a directory named
+    # literally `sweep` -- unique within a task, identical across tasks -- which
+    # collides the moment more than one lineage is gathered or published:
+    #
+    #   Process `analysis` input file name collision --
+    #     There are multiple input files for each of the following file names: sweep
+    #   Failed to publish file: .../work/14/27c67.../sweep; to: .../vecoli-output/.../sweep [copy]
+    #
+    # Both halves of one cause. `path sweep_v0` stages N inputs under their own
+    # names, so N directories called `sweep` cannot be staged; and N concurrent
+    # publishDir copies to the same destination name race (measured: only 2 of 3
+    # seeds published). The per-lineage name lives in `out_dir` config, which
+    # workflow_nf sets to `sweep_v{vi}_s{seed}` -- this declaration cannot itself
+    # vary, because `_class_annotation` reads it off the CLASS
+    # (`getattr(type(instance), ...)`), so a pattern is what makes per-instance
+    # names expressible at all.
     nextflow_port_decls = {
         "cache_dir": "path cache_dir",
-        "sweep_dir": 'path "sweep"',
+        # `type: "dir"` is load-bearing, not decoration. run_step writes the port's
+        # value manifest as `<port>.json` -- here `sweep_dir.json` -- into the SAME
+        # work dir, and a bare `path "sweep_*"` glob matches it too. Every lineage
+        # then emits an identically named manifest alongside its distinct
+        # directory, and the gather collides on the manifest exactly as it once
+        # collided on the directory ("input file name collision: sweep_dir.json",
+        # simulation 562, after 3 x 94-minute lineages had SUCCEEDED). The value
+        # of this port IS a directory; say so, and no file can match.
+        "sweep_dir": 'path "sweep_*", type: "dir"',
     }
     # A whole lineage is the long-running task on this path -- hours, not
     # minutes -- so it is the one that most needs the profile's `time` and
@@ -141,11 +165,18 @@ class LineageStep(Step):
     # (viva-api passes the run's results URI); the `?:` keeps a bare
     # `nextflow run` working locally instead of failing on a missing param.
     #
-    # Every lineage publishes its task-local `sweep` into the SAME target on
-    # purpose. The tree underneath is hive-partitioned
-    # (experiment_id/variant/lineage_seed/generation/agent_id), so the copies
-    # interleave rather than collide -- identity lives in the partitions, not in
-    # the directory name.
+    # Each lineage publishes its OWN `sweep_v{vi}_s{seed}` into the shared target.
+    # An earlier version of this comment claimed they could all publish a
+    # directory named `sweep` because "the copies interleave rather than collide
+    # -- identity lives in the partitions, not in the directory name". That was
+    # reasoning about the directory's CONTENTS while Nextflow reasons about its
+    # NAME, and it held only while no two tasks shared a destination (1 seed per
+    # variant). The first 3-seed campaign failed on it.
+    #
+    # So the published tree is N siblings rather than one merged directory. Every
+    # consumer reaches the data through the recursive
+    # `**/history/experiment_id=*/**/*.pq` glob in v2ecoli/library/sweep_io.py,
+    # so N siblings and one merged tree are equivalent to readers.
     nextflow_directives = {
         "label": "lineage",
         "publishDir": '{ params.publish_dir ?: "results" }, mode: "copy", overwrite: true',

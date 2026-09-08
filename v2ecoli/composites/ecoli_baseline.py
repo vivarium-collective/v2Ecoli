@@ -2136,6 +2136,14 @@ def baseline(
 
     _emitter_decls = emitter_defaults(baseline)
     _default_decl = _emitter_decls[0] if _emitter_decls else None
+    # An ENCLOSING generator that embeds this cell under agents/<id> and adds
+    # document-level stores of its own (reactor_bird_coupled) publishes ITS
+    # declaration for the per-agent sink we are about to build; it is the
+    # composite actually being built, so its declared emit set wins over the
+    # single-cell default here (see _helpers.set_enclosing_emitter_decl).
+    _enclosing = _h._ENCLOSING_EMITTER_DECL
+    if _enclosing is not None:
+        _default_decl = dict(_enclosing["decl"])
     if _default_decl is not None:
         # Thread the run-identity fields into the declared default (parquet)
         # emitter's config so its hive partition columns are correct per cell.

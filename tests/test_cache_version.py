@@ -99,7 +99,14 @@ def test_cache_version_file_exists_and_matches(sim_data_cache):
     assert stored is not None, (
         f'{sim_data_cache}/{CACHE_VERSION_FILENAME} missing — rebuild cache'
     )
-    current = compute_cache_version(build_params=stored.build_params)
+    # Echo BOTH build_params (A7) and derived_from (schema 3): each describes
+    # *which artifact* the cache is (its strain identity, and the ParCa chassis
+    # it was built on) — neither is re-derivable by a bare recompute, so
+    # verify_cache_version folds both back in; mirror that here so this stays a
+    # genuine input-files/context freshness check, not a false positive on a
+    # legitimately-chained cache.
+    current = compute_cache_version(build_params=stored.build_params,
+                                    derived_from=stored.derived_from)
     assert stored.inputs_hash == current.inputs_hash, (
         f'inputs_hash mismatch; stored={stored.inputs_hash[:16]}, '
         f'current={current.inputs_hash[:16]}. Rebuild cache.'

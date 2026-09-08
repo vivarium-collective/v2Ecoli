@@ -110,6 +110,91 @@ def _extract_unique_attrs(agent_state: dict) -> dict:
 
 
 
+def _declared_emit_roots(generator: Any = None) -> list[str]:
+    """The store roots a generator's ``emitters=`` declaration names.
+
+    ``generator`` is whatever ``viva_superpowers.composite_generator
+    .emitter_defaults`` accepts (a decorated builder fn, a registry entry, a
+    static-spec dict) or a registered spec id. ``None`` falls back to
+    ``_helpers._declared_parquet_roots()`` -- the declaration of the generator
+    currently being built if one is in scope, else ecoli_baseline's set
+    (``global_time`` / ``bulk`` / ``listeners``) -- the same fallback #741 gave
+    a lineage with no emit_paths.
+    """
+    from v2ecoli.composites._helpers import _declared_parquet_roots
+
+    if generator is None:
+        return list(_declared_parquet_roots())
+    from viva_superpowers.composite_generator import _REGISTRY, emitter_defaults
+
+    source = generator
+    if isinstance(generator, str):
+        # A registry id, else an architecture name (the form build_composite
+        # takes; aliases share one function, so any match reads the same decl).
+        source = _REGISTRY.get(generator) or next(
+            (e for e in _REGISTRY.values() if e.name == generator), None)
+    if source is None:
+        raise ValueError(
+            f"run_multigen_parquet: no registered composite {generator!r} to "
+            "read an emitters= declaration from")
+    roots: list[str] = []
+    for decl in emitter_defaults(source):
+        for p in decl.get("paths") or []:
+            parts = [seg for seg in str(p).replace(".", "/").split("/") if seg]
+            if parts and parts[0] not in roots:
+                roots.append(parts[0])
+    if not roots:
+        raise ValueError(
+            f"run_multigen_parquet: {generator!r} declares no emitter paths "
+            "(no @composite_generator(emitters=[...]) entry), so an empty "
+            "emit_paths cannot mean 'the declared set'. Pass explicit "
+            "emit_paths, or declare the composite's sink on its generator.")
+    return roots
+
+
+def declared_emit_set(
+    composite: Any, generator: Any = None,
+) -> tuple[list[tuple[str, ...]], list[tuple[str, ...]]]:
+    """``(agent_leaves, root_leaves)`` for an EMPTY ``emit_paths``: the
+    composite's DECLARED emit set instead of an explicit allow-list.
+
+    The roots come from the generator's ``emitters=`` declaration
+    (:func:`_declared_emit_roots`). Each is resolved against the BUILT state
+    the same way the composite's own in-document sink resolves it
+    (``_helpers.set_enclosing_emitter_decl`` / ``_parquet_emit_set``): a root
+    that exists inside the followed agent is agent-relative (``bulk``,
+    ``listeners``, ``boundary`` -> captured whole, so the hive carries
+    ``bulk__id`` / ``bulk__count`` / ``listeners__fba_results__*`` / ...);
+    a root that exists only at the document level (``reactor`` /
+    ``population`` / ``lineage`` for reactor_bird_coupled) is a root path,
+    merged into the same row. ``global_time`` is the runner's own column and
+    is skipped. A declared root present in neither place at build time is
+    kept agent-relative (the in-document sink's default frame) so a store a
+    Step materialises on its first tick is still captured.
+
+    This is the whole-cell emit volume (one cell's bulk + listeners per tick),
+    which is tractable for a SINGLE-LINEAGE run (``single_daughters=True``) --
+    the case the coupled dispatch opts into. A many-agent population run must
+    keep passing its explicit reduced ``emit_paths``; that allow-list is what
+    keeps bulk x agents x generations off the emit path (#754/#776).
+    """
+    agents = (getattr(composite, "state", None) or {}).get("agents") or {}
+    agent_state = next(iter(agents.values()), {}) if agents else {}
+    state = getattr(composite, "state", None) or {}
+    agent_leaves: list[tuple[str, ...]] = []
+    root_leaves: list[tuple[str, ...]] = []
+    for root in _declared_emit_roots(generator):
+        if root == "global_time":
+            continue
+        if isinstance(agent_state, dict) and root in agent_state:
+            agent_leaves.append((root,))
+        elif isinstance(state, dict) and root in state:
+            root_leaves.append((root,))
+        else:
+            agent_leaves.append((root,))
+    return agent_leaves, root_leaves
+
+
 def run_multigen_parquet(
     composite: Any,
     *,
@@ -131,12 +216,23 @@ def run_multigen_parquet(
     study_slug: str | None = None,
     investigation_slug: str | None = None,
     extra_root_paths: list[str] | None = None,
+    declared_generator: Any = None,
 ) -> dict:
     """Run a v2ecoli composite across divisions, externally-driven ParquetEmitter.
 
     Args mostly mirror :func:`v2ecoli.library.sqlite_run.run_multigen_sqlite`.
     Differences:
 
+      * ``emit_paths``: a NON-EMPTY list is an explicit allow-list of
+        agent-relative store paths (unchanged). An EMPTY list means "the
+        composite's DECLARED emit set" -- the roots its generator names in
+        ``@composite_generator(emitters=[...])``, resolved by
+        :func:`declared_emit_set` (agent stores captured whole, document-level
+        stores merged into the same row). ``declared_generator`` names the
+        generator to read (builder fn / registry entry / spec id); ``None``
+        falls back to the generator in build scope, else ecoli_baseline's set.
+        The declared set is whole-cell volume: opt in for single-lineage runs,
+        keep the explicit reduced list for many-agent population runs.
       * ``out_dir`` (vs ``db_file``): root directory for the parquet hive.
       * ``experiment_id``: top-level partition key. Quoted via ``parse.quote_plus``
         internally so it survives any path-unsafe characters.
@@ -164,8 +260,22 @@ def run_multigen_parquet(
                 return True, new[0]
             return False, None
 
-    leaves = _normalize_emit_paths(emit_paths)
-    root_leaves = _normalize_root_paths(extra_root_paths or [])
+    if emit_paths:
+        leaves = _normalize_emit_paths(emit_paths)
+        root_leaves = _normalize_root_paths(extra_root_paths or [])
+    else:
+        # Empty allow-list = the generator's declared set (see the docstring).
+        # An extra root path under a declared document root is subsumed by
+        # that root (captured whole) -- keep only the ones outside it.
+        leaves, root_leaves = declared_emit_set(composite, declared_generator)
+        declared_root_names = {r[0] for r in root_leaves}
+        root_leaves = root_leaves + [
+            rl for rl in _normalize_root_paths(extra_root_paths or [])
+            if rl[0] not in declared_root_names
+        ]
+        print("[multigen_parquet] emit_paths empty -> the composite's DECLARED "
+              f"emit set: agent roots {['/'.join(l) for l in leaves]}, "
+              f"document roots {['/'.join(r) for r in root_leaves]}")
     emit_schema = _build_emit_schema(leaves)
     if root_leaves:
         _merge_into(emit_schema, _build_emit_schema(root_leaves))

@@ -37,6 +37,32 @@ from v2ecoli.workflow.analyses._helpers import (
 from v2ecoli.workflow.analyses.ptools_rna import PtoolsRna
 from v2ecoli.workflow.analyses.ptools_rxns import PtoolsRxns
 from v2ecoli.workflow.analyses.ptools_proteins import PtoolsProteins
+from v2ecoli.workflow.analyses.ptools_overview import PtoolsCellOverview
+
+
+def drop_leading_generations(
+    conn: DuckDBPyConnection, history_sql: str, skip: int
+) -> str:
+    """Return ``history_sql`` with the first ``skip`` generations removed.
+
+    ``generation`` is 0-indexed in the parquet hive, and lineage/seed filters
+    can raise the minimum generation above 0, so the cutoff is computed relative
+    to the minimum generation actually present (``skip=1`` drops just the first
+    generation, whatever its index). Returns ``history_sql`` unchanged — never an
+    empty query — when there are not strictly more than ``skip`` generations, so
+    a short run still yields a table instead of failing downstream.
+    """
+    if skip <= 0:
+        return history_sql
+    row = conn.sql(
+        "SELECT MIN(generation) AS lo, COUNT(DISTINCT generation) AS n "
+        f"FROM ({history_sql})"
+    ).fetchone()
+    lo, n_gens = row
+    if lo is None or int(n_gens) <= skip:
+        return history_sql
+    cutoff = int(lo) + skip
+    return f"SELECT * FROM ({history_sql}) WHERE generation >= {cutoff}"
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +70,26 @@ from v2ecoli.workflow.analyses.ptools_proteins import PtoolsProteins
 # ---------------------------------------------------------------------------
 
 class _MultigenMixin:
-    """Rewrite history to an absolute time axis, then run the single analyze."""
+    """Rewrite history to an absolute time axis, then run the single analyze.
+
+    Multigeneration is also where the ptools time-axis defaults live, because it
+    is the only ptools scale that spans more than one generation:
+
+    * ``per_generation=True`` — consolidate into ONE window per generation
+      (aligned to generation boundaries) instead of ``n_tp`` evenly-spaced ticks.
+    * ``skip_n_gens=1`` — DROP the first generation and start the table at the
+      second, so the initial pre-steady-state generation does not bias the
+      per-generation averages.
+
+    Both are overridable via ``variant_metadata`` (analysis_options); the single
+    and multiseed scales keep the old evenly-spaced, no-skip behaviour.
+
+    ``generation`` is 0-indexed in the parquet hive, and the multiseed/lineage
+    filters can raise the minimum above 0, so "drop the first ``skip``
+    generations" is computed relative to the minimum generation actually present
+    rather than by a fixed ``generation >`` cutoff. The drop is skipped when it
+    would leave no generations.
+    """
 
     def analyze(
         self,
@@ -55,12 +100,16 @@ class _MultigenMixin:
         variant_metadata: dict[str, Any] | None = None,
         **ctx,
     ) -> dict:
+        params = dict(variant_metadata or {})
+        params.setdefault("per_generation", True)
+        skip = int(params.get("skip_n_gens", 1))
+        history_sql = drop_leading_generations(conn, history_sql, skip)
         abs_sql = cumulative_time_history(history_sql)
         return super().analyze(
             conn=conn,
             history_sql=abs_sql,
             sim_data=sim_data,
-            variant_metadata=variant_metadata,
+            variant_metadata=params,
             **ctx,
         )
 
@@ -137,4 +186,22 @@ class PtoolsRxnsMultiseed(_MultiseedMixin, PtoolsRxns):
 
 class PtoolsProteinsMultiseed(_MultiseedMixin, PtoolsProteins):
     name = "ptools_proteins_multiseed"
+    scale = "multiseed"
+
+
+# The combined Cellular-Overview upload (genes + reactions + proteins in one
+# "a mixture" Omics-Viewer dataset) had only a single-scale registration, so a
+# multi-generation or multi-seed sweep could only export one generation at a
+# time. Register it at the aggregating scales too, the same way the per-category
+# ptools analyses are: PtoolsCellOverview.analyze forwards the (already time-rewritten
+# / cross-seed-collapsed) history_sql to its sibling analyses, so the mixins work
+# unchanged — multigeneration lays the lineage on one absolute time axis, and
+# multiseed element-wise aggregates across seeds.
+class PtoolsOverviewMultigeneration(_MultigenMixin, PtoolsCellOverview):
+    name = "ptools_overview_multigeneration"
+    scale = "multigeneration"
+
+
+class PtoolsOverviewMultiseed(_MultiseedMixin, PtoolsCellOverview):
+    name = "ptools_overview_multiseed"
     scale = "multiseed"
