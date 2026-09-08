@@ -156,6 +156,14 @@ scientific_argument:
 acceptance_criteria:
 - study: mechanistic-replisome-arrest
   behavior: lineage-arrests-under-mechanistic-replisome
+- study: model-vs-experimental-proteome
+  behavior: underdetermined-cohort-is-worse
+- study: model-vs-experimental-proteome
+  behavior: contradicted-regulation-cohort-is-worse
+- study: promoter-specific-regulation
+  behavior: lineage-completes
+- study: tu-expression-identifiability
+  behavior: arbitrary-choice-is-not-phenotypically-silent
 inputs:
   references:
   - bib_key: schmidt2016
@@ -379,3 +387,16 @@ decisions_needed:
     i.e. distinct promoters. It is the dominant reason 760 source TUs are absent, and it is why dnaG
     has one transcript instead of three. Unlike the constraint artefact and the cistron-content regulation
     rule, this one DISCARDS EVIDENCED DATA rather than modelling it debatably.
+- id: D-proteome-anchor
+  status: open
+  severity: high
+  question: Do the identifiability and misattribution defects cost measurable predictive accuracy,
+    or are they correctness problems with no accuracy consequence?
+  why_it_matters: Everything established so far is internal consistency or database agreement — no
+    finding in this investigation has been compared to a measurement. A null result bounds the defects'
+    cost and means the months of structural work scoped as Option 3 in the May impact assessment
+    is not warranted on accuracy grounds. A positive result is the externally-validated case for
+    doing it.
+  resolved_by: model-vs-experimental-proteome
+  blocking:
+  - promoter-ratios-improve-accuracy

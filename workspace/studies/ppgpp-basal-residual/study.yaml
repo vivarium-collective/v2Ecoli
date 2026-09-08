@@ -3,7 +3,7 @@ name: ppgpp-basal-residual
 title: The ppGpp residual under dnaG
 investigation: transcription-rewiring
 study_type: diagnostic
-phase: design
+phase: Design
 created: '2026-09-04'
 status: planned
 design_status: complete
@@ -12,13 +12,22 @@ simulation_status: not_started
 evaluation_status: not_started
 gate_status: pending
 expert_review_status: not_started
-question: 'dnag-locus-targeted-fix decomposed dnaG''s 134x transcription deficit into three independent layers: 2.6x from the static basal_prob ParCa fits, 8.2x from the ppGpp-adjusted basal vector, and 6.2x from the LexA edge. Removing the LexA edge rescues the lineage but leaves a flat ~8x shortfall for all twelve generations. The runtime is not responsible -- dnaG''s delivered probability equals its target to three decimal places in both arms -- so the residual is created upstream, where ParCa maps basal expression through ppGpp regulation into ppgpp_basal. Why does that mapping place dnaG 8.2x below its own idx_rprotein class, and is the defect specific to dnaG or a property of how the class is treated?'
+question: 'dnag-locus-targeted-fix decomposed dnaG''s 134x transcription deficit into three independent
+  layers: 2.6x from the static basal_prob ParCa fits, 8.2x from the ppGpp-adjusted basal vector,
+  and 6.2x from the LexA edge. Removing the LexA edge rescues the lineage but leaves a flat ~8x shortfall
+  for all twelve generations. The runtime is not responsible -- dnaG''s delivered probability equals
+  its target to three decimal places in both arms -- so the residual is created upstream, where ParCa
+  maps basal expression through ppGpp regulation into ppgpp_basal. Why does that mapping place dnaG
+  8.2x below its own idx_rprotein class, and is the defect specific to dnaG or a property of how
+  the class is treated?'
 units_and_time:
   tick: 1 s of simulated time; generations delimited by division events.
   quantities:
     basal_prob: per-TU RNAP recruitment probability, dimensionless, sums to 1 across TUs
-    ppgpp_basal: the ppGpp-adjusted counterpart of basal_prob, in force whenever ppGpp regulation is active
-    deficit: peer-median over dnaG of actual/basal transcription (dimensionless); each TU normalised by its OWN basal before the median
+    ppgpp_basal: the ppGpp-adjusted counterpart of basal_prob, in force whenever ppGpp regulation
+      is active
+    deficit: peer-median over dnaG of actual/basal transcription (dimensionless); each TU normalised
+      by its OWN basal before the median
     residual: the 8.2x that survives removing every TF edge on dnaG
 behavior_tests:
 - name: residual-lives-in-the-target-not-the-runtime
@@ -28,14 +37,17 @@ behavior_tests:
   measure:
     kind: derived
     path: ratio of dnaG's delivered-over-target ppGpp transcription to its idx_rprotein peers' delivered-over-target
-    detail: (actual_dnaG/target_dnaG) / median_peers(actual/target), generation 1. 1.0 means TranscriptInitiation delivers dnaG exactly the probability it is handed.
-  expect: the runtime delivers dnaG's target faithfully, so the whole shortfall is upstream in the target vector
+    detail: (actual_dnaG/target_dnaG) / median_peers(actual/target), generation 1. 1.0 means TranscriptInitiation
+      delivers dnaG exactly the probability it is handed.
+  expect: the runtime delivers dnaG's target faithfully, so the whole shortfall is upstream in the
+    target vector
   pass_if: &id001
     low: 0.8
     high: 1.25
     provenance:
       kind: post_hoc
-      note: Centred on 1.0. dnag-locus-targeted-fix already measured 1.000 in both arms, so this is a drift pin on an existing observation, not a new prior.
+      note: Centred on 1.0. dnag-locus-targeted-fix already measured 1.000 in both arms, so this
+        is a drift pin on an existing observation, not a new prior.
       source_study: dnag-locus-targeted-fix
 - name: ppgpp-vector-carries-the-residual
   gate_class: acceptance_criterion
@@ -43,15 +55,19 @@ behavior_tests:
   given: the ppGpp-adjusted basal vector (ppgpp_basal) and the static basal_prob from the same cache
   measure:
     kind: derived
-    path: fraction of dnaG's log-space residual peer deficit attributable to the ppGpp-adjusted basal vector ppgpp_basal rather than to static basal_prob
-    detail: log(peer/dnaG in ppgpp_basal, after dividing out the static basal_prob ratio) over log(8.2); 1.0 means ppGpp regulation accounts for the entire residual.
-  expect: the residual is created when ParCa's ppGpp expression fit maps dnaG's basal probability into ppgpp_basal
+    path: fraction of dnaG's log-space residual peer deficit attributable to the ppGpp-adjusted basal
+      vector ppgpp_basal rather than to static basal_prob
+    detail: log(peer/dnaG in ppgpp_basal, after dividing out the static basal_prob ratio) over log(8.2);
+      1.0 means ppGpp regulation accounts for the entire residual.
+  expect: the residual is created when ParCa's ppGpp expression fit maps dnaG's basal probability
+    into ppgpp_basal
   pass_if: &id002
     low: 0.6
     high: 1.0
     provenance:
       kind: theory
-      note: Bounded above by 1.0 and spanning 1.67x. 0.6 is the weakest result that still identifies ppGpp as the dominant source rather than one contributor among several.
+      note: Bounded above by 1.0 and spanning 1.67x. 0.6 is the weakest result that still identifies
+        ppGpp as the dominant source rather than one contributor among several.
 - name: dnag-is-an-outlier-within-its-own-class
   gate_class: acceptance_criterion
   classification: diagnostic
@@ -59,14 +75,17 @@ behavior_tests:
   measure:
     kind: derived
     path: fraction of idx_rprotein peers whose ppgpp_basal probability exceeds dnaG's
-    detail: rank of dnaG's ppgpp_basal within its own class, as a fraction. Distinguishes a dnaG-specific defect from a property of the whole rProtein class.
-  expect: dnaG sits near the bottom of its class, so the defect is specific to it and not a class-wide ppGpp treatment
+    detail: rank of dnaG's ppgpp_basal within its own class, as a fraction. Distinguishes a dnaG-specific
+      defect from a property of the whole rProtein class.
+  expect: dnaG sits near the bottom of its class, so the defect is specific to it and not a class-wide
+    ppGpp treatment
   pass_if: &id003
     low: 0.9
     high: 1.0
     provenance:
       kind: theory
-      note: Bounded above by 1.0. Expressed as 'fraction of peers above dnaG' rather than a bottom-decile percentile so the band is not anchored at zero.
+      note: Bounded above by 1.0. Expressed as 'fraction of peers above dnaG' rather than a bottom-decile
+        percentile so the band is not anchored at zero.
 - name: disabling-ppgpp-removes-the-residual
   gate_class: acceptance_criterion
   classification: primary
@@ -74,15 +93,19 @@ behavior_tests:
   given: the same lineage with ppGpp regulation disabled, so basal_prob is the in-force base
   measure:
     kind: derived
-    path: dnaG's basal-normalised idx_rprotein peer deficit with ppGpp regulation disabled, so basal_prob rather than ppgpp_basal is the in-force base
-    detail: peer-median over dnaG of actual/basal, generation 1, ppGpp off. Should collapse to the static basal_prob ratio if ppGpp is the residual's source.
+    path: dnaG's basal-normalised idx_rprotein peer deficit with ppGpp regulation disabled, so basal_prob
+      rather than ppgpp_basal is the in-force base
+    detail: peer-median over dnaG of actual/basal, generation 1, ppGpp off. Should collapse to the
+      static basal_prob ratio if ppGpp is the residual's source.
   expect: with ppGpp off the deficit falls to roughly the 2.6x static basal_prob ratio
   pass_if: &id004
     low: 1.8
     high: 3.6
     provenance:
       kind: measured
-      note: Brackets the 2.64x static basal ratio and ppgpp-off-rescue's independently measured 2.85x; spans 2x. A result near 8x would mean ppGpp is NOT the source and this study's premise is wrong.
+      note: Brackets the 2.64x static basal ratio and ppgpp-off-rescue's independently measured 2.85x;
+        spans 2x. A result near 8x would mean ppGpp is NOT the source and this study's premise is
+        wrong.
       source_study: ppgpp-off-rescue
 preregistered:
   declared_before_runs: true
@@ -104,11 +127,16 @@ preregistered:
     prior: If ppGpp is switched off, does the residual go away?
 assumptions:
 - The idx_rprotein peer set (41 TUs, dnaG excluded) is the correct comparison class; see project-dnag-comparison-group-flaw.
-- Deficits are computed with each TU normalised by its own basal_prob. A raw actual-value ratio measures a different quantity -- 134x where the normalised reads 47.4x.
-- The ppGpp rProtein fixed-probability override in transcript_initiation.py is inside `if not has_ppgpp`, so it does NOT apply on the ppGpp path this study examines.
+- Deficits are computed with each TU normalised by its own basal_prob. A raw actual-value ratio measures
+  a different quantity -- 134x where the normalised reads 47.4x.
+- The ppGpp rProtein fixed-probability override in transcript_initiation.py is inside `if not has_ppgpp`,
+  so it does NOT apply on the ppGpp path this study examines.
 limitations:
-- Three seeds per arm. Sufficient for a parameter-provenance question, which is near-deterministic given the cache, but NOT powered for a stochastic causal claim.
-- The ppGpp-off arm changes global growth control, so its deficit is interpretable only as a source test, not as a proposed fix -- ppgpp-off-rescue already showed disabling ppGpp does not rescue the lineage.
+- Three seeds per arm. Sufficient for a parameter-provenance question, which is near-deterministic
+  given the cache, but NOT powered for a stochastic causal claim.
+- The ppGpp-off arm changes global growth control, so its deficit is interpretable only as a source
+  test, not as a proposed fix -- ppgpp-off-rescue already showed disabling ppGpp does not rescue
+  the lineage.
 controls:
 - 'Negative: ppGpp disabled. If the residual persists there, the premise is refuted.'
 - 'Class control: the 41 idx_rprotein peers, to separate a dnaG-specific defect from class-wide treatment.'
@@ -125,7 +153,8 @@ pipeline_gate:
   - study: fit-runtime-reconciliation
     condition: complete
     relation: model-input
-    note: Established that ParCa fits against basal_prob while the runtime transcribes the ppGpp-adjusted vector.
+    note: Established that ParCa fits against basal_prob while the runtime transcribes the ppGpp-adjusted
+      vector.
   gate_evaluator:
     result: not_started
     blocked_by:
@@ -155,14 +184,17 @@ planned_runs:
   - 1
   - 2
   generations: 4
-  note: Generation 1 carries every measurement; 4 generations only to confirm the residual is flat before the control's stall.
+  note: Generation 1 carries every measurement; 4 generations only to confirm the residual is flat
+    before the control's stall.
 - arm: ppgpp-off
   seeds:
   - 0
   - 1
   - 2
   generations: 4
-  note: Negative control. ppgpp-off-rescue already established this arm does not rescue the lineage; used here only as a source test.
+  note: Negative control. ppgpp-off-rescue already established this arm does not rescue the lineage;
+    used here only as a source test.
 robustness:
   seeds: 3
-  note: Parameter-provenance question, near-deterministic given the cache; not a stochastic causal claim.
+  note: Parameter-provenance question, near-deterministic given the cache; not a stochastic causal
+    claim.

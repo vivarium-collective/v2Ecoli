@@ -416,3 +416,23 @@ parent_studies:
   condition: complete
   relation: leads-to
   note: Supplies the 473-gene contradicted-regulation cohort.
+pipeline_gate:
+  prerequisites:
+  - study: tu-expression-identifiability
+    condition: complete
+    relation: evidence
+    note: Defines the 307-gene underdetermined cohort and establishes that the tie-break moves 23%
+      of their proteins >2x between arms — but could not say whether either arm is right.
+  - study: promoter-specific-regulation
+    condition: complete
+    relation: evidence
+    note: Defines the 473-gene contradicted-regulation cohort; its rescue was validated on lineage
+      survival, not on abundance accuracy.
+  - study: tu-coverage-loss
+    condition: complete
+    relation: context
+    note: Establishes which genes lost TUs, needed to interpret cohort membership.
+claim: Pending. The study exists to decide whether the identifiability and misattribution defects
+  cost measurable predictive accuracy against an independent proteome, and therefore whether the
+  structural fix scoped as Option 3 in the May impact assessment is warranted on accuracy grounds.
+confidence: Planned
