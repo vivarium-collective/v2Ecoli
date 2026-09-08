@@ -121,6 +121,15 @@ def bulk_count_matrix(df: pd.DataFrame, sim_data) -> np.ndarray:
       2. Stacks ``bulk__count`` rows into an (n_tp, n_pq) matrix.
       3. Reorders columns to match sim_data order.
 
+    A sim_data bulk molecule that is absent from the emitted ``bulk__id`` list
+    (e.g. an injected new-gene monomer such as ``NG-GFP-MONOMER[c]`` that lives
+    in sim_data but was not emitted by this run) is tolerated: its column is
+    filled with zero counts rather than raising. The result keeps sim_data
+    column order and width, which the callers depend on (downstream
+    ``bulk_ids.index(...)`` lookups in ptools_rna / ptools_proteins index into
+    this matrix by sim_data position). Same spirit as v2ecoli #685 tolerating
+    injected reactions in the flux path.
+
     Parameters
     ----------
     df:
@@ -139,5 +148,24 @@ def bulk_count_matrix(df: pd.DataFrame, sim_data) -> np.ndarray:
     pq_ids: list[str] = list(df["bulk__id"].iloc[0])
     counts = np.stack(df["bulk__count"].values)          # (n_tp, n_pq)
     pos = {bid: i for i, bid in enumerate(pq_ids)}
-    col_idx = [pos[b] for b in sim_ids]
+    missing = [b for b in sim_ids if b not in pos]
+    if not missing:
+        col_idx = [pos[b] for b in sim_ids]
+        return counts[:, col_idx]
+    # Append a single zero-count sentinel column and route every missing
+    # sim_id to it (all-zero, so sharing one column is exact).
+    import warnings
+
+    preview = ", ".join(str(b) for b in missing[:5])
+    warnings.warn(
+        f"bulk_count_matrix: {len(missing)} sim_data bulk molecule(s) absent "
+        f"from the emitted bulk__id list; filling zero counts "
+        f"(e.g. {preview}{'…' if len(missing) > 5 else ''}).",
+        stacklevel=2,
+    )
+    counts = np.concatenate(
+        [counts, np.zeros((counts.shape[0], 1), dtype=counts.dtype)], axis=1
+    )
+    sentinel = counts.shape[1] - 1
+    col_idx = [pos.get(b, sentinel) for b in sim_ids]
     return counts[:, col_idx]
