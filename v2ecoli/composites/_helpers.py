@@ -404,8 +404,9 @@ def _merge_emit_paths(emit_schema: dict, topo: dict, emit_paths) -> None:
     """Add caller-declared EXTRA emit store paths to a parquet emit
     schema/topology, in place — a general, domain-agnostic capability.
 
-    The baseline parquet emitter captures a fixed set (``global_time`` /
-    ``bulk`` / ``listeners``). A composite or config that wants to persist
+    The baseline parquet emitter captures the generator-declared set (see
+    ``_parquet_emit_set``: ``global_time`` / ``bulk`` / ``listeners`` for
+    ``ecoli_baseline``). A composite or config that wants to persist
     additional stores declares them via the emitter config's ``emit_paths``: a
     list of store paths, each a sequence of store-node segments (e.g.
     ``["some_store", "sub_key"]`` or ``["compartment", "global", "volume"]``).
@@ -416,6 +417,9 @@ def _merge_emit_paths(emit_schema: dict, topo: dict, emit_paths) -> None:
     topology (store roots) selects what is captured: each path's first segment
     becomes a top-level emit key wired to its own store root, and the nested
     schema carries ``node`` at the path's leaf. Paths sharing a prefix merge.
+    A path that names an ALREADY-declared leaf (e.g. ``["bulk"]`` on top of
+    the declared ``bulk: array[integer]``) keeps the existing, typed schema
+    rather than downgrading it to ``node``.
     """
     for path in emit_paths or []:
         segments = [str(s) for s in path]
@@ -429,9 +433,85 @@ def _merge_emit_paths(emit_schema: dict, topo: dict, emit_paths) -> None:
                 node[segment] = child
             node = child
         leaf = segments[-1]
-        if not isinstance(node.get(leaf), dict):
+        if leaf not in node:
             node[leaf] = "node"
         topo[segments[0]] = (segments[0],)
+
+
+# The typed emit schema v2ecoli attaches to each store root the generator
+# declares for its parquet sink. Roots the generator declares beyond these
+# (a domain store, e.g. ``compartment``) are captured as ``node``. Only the
+# ROOT SET comes from the generator declaration; the per-root dtype is
+# v2ecoli's (the emitter needs ``bulk`` as an integer array, not a node).
+_PARQUET_ROOT_SCHEMAS = {
+    "global_time": "float",
+    "bulk": "array[integer]",
+}
+
+# What ecoli_baseline declares (its ``@composite_generator(emitters=[...])``
+# ``paths``). The fallback when a build reaches the emitter step with NO
+# generator declaration in scope (a bare ``_get_special_step('emitter')``
+# call outside ``baseline()``), so those callers keep today's exact set.
+_BASELINE_PARQUET_ROOTS = ("global_time", "bulk", "listeners")
+
+
+def _declared_parquet_roots() -> list[str]:
+    """The store roots the CURRENT generator declares for its parquet sink.
+
+    Read from ``_DEFAULT_EMITTER_DECL`` -- the ``{address, config, paths}``
+    entry ``baseline()`` sets from its own ``@composite_generator(emitters=
+    [...])`` declaration around every build (external overrides included: the
+    declaration is set unconditionally, the override only decides which sink
+    materialises). Each declared path's first segment is a root; order is
+    preserved and duplicates dropped, so ``listeners.mass`` and
+    ``listeners.rna_counts`` both mean "capture the ``listeners`` store".
+
+    A declaration that names an emitter but NO paths is refused: such a sink
+    would capture only the always-present ``global_time`` -- a 1-column
+    parquet that reads as "the run emitted nothing" downstream (CD2: viva-api
+    #475 had to special-case exactly that artifact). Fail at build time
+    instead, naming the declaration.
+    """
+    decl = _DEFAULT_EMITTER_DECL
+    if decl is None:
+        return list(_BASELINE_PARQUET_ROOTS)
+    roots: list[str] = []
+    for p in decl.get("paths") or []:
+        parts = [seg for seg in str(p).replace(".", "/").split("/") if seg]
+        if parts and parts[0] not in roots:
+            roots.append(parts[0])
+    if not roots:
+        raise ValueError(
+            f"generator-declared emitter {decl.get('address')!r} declares no "
+            f"emit paths (decl={decl!r}). A sink with no declared paths would "
+            f"capture only global_time -- an emit that reads as 'nothing "
+            f"emitted' to every downstream reader. Declare the store paths this "
+            f"composite observes in its @composite_generator(emitters=[...]) "
+            f"entry (e.g. paths=['global_time', 'bulk', 'listeners'])."
+        )
+    return roots
+
+
+def _parquet_emit_set(listeners_schema: dict, emit_paths=None) -> tuple[dict, dict]:
+    """The parquet emitter's ``(emit_schema, topology)`` for this build.
+
+    The ROOT SET is derived from the generator's declared emitter paths
+    (:func:`_declared_parquet_roots`) -- the generator is the single source of
+    truth for what its composite observes, so every build (single-cell,
+    lineage override, declared default) emits the declared set by construction
+    rather than from a literal repeated at each call site. ``emit_paths`` are
+    the config-declared EXTRAS merged on top (:func:`_merge_emit_paths`).
+    """
+    emit_schema: dict = {}
+    topo: dict = {}
+    for root in _declared_parquet_roots():
+        if root == "listeners":
+            emit_schema[root] = listeners_schema
+        else:
+            emit_schema[root] = _PARQUET_ROOT_SCHEMAS.get(root, "node")
+        topo[root] = (root,)
+    _merge_emit_paths(emit_schema, topo, emit_paths)
+    return emit_schema, topo
 
 
 def _build_declared_emitter(decl: dict, listeners_schema: dict, core,
@@ -532,19 +612,10 @@ def _build_declared_emitter(decl: dict, listeners_schema: dict, core,
             if _idkey in cfg_in:
                 _preset_kwargs[_idkey] = cfg_in.pop(_idkey)
         preset = parquet_vecoli(out_dir=out_dir, **_preset_kwargs)
-        emit_schema = {
-            "global_time": "float",
-            "bulk": "array[integer]",
-            "listeners": listeners_schema,
-        }
-        topo = {
-            "global_time": ("global_time",),
-            "bulk": ("bulk",),
-            "listeners": ("listeners",),
-        }
-        # Config-declared EXTRA emit store paths (domain-agnostic; see
-        # _merge_emit_paths). Popped so it does not reach the emitter config.
-        _merge_emit_paths(emit_schema, topo, cfg_in.pop("emit_paths", None))
+        # Root set from the generator's declaration + config-declared EXTRA
+        # emit store paths (popped so they do not reach the emitter config).
+        emit_schema, topo = _parquet_emit_set(
+            listeners_schema, cfg_in.pop("emit_paths", None))
         cfg = {"emit": emit_schema, **preset, **cfg_in}
         return ParquetEmitter(cfg, core), topo
 
@@ -1423,20 +1494,12 @@ def _get_special_step(loader, step_name, core):
                     "ParquetEmitter override set but [parquet] extra not "
                     "installed. Run: pip install 'v2ecoli[parquet]'"
                 )
-            emit_schema = {
-                'global_time': 'float',
-                'bulk': 'array[integer]',
-                'listeners': listeners_schema,
-            }
-            topo = {
-                'global_time': ('global_time',),
-                'bulk': ('bulk',),
-                'listeners': ('listeners',),
-            }
-            # Config-declared EXTRA emit store paths (domain-agnostic; see
-            # _merge_emit_paths). Popped so it does not reach the emitter config.
-            _merge_emit_paths(
-                emit_schema, topo, dict(parquet_override).pop("emit_paths", None))
+            # Root set from the generator's declaration (global_time / bulk /
+            # listeners for ecoli_baseline) + the override's config-declared
+            # EXTRA emit store paths (popped so they do not reach the emitter
+            # config). See _parquet_emit_set.
+            emit_schema, topo = _parquet_emit_set(
+                listeners_schema, parquet_override.get("emit_paths"))
             parquet_override = {k: v for k, v in parquet_override.items()
                                 if k != "emit_paths"}
             cfg = {'emit': emit_schema, **parquet_override}

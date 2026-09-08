@@ -93,7 +93,13 @@ def test_batch_chain_reaches_lineage_node():
 
     def _stub_run_workflow(config):
         captured["config"] = config
-        return {"complete": True}
+        # Report a branch per seed, as the real workflow does: a workflow result
+        # with NO branches is now a failed dispatch (dispatch_batch refuses to
+        # record a batch in which no seed reported back as completed).
+        return {"complete": True, "branches": {
+            f"variant=0/seed={s}": {"complete": True, "summary": {"generations": []}}
+            for s in range(int(config["lineage_seed"]),
+                           int(config["lineage_seed"]) + int(config["n_init_sims"]))}}
 
     dispatch_batch(
         n_seeds=runner.n_seeds, n_generations=runner.n_generations,

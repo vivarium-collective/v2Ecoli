@@ -62,6 +62,9 @@ def _make(monkeypatch, generations, divide_after, injected):
         "max_duration_per_gen": 100000.0,
         "initial_carry_state_path": "", "initial_generation_index": 0,
         "daughter_state_out_path": "", "injected_processes": injected,
+        # Biology stubbed below -> no emitter built; opt out of the
+        # end-of-generation emitted-output check.
+        "require_output": False,
     }
     lp.initialize(lp.config)
     seen = []

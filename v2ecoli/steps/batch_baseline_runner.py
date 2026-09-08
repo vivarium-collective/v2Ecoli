@@ -435,6 +435,23 @@ def dispatch_batch(
 
     seeds = list(range(int(base_seed), int(base_seed) + int(n_seeds)))
     flush = result.get("flush") or {}
+    per_seed = _per_seed_results(
+        result, seeds=seeds, out_dir=out_dir,
+        experiment_id=experiment_id, emitter=config["emitter"])
+    # A batch in which NO seed reported back ran nothing: the workflow returned
+    # without a single branch (a worker died before its first generation, or the
+    # workflow was short-circuited). Reporting ``completed: True`` here is how
+    # a chain-dispatch generation could land as a success with only the outer
+    # document's global_time-only emitter row for output. A PARTIAL batch stays
+    # visible-but-not-fatal (the per-seed ``error`` entries below), matching the
+    # existing contract; an EMPTY one is a failed dispatch.
+    if per_seed and all("error" in entry for entry in per_seed.values()):
+        raise RuntimeError(
+            f"batch_baseline: the workflow reported no result for ANY of the "
+            f"{len(seeds)} seed(s) {seeds} (branches={sorted(result.get('branches') or {})!r}). "
+            f"A batch that ran no lineage is a failed dispatch, not a completed one -- "
+            f"refusing to record it as completed. out_dir={out_dir!r}"
+        )
     return {
         "completed": True,
         "n_seeds": int(n_seeds),
@@ -445,9 +462,7 @@ def dispatch_batch(
         "out_dir": out_dir,
         "emitter": config["emitter"],
         "analysis_scales": sorted(config["analysis_options"]),
-        "seeds": _per_seed_results(
-            result, seeds=seeds, out_dir=out_dir,
-            experiment_id=experiment_id, emitter=config["emitter"]),
+        "seeds": per_seed,
         # What the post-sim flush actually produced. `placed` lists the outputs
         # copied into the owning study's report dir — empty when no study owns
         # the run, in which case `viz_dir` is where the analyses and
@@ -463,6 +478,16 @@ def dispatch_batch(
 
 class BatchBaselineRunner(Step):
     """One-shot Step that dispatches the seeds × generations batch (see module)."""
+
+    # This Step's single update() IS the run. V2Step's default swallows any
+    # exception update() raises and substitutes {} -- right for a per-tick
+    # listener that trips on unseeded data, catastrophic here: a StaleCacheError,
+    # an injection-seam error or an S3 write failure inside the batch left the
+    # outer composite reporting success with an empty ``batch`` store and only
+    # the global_time-only outer emitter row on disk (the CD2 chain-dispatch
+    # "no emitted output" signature; reproduced locally). Propagate instead, so
+    # the dispatch exits non-zero with the real traceback.
+    raise_update_errors = True
 
     config_schema = {
         "n_seeds": "integer",
