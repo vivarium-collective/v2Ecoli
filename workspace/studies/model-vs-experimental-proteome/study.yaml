@@ -1,8 +1,8 @@
 schema_version: 4
 name: model-vs-experimental-proteome
 created: '2026-09-08'
-status: planned
-phase: Design
+status: complete
+phase: Decide
 baseline:
 - name: ecoli_baseline
   composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
@@ -13,9 +13,9 @@ investigation: transcription-rewiring
 study_type: validation
 design_status: complete
 implementation_status: not_started
-simulation_status: not_started
-evaluation_status: not_evaluated
-gate_status: pending
+simulation_status: complete
+evaluation_status: evaluated
+gate_status: partial
 expert_review_status: not_requested
 question: 'Every finding in this investigation so far compares the model to ITSELF or to a database:
   the 7.08e+06x fold-change-to-delta discrepancy is against the model''s own input, the 474 contradicted
@@ -228,7 +228,27 @@ behavior_tests:
       note: Two-sided about parity. PASS means the cohort is indistinguishable from baseline — the
         defect does not cost accuracy. FAIL above 1.3 means it does. FAIL below 0.7 would mean affected
         genes are BETTER predicted, which would itself need explaining.
-  status: pending
+  status: passed
+  result: PASS
+  measured_value: 0.8809
+  evaluated_by: agent
+  detail: '0.8809 against a two-sided band of [0.7, 1.3]. PASS — the cohort is INDISTINGUISHABLE
+    from baseline, and if anything slightly better: cohort median 0.3655 dex against baseline 0.4150,
+    n=189.
+
+    THE STUDY''S CENTRAL RESULT, and it is a null. tu-expression-identifiability established that
+    307 TUs carry expression the cistron data never determines, that 86% of their zeros are arbitrary,
+    and that the tie-break moves 23% of their proteins by more than 2x between equally-valid arms.
+    None of that costs measurable accuracy against an independent proteome.
+
+    H2 — real but absorbed — is supported over H1. The defect is a correctness problem, not an accuracy
+    one, and the structural fix scoped as Option 3 in the May impact assessment is NOT warranted
+    on accuracy grounds.
+
+    Read against the noise floor: the cohort differs from baseline by 0.05 dex where two experimental
+    datasets differ by 0.53 dex per gene. The aggregate can resolve that only if the noise is unbiased
+    between cohorts, which is assumed rather than shown. A null this close to parity is more robust
+    to that assumption than a marginal positive would have been, but it is not immune to it.'
 - name: contradicted-regulation-cohort-is-worse
   classification: primary
   gate_class: acceptance_criterion
@@ -253,7 +273,19 @@ behavior_tests:
     provenance:
       kind: theory
       note: As above; two-sided about parity.
-  status: pending
+  status: passed
+  result: PASS
+  measured_value: 1.0549
+  evaluated_by: agent
+  detail: '1.0549 against [0.7, 1.3]. PASS — indistinguishable from baseline. Cohort median 0.4378
+    dex against baseline 0.4150, n=290.
+
+    Genes carrying regulation EcoCyc places on a different promoter are no further from measured
+    abundance than the rest of the model. So the misattribution promoter-specific-regulation corrected
+    is real (EcoCyc contradicts 473 edges) and consequential for LINEAGE SURVIVAL under subunit gating
+    (12 generations against 4-9), but it does not show up in steady-state protein abundance under
+    the default configuration. Those are compatible: the dnaG rescue was about a threshold effect
+    on one essential primase, not about population-wide abundance error.'
 - name: hand-adjusted-cohort-is-better
   classification: primary
   gate_class: acceptance_criterion
@@ -281,7 +313,21 @@ behavior_tests:
       kind: theory
       note: At least 20% lower median error than baseline, the minimum that demonstrates the tuning
         took effect.
-  status: pending
+  status: passed
+  result: PASS
+  measured_value: 0.7775
+  evaluated_by: agent
+  detail: '0.7775 against a band of <= 0.8. PASS — hand-tuned molecules ARE better predicted: cohort
+    median 0.3227 dex against baseline 0.4150, n=48.
+
+    The positive control works, which is what validates excluding them. Had they NOT been better
+    predicted, the join or the count extraction would have been suspect and every other number here
+    with it.
+
+    CONFOUND, recorded before the result and still standing: this cohort has 0.906 Schmidt coverage
+    against baseline''s 0.496, so it is disproportionately abundant and well-measured. Part of the
+    advantage may be abundance rather than tuning. An abundance-matched baseline subset would separate
+    them and has not been run.'
 - name: model-wide-accuracy-baseline
   classification: supporting
   gate_class: regression_pin
@@ -300,7 +346,22 @@ behavior_tests:
       kind: post_hoc
       note: 2.0 dex (100x) is a deliberately loose drift guard, not a quality claim. Replace with
         a real pin once measured.
-  status: pending
+  status: passed
+  result: PASS
+  measured_value: 0.415
+  evaluated_by: agent
+  detail: 'Median |log10(model/Schmidt Glucose)| = 0.4150 dex, i.e. 2.60x, over 1728 baseline genes.
+    IQR 0.187-0.839. Within 2x: 38.7%. Within 10x: 80.8%.
+
+    This is the first external accuracy number for v2ecoli''s proteome in this workspace, and it
+    is better than it might look: the model sits 2.60x from Schmidt while Schmidt sits 3.39x from
+    Maeck. The model agrees with the primary dataset more closely than two independent experimental
+    datasets agree with each other.
+
+    That comparison is indicative, not exact — 2.60x is over 1728 genes and 3.39x over a different
+    1464 — but the order is the point: model error is at or below inter-laboratory measurement spread.
+    Recorded as a pin because no threshold could be pre-registered honestly for a quantity never
+    measured here before.'
 preregistered:
   declared_before_runs: true
   date: '2026-09-08'
@@ -477,7 +538,11 @@ limitations:
   drift), but the comparison is against a slowly shrinking cell rather than the balanced exponential
   growth Schmidt measured.'
 discovery_implications:
-  resolved_uncertainties: []
+  resolved_uncertainties:
+  - 'Whether the identifiability and misattribution defects cost measurable predictive accuracy:
+    they do not, at steady state in glucose minimal, against Schmidt 2016.'
+  - 'How accurate v2ecoli''s proteome is against an independent measurement: 2.60x median, 38.7%
+    within 2x, 80.8% within 10x — at or below the 3.39x spread between two experimental datasets.'
   remaining_uncertainties:
   - Whether the identifiability and misattribution defects cost measurable predictive accuracy —
     the study's whole point.
@@ -486,11 +551,11 @@ discovery_implications:
   followup_study_proposals:
   - id: promoter-ratios-improve-accuracy
     title: Does per-promoter apportionment improve agreement with measured abundance?
-    motivation: 'per_promoter_ratios.tsv already exists in sibling worktrees, carrying Thomason 2015
-      TSS step heights (rpsU-dnaG-rpoD: 0.721 / 0.279 / 0.000). If this study finds the underdetermined
-      cohort is measurably worse, the direct test is whether real apportionment closes the gap where
-      the arbitrary tie-break does not. If this study finds no cohort effect, that follow-up is not
-      worth running, which is exactly the decision this study exists to inform.'
+    motivation: SUPERSEDED as a priority by this study's null result. The direct test of promoter-resolved
+      apportionment was worth running only if the underdetermined cohort proved measurably worse.
+      It is not (0.88x baseline error). Any case for per_promoter_ratios.tsv now has to rest on correctness,
+      on specific threshold-sensitive loci such as dnaG, or on conditions this study did not test
+      — not on genome-wide abundance accuracy.
     mechanism: Replace the NNLS vertex with measured per-promoter shares and re-measure the cohort
       error.
 parent_studies:
@@ -518,10 +583,13 @@ pipeline_gate:
     condition: complete
     relation: context
     note: Establishes which genes lost TUs, needed to interpret cohort membership.
-claim: Pending. The study exists to decide whether the identifiability and misattribution defects
-  cost measurable predictive accuracy against an independent proteome, and therefore whether the
-  structural fix scoped as Option 3 in the May impact assessment is warranted on accuracy grounds.
-confidence: Planned
+claim: The identifiability and misattribution defects do NOT cost measurable predictive accuracy.
+  Genes on underdetermined TUs sit at 0.88x baseline error and genes with EcoCyc-contradicted regulation
+  at 1.05x, both inside a [0.7, 1.3] band. The model as a whole predicts Schmidt 2016 protein abundances
+  to 2.60x at the median — closer than Schmidt and Maeck agree with each other (3.39x). So the structural
+  fix scoped as Option 3 in the May impact assessment is not warranted on accuracy grounds; the defects
+  are correctness problems, not accuracy ones.
+confidence: Accepted
 count_extraction:
   decided: '2026-09-08'
   question: How should model protein counts be extracted for comparison?
@@ -605,3 +673,84 @@ corrections:
   verified_against:
   - v2ecoli/processes/chromosome_replication.py:233
   - built composite ecoli_baseline against out/cache
+runs:
+- name: model-vs-experimental-proteome__shipped-default
+  status: complete
+  canonical: true
+  started_at: '2026-09-08T12:00:00Z'
+  started_at_iso: '2026-09-08T12:00:00Z'
+  note: Shipped out/cache, DEFAULT configuration (mechanistic_replisome False), 3 seeds x 12 generations,
+    12/12 divided in every seed. Counts are generation means over generations 4-12, median across
+    seeds. Graded by analyses/grade_cohorts.py against Schmidt 2016 Table S6 copies/cell, Glucose.
+  outcomes:
+    model-wide-accuracy-baseline:
+      result: PASS
+      measured_value: 0.415
+      evaluated_by: agent
+    underdetermined-cohort-is-worse:
+      result: PASS
+      measured_value: 0.8809
+      evaluated_by: agent
+    contradicted-regulation-cohort-is-worse:
+      result: PASS
+      measured_value: 1.0549
+      evaluated_by: agent
+    hand-adjusted-cohort-is-better:
+      result: PASS
+      measured_value: 0.7775
+      evaluated_by: agent
+findings:
+- summary: 'The defects are real and provable but do not reach predictive accuracy: both affected
+    cohorts are indistinguishable from baseline against an independent proteome.'
+  status: novel
+  tier: interpretation
+  mechanism_origin: emergent
+  evidence:
+    from_run: model-vs-experimental-proteome__shipped-default
+    from_tests:
+    - underdetermined-cohort-is-worse
+    - contradicted-regulation-cohort-is-worse
+    - hand-adjusted-cohort-is-better
+    - model-wide-accuracy-baseline
+    observed: underdetermined 0.3655 dex (n=189) and contradicted 0.4378 (n=290) against baseline
+      0.4150 (n=1728) — ratios 0.88 and 1.05; hand-adjusted control 0.3227, ratio 0.78; Schmidt-vs-Maeck
+      noise floor 0.5296
+    units: dex, i.e. |log10(model copies per cell / measured copies per cell)|
+  explanation: 'This investigation spent three days establishing defects by internal consistency:
+    a 7.08e+06x fold-change-to-delta discrepancy, 473 regulatory edges EcoCyc contradicts, 307 TUs
+    whose expression the data never determines with 86% of their zeros arbitrary, and a tie-break
+    that moves 23% of affected proteins more than 2x between equally-valid arms. Every one of those
+    is real and none was measured against experiment.
+
+
+    Measured against experiment, none of them shows up. Both cohorts sit inside a two-sided parity
+    band, and the underdetermined cohort is if anything slightly BETTER predicted than the rest of
+    the model.
+
+
+    The positive control makes the null interpretable rather than merely quiet: molecules hand-tuned
+    in the flat files ARE better predicted (0.78x baseline error), so the pipeline can detect a real
+    accuracy difference when one exists. It found one where tuning was applied and none where the
+    defects live.
+
+
+    H2 — real but absorbed — is supported over H1. ParCa refits mass, expression and the metabolic
+    layer downstream of the TU split, and the evidence is that this absorbs the arbitrariness before
+    it reaches steady-state abundance. The practical consequence is a decision: the months of structural
+    work scoped as Option 3 in the May impact assessment is not justified by accuracy, and the case
+    for promoter-resolved apportionment has to rest on correctness, on specific loci like dnaG where
+    a threshold effect matters, or on conditions this study did not test.
+
+
+    What the null does NOT say. It does not say the defects are harmless: dnaG''s own consequence
+    was a lineage arrest under subunit gating, not an abundance error, and this study measured the
+    default configuration at one condition. A gene can also reach the right abundance through compensating
+    errors. The claim is bounded to steady-state abundance in glucose minimal.'
+report:
+  verdict: passed
+  basis: '4 of 6 axes pass, including all three substantive cohort axes and the positive control.
+    The two failures are both gate/scope axes failing by a hair — coverage 0.4955 on the baseline
+    reference population, and the noise floor at 0.5296 dex — and both are recorded with their consequences
+    rather than waived. The central result is a null: neither defect cohort is distinguishable from
+    baseline, while the hand-tuned control is, so the pipeline can detect an accuracy difference
+    and found none where the defects live.'
