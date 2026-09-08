@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import copy
 import warnings
+from collections.abc import Sequence
 
 
 # Framework-generic per-agent emitter-lifecycle registry (register / get /
@@ -400,6 +401,53 @@ def set_default_emitter_decl(decl: dict | None) -> None:
     _DEFAULT_EMITTER_DECL = decl
 
 
+# The emitter declaration of an ENCLOSING generator — one that embeds
+# ``baseline()`` under ``agents/<id>`` and adds stores of its own at the
+# DOCUMENT level (``reactor_bird_coupled``: ``reactor`` / ``population`` /
+# ``lineage``). The cell's only in-document sink is the per-agent 'emitter'
+# step that ``baseline()`` builds, and ``baseline()`` publishes ITS OWN
+# ``emitters=`` declaration for that step — so an outer composite's declared
+# emit set had no way to reach the sink, and its document-level stores were
+# never emitted by the composite itself (only by external runners' allow-lists).
+#
+# ``{"decl": {address, config, paths}, "document_roots": (...)}``. When set,
+# ``baseline()`` builds the per-agent sink from ``decl`` instead of its own
+# declaration, and ``_parquet_emit_set`` wires every root named in
+# ``document_roots`` UPWARD (``('..', '..', root)``) out of the agent frame to
+# the document level; the other declared roots stay agent-relative (``bulk``,
+# ``listeners``, ...). Relative wires survive division (a daughter copies the
+# mother's edge and its ``..`` path resolves from the daughter's own key), which
+# is why the outer stores are reached from the per-agent sink rather than by a
+# second, top-level emitter wired to a literal ``agents/0/...`` path. Same
+# set-around-the-build / clear-in-finally discipline as the overrides above.
+_ENCLOSING_EMITTER_DECL: dict | None = None
+
+
+def set_enclosing_emitter_decl(decl: dict | None, *,
+                               document_roots: Sequence[str] = ()) -> None:
+    """Publish (or clear, with ``None``) an enclosing generator's emitter
+    declaration for the per-agent sink ``baseline()`` is about to build (see
+    ``_ENCLOSING_EMITTER_DECL``). ``document_roots`` names which of the
+    declared roots live at the DOCUMENT level rather than inside the agent.
+    """
+    global _ENCLOSING_EMITTER_DECL
+    if decl is None:
+        _ENCLOSING_EMITTER_DECL = None
+        return
+    _ENCLOSING_EMITTER_DECL = {
+        "decl": dict(decl),
+        "document_roots": tuple(str(r) for r in document_roots),
+    }
+
+
+def _enclosing_document_roots() -> tuple[str, ...]:
+    """The document-level roots of the enclosing declaration (empty when none)."""
+    enclosing = _ENCLOSING_EMITTER_DECL
+    if not enclosing:
+        return ()
+    return tuple(enclosing.get("document_roots") or ())
+
+
 def _merge_emit_paths(emit_schema: dict, topo: dict, emit_paths) -> None:
     """Add caller-declared EXTRA emit store paths to a parquet emit
     schema/topology, in place — a general, domain-agnostic capability.
@@ -501,10 +549,21 @@ def _parquet_emit_set(listeners_schema: dict, emit_paths=None) -> tuple[dict, di
     lineage override, declared default) emits the declared set by construction
     rather than from a literal repeated at each call site. ``emit_paths`` are
     the config-declared EXTRAS merged on top (:func:`_merge_emit_paths`).
+
+    A root the enclosing generator names as DOCUMENT-level (see
+    :func:`set_enclosing_emitter_decl`) is captured whole (``node``) and wired
+    upward out of the agent frame -- ``('..', '..', root)`` from
+    ``agents/<id>/emitter`` -- so one hive row per tick carries the cell's
+    molecular state alongside the document's shared stores.
     """
     emit_schema: dict = {}
     topo: dict = {}
+    document_roots = set(_enclosing_document_roots())
     for root in _declared_parquet_roots():
+        if root in document_roots:
+            emit_schema[root] = "node"
+            topo[root] = ("..", "..", root)
+            continue
         if root == "listeners":
             emit_schema[root] = listeners_schema
         else:
