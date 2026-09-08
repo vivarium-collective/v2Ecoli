@@ -1,0 +1,3 @@
+# List of RNA half lives to be removed from rna_half_lives.tsv so the half life is calculated in process/transcription.py instead
+"id"	"_comments"
+"TU0-941"	"Removing measured TU half-life so the half life is solved for from the cistron half lives"
