@@ -207,6 +207,38 @@ def consolidate_timepoints(state_mtx, n_tp, normalized=False, generations=None):
     return block_sums_final, checkpoints
 
 
+def build_tu_mrna_dict(mrna_mtx, mrna_tu_ids):
+    """Map each mRNA TU id to its emitted count trace, tolerating un-emitted ids.
+
+    ``full_mRNA_counts`` is a positional array whose columns are defined to match
+    sim_data's ``rna_data[is_mRNA]`` order. But sim_data's mRNA id list can be
+    WIDER than the emitted array when sim_data carries a new-gene / reporter mRNA
+    (e.g. an injected GFP reporter, appended to the gene arrays by the ParCa) that
+    the run did not emit a column for. Zero-fill any trailing sim_data id beyond
+    the emitted width instead of overrunning ``mrna_mtx`` — new genes append at
+    the tail, so this keeps every emitted gene aligned. Symmetric with
+    ``bulk_count_matrix`` tolerating un-emitted bulk molecules (cf. #685/#744).
+    """
+    n_emit = mrna_mtx.shape[1]
+    n_ids = len(mrna_tu_ids)
+    if n_ids != n_emit:
+        import warnings
+
+        warnings.warn(
+            f"ptools_rna: {n_ids} sim_data mRNA id(s) vs {n_emit} emitted "
+            f"full_mRNA_counts column(s); zero-filling "
+            f"{max(n_ids - n_emit, 0)} unemitted trailing id(s).",
+            stacklevel=2,
+        )
+    tu_mrna_dict = {}
+    for idx, mrna_tu_id in enumerate(mrna_tu_ids):
+        if idx < n_emit:
+            tu_mrna_dict[mrna_tu_id] = mrna_mtx[:, idx]
+        else:
+            tu_mrna_dict[mrna_tu_id] = np.zeros(mrna_mtx.shape[0], dtype=mrna_mtx.dtype)
+    return tu_mrna_dict
+
+
 # ---------------------------------------------------------------------------
 # Analysis subclass
 # ---------------------------------------------------------------------------
@@ -278,9 +310,7 @@ class PtoolsRna(Analysis):
             tu_ids=mrna_tu_ids, tu_source=tu_source
         )
 
-        tu_mrna_dict = {}
-        for idx, mrna_tu_id in enumerate(mrna_tu_ids):
-            tu_mrna_dict[mrna_tu_id] = mrna_mtx[:, idx]
+        tu_mrna_dict = build_tu_mrna_dict(mrna_mtx, mrna_tu_ids)
 
         # Retrieve processed RNAs (tRNAs, rRNAs)
         rna_ids_unprocessed = rna_data["id"][rna_data["is_unprocessed"]]

@@ -136,6 +136,94 @@ def test_drop_leading_generations_relative_to_min():
     assert kept_rel == [6, 7]
 
 
+def _fake_sim_data(bulk_ids):
+    import numpy as np
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        internal_state=SimpleNamespace(
+            bulk_molecules=SimpleNamespace(bulk_data={"id": np.array(bulk_ids)})
+        )
+    )
+
+
+def test_bulk_count_matrix_tolerates_sim_id_absent_from_parquet():
+    """A sim_data bulk molecule missing from the emitted bulk__id list (e.g. an
+    injected NG-GFP-MONOMER[c]) gets a zero column, not a KeyError — the crash
+    that took out ptools_rna/proteins on the Run-4 GFP-reporter genotypes."""
+    import numpy as np
+    import pandas as pd
+    from v2ecoli.workflow.analyses._shims import bulk_count_matrix
+
+    sim_ids = ["ATP[c]", "NG-GFP-MONOMER[c]", "GDP[c]"]
+    # Parquet emitted only two of the three ids, in a different order.
+    pq_ids = ["GDP[c]", "ATP[c]"]
+    df = pd.DataFrame({
+        "bulk__id": [pq_ids, pq_ids],
+        "bulk__count": [np.array([7, 3]), np.array([8, 4])],
+    })
+    with pytest.warns(UserWarning, match="absent from the emitted"):
+        mtx = bulk_count_matrix(df, _fake_sim_data(sim_ids))
+
+    # (n_tp=2, n_bulk=3), columns in sim_data order.
+    assert mtx.shape == (2, 3)
+    np.testing.assert_array_equal(mtx[:, 0], [3, 4])   # ATP[c] <- pq col 1
+    np.testing.assert_array_equal(mtx[:, 1], [0, 0])   # NG-GFP-MONOMER[c] zero-filled
+    np.testing.assert_array_equal(mtx[:, 2], [7, 8])   # GDP[c] <- pq col 0
+
+
+def test_bulk_count_matrix_all_present_unchanged_and_silent():
+    """When every sim_data id is emitted, the reorder is exact and no warning."""
+    import warnings
+    import numpy as np
+    import pandas as pd
+    from v2ecoli.workflow.analyses._shims import bulk_count_matrix
+
+    sim_ids = ["ATP[c]", "GDP[c]"]
+    pq_ids = ["GDP[c]", "ATP[c]"]
+    df = pd.DataFrame({
+        "bulk__id": [pq_ids, pq_ids],
+        "bulk__count": [np.array([7, 3]), np.array([8, 4])],
+    })
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # any warning fails the test
+        mtx = bulk_count_matrix(df, _fake_sim_data(sim_ids))
+    assert mtx.shape == (2, 2)
+    np.testing.assert_array_equal(mtx[:, 0], [3, 4])   # ATP[c]
+    np.testing.assert_array_equal(mtx[:, 1], [7, 8])   # GDP[c]
+
+
+def test_build_tu_mrna_dict_zero_fills_unemitted_trailing_mrna():
+    """sim_data carries an mRNA (a tail-appended GFP new-gene) the run didn't
+    emit a full_mRNA_counts column for → zero trace, no IndexError overrun."""
+    import numpy as np
+    from v2ecoli.workflow.analyses.ptools_rna import build_tu_mrna_dict
+
+    # 2 timepoints, 2 emitted mRNA columns; sim_data lists a 3rd (GFP) at the tail.
+    mrna_mtx = np.array([[10, 20], [11, 21]])
+    mrna_tu_ids = ["b0001_RNA", "b0002_RNA", "NG-GFP-RNA"]
+    with pytest.warns(UserWarning, match="unemitted trailing"):
+        d = build_tu_mrna_dict(mrna_mtx, mrna_tu_ids)
+    assert list(d.keys()) == mrna_tu_ids
+    np.testing.assert_array_equal(d["b0001_RNA"], [10, 11])
+    np.testing.assert_array_equal(d["b0002_RNA"], [20, 21])
+    np.testing.assert_array_equal(d["NG-GFP-RNA"], [0, 0])  # zero-filled
+
+
+def test_build_tu_mrna_dict_exact_width_silent():
+    """Widths match → exact positional map, no warning."""
+    import warnings
+    import numpy as np
+    from v2ecoli.workflow.analyses.ptools_rna import build_tu_mrna_dict
+
+    mrna_mtx = np.array([[10, 20], [11, 21]])
+    mrna_tu_ids = ["b0001_RNA", "b0002_RNA"]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        d = build_tu_mrna_dict(mrna_mtx, mrna_tu_ids)
+    np.testing.assert_array_equal(d["b0001_RNA"], [10, 11])
+    np.testing.assert_array_equal(d["b0002_RNA"], [20, 21])
+
+
 # ---------------------------------------------------------------------------
 # Oracle shape tests (sms-api fixtures)
 # ---------------------------------------------------------------------------
