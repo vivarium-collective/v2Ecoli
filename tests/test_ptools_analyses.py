@@ -192,6 +192,38 @@ def test_bulk_count_matrix_all_present_unchanged_and_silent():
     np.testing.assert_array_equal(mtx[:, 1], [7, 8])   # GDP[c]
 
 
+def test_build_tu_mrna_dict_zero_fills_unemitted_trailing_mrna():
+    """sim_data carries an mRNA (a tail-appended GFP new-gene) the run didn't
+    emit a full_mRNA_counts column for → zero trace, no IndexError overrun."""
+    import numpy as np
+    from v2ecoli.workflow.analyses.ptools_rna import build_tu_mrna_dict
+
+    # 2 timepoints, 2 emitted mRNA columns; sim_data lists a 3rd (GFP) at the tail.
+    mrna_mtx = np.array([[10, 20], [11, 21]])
+    mrna_tu_ids = ["b0001_RNA", "b0002_RNA", "NG-GFP-RNA"]
+    with pytest.warns(UserWarning, match="unemitted trailing"):
+        d = build_tu_mrna_dict(mrna_mtx, mrna_tu_ids)
+    assert list(d.keys()) == mrna_tu_ids
+    np.testing.assert_array_equal(d["b0001_RNA"], [10, 11])
+    np.testing.assert_array_equal(d["b0002_RNA"], [20, 21])
+    np.testing.assert_array_equal(d["NG-GFP-RNA"], [0, 0])  # zero-filled
+
+
+def test_build_tu_mrna_dict_exact_width_silent():
+    """Widths match → exact positional map, no warning."""
+    import warnings
+    import numpy as np
+    from v2ecoli.workflow.analyses.ptools_rna import build_tu_mrna_dict
+
+    mrna_mtx = np.array([[10, 20], [11, 21]])
+    mrna_tu_ids = ["b0001_RNA", "b0002_RNA"]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        d = build_tu_mrna_dict(mrna_mtx, mrna_tu_ids)
+    np.testing.assert_array_equal(d["b0001_RNA"], [10, 11])
+    np.testing.assert_array_equal(d["b0002_RNA"], [20, 21])
+
+
 # ---------------------------------------------------------------------------
 # Oracle shape tests (sms-api fixtures)
 # ---------------------------------------------------------------------------
