@@ -288,6 +288,37 @@ class AnalysisTaskStep(Step):
         )
 
 
+# Campaign-level lineage knobs: every one of these is forwarded by LineageStep
+# (its `_FORWARDED`) and honoured by LineageProcess, yet until now a dispatch
+# could not set a single one -- `build_workflow_nf` ends in `**_ignored`, so an
+# undeclared value was swallowed rather than rejected. That bug class escaped
+# five times (#730 analysis_options, #731 independent_founders, #732 cache_uri,
+# and, measured on sim 679, `exchange_fluxes` -- which on this path could only
+# ride inside a variant's `injected_processes`, so a campaign that forgot it
+# lost two KPIs without any error). Declared here once; threaded into every
+# lineage's config ONLY when set, so LineageStep's own defaults still apply
+# and a variant's `injected_processes` still wins per LineageProcess's
+# `_feature_flag` (injected first, then the top-level config key).
+_LINEAGE_KNOBS: tuple[str, ...] = (
+    "media",
+    "time_step",
+    "emitter",
+    "emitter_arg",
+    "single_daughters",
+    "checkpoint_dir",
+    "emit_paths",
+    "exchange_fluxes",
+    "exchange_flux_basis",
+    "features",
+    "ppgpp_regulation",
+    "trna_attenuation",
+    "supercoiling",
+    "mass_conservation",
+    "transcript_initiation_mode",
+    "polypeptide_initiation_mode",
+)
+
+
 def _variant_specs(variants: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     """Normalize the variant list. A campaign with no variants is ONE baseline
     variant, not zero -- zero would render an empty workflow that exits 0."""
@@ -398,6 +429,104 @@ def _variant_specs(variants: list[dict[str, Any]] | None) -> list[dict[str, Any]
                 "constructed at all."
             ),
         },
+        "media": {
+            "type": "string",
+            "default": None,
+            "description": (
+                "Initial growth medium, any condition in the cache's saved_media (LineageStep default 'minimal'). CD2 Run 4's minimal-vs-tryptophan split is exactly this knob."
+            ),
+        },
+        "time_step": {
+            "type": "number",
+            "default": None,
+            "description": (
+                "Simulation time step in seconds (LineageStep default 1.0)."
+            ),
+        },
+        "emitter": {
+            "type": "string",
+            "default": None,
+            "description": (
+                "'parquet' (default), 'xarray', or 'both'. Note the gather reads the hive parquet tree; 'xarray' alone gives it nothing to analyse."
+            ),
+        },
+        "emitter_arg": {
+            "type": "object",
+            "default": None,
+            "description": (
+                "Extra emitter configuration merged into the emitter override."
+            ),
+        },
+        "single_daughters": {
+            "type": "boolean",
+            "default": None,
+            "description": ("Follow one daughter per division (default True)."),
+        },
+        "checkpoint_dir": {
+            "type": "string",
+            "default": None,
+            "description": (
+                "Task-local checkpoint directory; relative to the task work dir like every other path here."
+            ),
+        },
+        "emit_paths": {
+            "type": "array",
+            "default": None,
+            "description": (
+                "Emit-path allowlist. Empty/absent means every listener path (which is why the gate-4 runs wrote 244-column history). Undeclared emit paths were behind viva-api#475's global_time-only parquet."
+            ),
+        },
+        "exchange_fluxes": {
+            "type": "object",
+            "default": None,
+            "description": (
+                "Mounts the ExchangeFluxListener, e.g. {glucose_exchange: GLC, violacein_exchange: VIOLACEIN}. Without it the listener does not mount and writes nothing, without refusing -- sim 679 lost two KPIs that way."
+            ),
+        },
+        "exchange_flux_basis": {
+            "type": "string",
+            "default": None,
+            "description": ("Basis for the exchange-flux KPI, e.g. 'gdcw'."),
+        },
+        "features": {
+            "type": "array",
+            "default": None,
+            "description": ("baseline() feature selection."),
+        },
+        "ppgpp_regulation": {
+            "type": "boolean",
+            "default": None,
+            "description": ("baseline() toggle (default True)."),
+        },
+        "trna_attenuation": {
+            "type": "boolean",
+            "default": None,
+            "description": ("baseline() toggle (default False)."),
+        },
+        "supercoiling": {
+            "type": "boolean",
+            "default": None,
+            "description": ("baseline() toggle (default False)."),
+        },
+        "mass_conservation": {
+            "type": "boolean",
+            "default": None,
+            "description": ("baseline() toggle (default False)."),
+        },
+        "transcript_initiation_mode": {
+            "type": "string",
+            "default": None,
+            "description": (
+                "'discrete' (default) or the alternative the composite offers."
+            ),
+        },
+        "polypeptide_initiation_mode": {
+            "type": "string",
+            "default": None,
+            "description": (
+                "'discrete' (default) or the alternative the composite offers."
+            ),
+        },
     },
 )
 def build_workflow_nf(
@@ -414,8 +543,28 @@ def build_workflow_nf(
     analysis_options: dict[str, Any] | None = None,
     independent_founders: bool = False,
     cache_uri: str = "",
+    media: Any = None,
+    time_step: Any = None,
+    emitter: Any = None,
+    emitter_arg: Any = None,
+    single_daughters: Any = None,
+    checkpoint_dir: Any = None,
+    emit_paths: Any = None,
+    exchange_fluxes: Any = None,
+    exchange_flux_basis: Any = None,
+    features: Any = None,
+    ppgpp_regulation: Any = None,
+    trna_attenuation: Any = None,
+    supercoiling: Any = None,
+    mass_conservation: Any = None,
+    transcript_initiation_mode: Any = None,
+    polypeptide_initiation_mode: Any = None,
     **_ignored: Any,
 ) -> dict[str, Any]:
+    # Campaign-level lineage knobs, applied only when set (see _LINEAGE_KNOBS).
+    _knobs = {
+        k: v for k, v in locals().items() if k in _LINEAGE_KNOBS and v is not None
+    }
     state: dict[str, Any] = {}
     sweep_paths: list[list[str]] = []
 
@@ -483,6 +632,7 @@ def build_workflow_nf(
                 "variant_index": vi,
                 "variant_name": vname,
             }
+            config.update(_knobs)
             if independent_founders:
                 # TASK-LOCAL, like every other path in this config: `cache_dir` is
                 # staged by Nextflow as `path "cache"` and the ParCa task writes
