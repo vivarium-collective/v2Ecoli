@@ -135,10 +135,22 @@ class Translation(object):
             for p in raw_data.protein_half_lives_pulsed_silac
         }
 
+        # Get degradation rate for MurD from carbon-limited data (Gupta et al. 2024)
+        modified_deg_rates = {
+            p["id"]: (np.log(2) / p["half life"]).asNumber(deg_rate_units)
+            for p in raw_data.protein_half_lives_modified
+        }
+
         deg_rate = np.zeros(len(all_proteins))
         for i, protein in enumerate(all_proteins):
+            # Modified half lives have the HIGHEST priority of all sources
+            # (relocated to the top in vEcoli-private 1bcbf91e). Do not change the
+            # order of degradation-rate selection without intention, as this may
+            # result in MurD being reassigned to an unstable half-life value.
+            if protein["id"] in modified_deg_rates:
+                deg_rate[i] = modified_deg_rates[protein["id"]]
             # Use measured degradation rates if available
-            if protein["id"] in measured_deg_rates:
+            elif protein["id"] in measured_deg_rates:
                 deg_rate[i] = measured_deg_rates[protein["id"]]
             elif protein["id"] in pulsed_silac_deg_rates:
                 deg_rate[i] = pulsed_silac_deg_rates[protein["id"]]
