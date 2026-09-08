@@ -325,7 +325,8 @@ def _resolve_n_seeds() -> int | None:
 def _write_sim_input_bundle(loader, bundle_dir, *, seed=None, condition=None,
                             fixed_media=None, condition_manifest_hash=None,
                             new_genes=None, bundle_overrides=None,
-                            bundle_manifest=None, perturbations=None):
+                            bundle_manifest=None, perturbations=None,
+                            sources=None):
     """Write the simulation-input bundle from an instantiated LoadSimData.
 
     Shared body of ``save_cache`` (path-based) and ``save_sim_input``
@@ -348,6 +349,13 @@ def _write_sim_input_bundle(loader, bundle_dir, *, seed=None, condition=None,
     of silently mis-calibrating the sim. ``perturbations`` is fingerprinted to
     a stable digest (see ``_fingerprint_perturbations``); the other three are
     recorded verbatim.
+
+    ``sources`` (schema 3) declares the upstream artifacts this bundle was
+    DERIVED FROM — each a ``{"layer","path"}`` dict, e.g. the ParCa
+    ``parca_state.pkl`` chassis. It is threaded into ``write_cache_version`` so
+    the ``derived_from`` provenance chain is recorded and folded into
+    ``inputs_hash``. Default ``None`` (no declared chain) is backward
+    compatible for callers that don't yet know their sources.
     """
     os.makedirs(bundle_dir, exist_ok=True)
 
@@ -467,27 +475,33 @@ def _write_sim_input_bundle(loader, bundle_dir, *, seed=None, condition=None,
         'perturbations': _fingerprint_perturbations(perturbations),
     }
     write_cache_version(bundle_dir, build_params=build_params,
-                        configs=sorted(configs.keys()))
+                        configs=sorted(configs.keys()), sources=sources)
     print(f"Sim-input bundle saved to {bundle_dir}")
 
 
-def save_cache(sim_data_path, cache_dir='out/cache', seed=0):
+def save_cache(sim_data_path, cache_dir='out/cache', seed=0, sources=None):
     """Generate the simulation-input bundle from a dilled SimulationDataEcoli.
 
     Prefer ``save_sim_input(sim_data, ...)`` when the SimulationDataEcoli is
     already in memory — this entry point exists for callers that only have a
     pickle path (legacy vEcoli ``simData.cPickle``).
+
+    ``sources`` (schema 3): the upstream artifacts consumed (e.g. the ParCa
+    chassis ``{"layer":"chassis","path": sim_data_path}``), recorded into the
+    cache's ``derived_from`` provenance chain. Default ``None`` is backward
+    compatible.
     """
     from v2ecoli.library.sim_data import LoadSimData
     loader = LoadSimData(sim_data_path=sim_data_path, seed=seed)
-    _write_sim_input_bundle(loader, cache_dir, seed=seed)
+    _write_sim_input_bundle(loader, cache_dir, seed=seed, sources=sources)
 
 
 def save_sim_input(sim_data, bundle_dir='out/cache', seed=0,
                    condition=None, fixed_media=None,
                    condition_manifest_hash=None,
                    new_genes=None, bundle_overrides=None,
-                   bundle_manifest=None, perturbations=None):
+                   bundle_manifest=None, perturbations=None,
+                   sources=None):
     """Generate the simulation-input bundle from a live ``SimulationDataEcoli``.
 
     Skips the ~300 MB dill round-trip that ``save_cache`` performs to load
@@ -522,4 +536,5 @@ def save_sim_input(sim_data, bundle_dir='out/cache', seed=0,
                             new_genes=new_genes,
                             bundle_overrides=bundle_overrides,
                             bundle_manifest=bundle_manifest,
-                            perturbations=perturbations)
+                            perturbations=perturbations,
+                            sources=sources)
