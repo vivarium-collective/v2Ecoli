@@ -222,6 +222,22 @@ class _FakeLoader:
         return {'name': name}
 
 
+def _chassis_sources(cache_dir):
+    """A clean chassis source + sidecar beside ``cache_dir`` so a schema-3
+    cache has the ``derived_from`` chain verify_cache_version's guard (a)
+    requires — orthogonal to the A6 configs check under test here."""
+    import json
+
+    chassis = cache_dir / "parca_state.pkl"
+    chassis.write_bytes(b"fake-chassis")
+    (cache_dir / "parca_state.provenance.json").write_text(json.dumps({
+        "schema": "chassis-provenance/1", "layer": "chassis",
+        "code": {"v2ecoli": {"commit": "abc123", "dirty": False,
+                             "source": "git"}},
+    }))
+    return [{"layer": "chassis", "path": str(chassis)}]
+
+
 def test_incomplete_bundle_build_aborts(tmp_path):
     """A required config (PARCA_REVIEW A6: ecoli-mass-listener /
     ecoli-metabolism) failing to build raises before any bundle file that
@@ -270,7 +286,8 @@ def test_incomplete_bundle_fails_verification(tmp_path):
     incomplete_configs = sorted(
         set(REQUIRED_CACHE_CONFIG_NAMES) - {"ecoli-mass-listener"}
         | {"some-other-config"})
-    write_cache_version(str(cache_dir), configs=incomplete_configs)
+    write_cache_version(str(cache_dir), configs=incomplete_configs,
+                        sources=_chassis_sources(cache_dir))
 
     with pytest.raises(StaleCacheError, match="ecoli-mass-listener"):
         verify_cache_version(str(cache_dir))
@@ -289,7 +306,8 @@ def test_complete_bundle_configs_pass_verification(tmp_path):
     cache_dir.mkdir()
     write_cache_version(
         str(cache_dir),
-        configs=list(REQUIRED_CACHE_CONFIG_NAMES) + ["some-other-config"])
+        configs=list(REQUIRED_CACHE_CONFIG_NAMES) + ["some-other-config"],
+        sources=_chassis_sources(cache_dir))
 
     verify_cache_version(str(cache_dir))  # no raise
 
@@ -303,7 +321,8 @@ def test_empty_recorded_configs_does_not_fail_verification(tmp_path):
 
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
-    write_cache_version(str(cache_dir))  # configs=None -> recorded as ()
+    # configs=None -> recorded as (); sources declare the schema-3 chain.
+    write_cache_version(str(cache_dir), sources=_chassis_sources(cache_dir))
 
     verify_cache_version(str(cache_dir))  # no raise
 

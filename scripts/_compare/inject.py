@@ -104,6 +104,15 @@ def _should_inject_as_step(cls) -> bool:
     """
     if bool(getattr(cls, "_force_step", False)):
         return True
+    # A pbg-NATIVE deriver — inputs()/outputs() + update_condition-gated.
+    # A native ecoli-metabolism-redux is pbg-native, NOT a vivarium.Step
+    # subclass, so issubclass(cls, Step) returned False and it was injected as an
+    # interval process → tick-2 non-advancing global_clock collapse. Requiring
+    # inputs()+outputs() excludes a plain vivarium Process (ports_schema, with an
+    # inherited base update_condition); needs no vivarium import.
+    if (hasattr(cls, "update_condition")
+            and hasattr(cls, "inputs") and hasattr(cls, "outputs")):
+        return True
     try:
         from vivarium.core.process import Step
     except Exception:  # noqa: BLE001 — fixture fork has no vivarium
@@ -725,6 +734,10 @@ def resolve_injections(fork_repo: str, config: dict) -> list[dict[str, Any]]:
 
     names = list(config.get("add_processes") or [])
     names += list((config.get("swap_processes") or {}).values())
+    # Swap TARGETS (the process that replaces a baseline one) must end up with a
+    # real config; a bare add_process may legitimately run on config_schema
+    # defaults. Used by the config-less-swap guard below.
+    swap_targets = set((config.get("swap_processes") or {}).values())
 
     specs: list[dict[str, Any]] = []
     for name in names:
@@ -767,6 +780,34 @@ def resolve_injections(fork_repo: str, config: dict) -> list[dict[str, Any]]:
                 print(f"[inject] fork config for {name!r} unavailable "
                       f"({type(e).__name__}); using default. {e}")
                 config_dict = None
+
+        # FAIL LOUD (sms-ecoli#210 Gate 0 / #375 §3d, v2ecoli#667): a SWAP TARGET
+        # that reaches here with no config on the NATIVE (fork-free) path would run
+        # on config_schema defaults. For a swapped metabolism (ecoli-metabolism ->
+        # ecoli-metabolism-redux) those defaults are an empty stoichiometry and zero
+        # homeostatic targets, so the process does nothing, the generation collapses
+        # after one tick, and the run STILL reports success (the exact silent-failure
+        # this exists to stop). The native config builder for redux
+        # (build_native_redux_config, off cache_dir's own bundle sim_data via
+        # v2ecoli's LoadSimData.get_metabolism_redux_config) is NOT yet wired into
+        # this authoritative copy -- it lives in the sms-ecoli vendored inject.py and
+        # must be ported here (entangled with the #211 kinetics-units bridge). Until
+        # then, refuse loudly rather than silently run wild-type.
+        if (config_dict is None
+                and name in swap_targets
+                and not config.get("fork_sim_data")):
+            raise InjectionError(
+                f"{name!r} is a swap target but has NO config on the native "
+                f"(fork-free) path: process_configs names no explicit dict for it, "
+                f"there is no fork_sim_data to build from, and the native "
+                f"cache-derived config builder is not wired into this inject.py yet. "
+                f"Running it now would fall back to config_schema defaults (for "
+                f"metabolism-redux: an empty stoichiometry / 0 homeostatic targets), "
+                f"which silently collapses the generation to one tick and reports "
+                f"success. Fix: provide process_configs[{name!r}] explicitly, or port "
+                f"build_native_redux_config from sms-ecoli scripts/_compare/inject.py "
+                f"and build the config from this run's cache_dir bundle "
+                f"(sms-ecoli#210 Gate 0 / v2ecoli#667).")
 
         # NATIVE-FIRST: deserialize vEcoli-serialized process_config values —
         # !ParameterSerializer[path] -> param_store Quantity, !units[...] ->

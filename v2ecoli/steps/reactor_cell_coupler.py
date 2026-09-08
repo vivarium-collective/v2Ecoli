@@ -434,6 +434,86 @@ class ReactorCellCoupler(Step):
             reactor_out["dissolved_o2"] = o2_delta
             reactor_out["dissolved_co2"] = co2_delta
 
+            # Republish the dissolved gases POST-consumption.
+            #
+            # Section 2 above published the cell's view from the PRE-consumption
+            # store, i.e. after transport but before this tick's uptake. For an
+            # unreplenished pool (glucose, ammonium) that is harmless: the pool
+            # reaches zero and stays there, so the cell does see exhaustion.
+            # For a REPLENISHED species it is not, because the two effects lock
+            # into a sawtooth:
+            #
+            #   transport adds one tick of OTR   ->  dissolved_o2 = OTR*dt
+            #   section 2 publishes that peak    ->  cell reads OTR*dt / MW
+            #   the clamp below caps uptake      ->  dissolved_o2 = 0
+            #   repeat
+            #
+            # so the cell reads a CONSTANT equal to one tick of oxygen transfer
+            # and never observes the zero. Measured on a 6-generation coupled
+            # run: the cell's O2 sat at exactly 0.0011881823 mM for 7,107 of
+            # 18,566 ticks while the reactor read 0.0000, and
+            #   kLa * C* / 3600 = 20.7868 * 6.5847 / 3600 = 0.03802079 mg/L
+            #   observed * MW_O2                          = 0.03802183 mg/L
+            # agree to 27 ppm. The apparent concentration therefore scales with
+            # the timestep, which made oxygen availability a property of the
+            # integration step rather than of the process.
+            #
+            # Publishing post-consumption reports the concentration the cell
+            # leaves behind rather than the one transport handed it. Neither
+            # endpoint is the tick average -- the physically exact choice would
+            # integrate over the tick -- but the pre-consumption value cannot
+            # express scarcity at all under a replenished-then-clamped species,
+            # and this one can.
+            #
+            # ⛔ The clamp above is CORRECT and must stay: it prevents a negative
+            # store. The defect was never the clamp, only what was published
+            # before it ran.
+            # ⛔ O2 ONLY. CO2 is deliberately NOT corrected here, and the
+            # symmetry is a trap: co2_counts is "positive == secretion"
+            # (:317), so co2_delta > 0 and the same expression publishes a
+            # HIGHER CO2 -- the cell reading carbon dioxide it produced within
+            # the same tick, an instantaneous self-feedback. That is the
+            # opposite direction to the O2 correction, which REMOVES a
+            # fictitious supply.
+            #
+            # It is also not small. Measured by the same direct A/B:
+            #   dissolved_co2 0.5 mg/L, 1e7 counts secreted: 0.01136 -> 0.02797 mM (2.5x)
+            #                           5e7 counts:          0.01136 -> 0.09439 mM (8.3x)
+            #   dissolved_co2 0.05 mg/L, 1e7 counts:         0.00114 -> 0.01774 mM (15.6x)
+            #
+            # And no CO2 defect exists to fix. The sawtooth needs a species that
+            # is REPLENISHED and then CLAMPED to zero; CO2 is secreted, and its
+            # clamp (:432) tests `co2_delta < 0.0`, so it fires only on uptake
+            # and effectively never. Same reasoning excludes glucose and
+            # ammonium: an unreplenished pool reaches zero and stays there, so
+            # the cell does see exhaustion (confirmed on a 6-generation run --
+            # cell GLC tracked the reactor to 0, max deviation 0.177 mM).
+            #
+            # ⚠ AND THAT EXEMPTION IS CONDITIONAL, NOT CATEGORICAL: it holds
+            # only while CO2 is NET-SECRETED, which is what the clamp's
+            # `< 0.0` gate encodes. If a condition ever nets CO2 UPTAKE the
+            # clamp fires, the sawtooth becomes reachable, and this correction
+            # is absent for it. That is not hypothetical -- an anoxic regime
+            # becomes reachable for the first time BECAUSE of this fix (O2 can
+            # now leave allowed_exchange_uptake), and an anoxic carbon balance
+            # is exactly where the aerobic assumption is least safe.
+            #
+            # ⚠ THAT EXEMPTION IS CONDITIONAL, NOT CATEGORICAL. It holds only
+            # while CO2 is NET-SECRETED, which is exactly what the clamp's
+            # `< 0.0` gate encodes. Should a condition ever net CO2 UPTAKE the
+            # clamp fires, the sawtooth becomes reachable, and this correction
+            # is absent for it. Not hypothetical: an anoxic regime becomes
+            # reachable for the first time BECAUSE of this fix -- O2 can now
+            # leave allowed_exchange_uptake -- and an anoxic carbon balance is
+            # where the aerobic assumption is least safe.
+            #
+            # ⇒ Correct the one species where the defect is demonstrated. This
+            # Step is on the path of every coupled study; a large, unmeasured,
+            # opposite-direction change to a second species is regression
+            # surface bought for nothing.
+            if do2 is not None:
+                env_concs[O2_ID] = max(do2_now + o2_delta, 0.0) / MW_O2
+
             # Medium concentration accumulator (mmol/L) — same count->conc
             # conversion as the dissolved-gas delta minus the MW factor
             # (counts_to_mgL is already counts->mmol/L; *MW gives mg/L).
@@ -482,23 +562,6 @@ def _as_float(value: Any) -> float:
     if hasattr(value, "magnitude"):
         return float(value.magnitude)
     return float(value)
-
-
-
-def _extract_exchange_fluxes(agent_state: dict | Any) -> dict[str, Any]:
-    """Return ``metabolism.external_exchange_fluxes`` map, or {} if absent.
-
-    Retained for reference/back-compat; v2ecoli's live state does NOT populate
-    this path (see ``_extract_environment_exchange``, the real source).
-    """
-    try:
-        metabolism = agent_state.get("metabolism", {}) if hasattr(agent_state, "get") else {}
-        fluxes = metabolism.get("external_exchange_fluxes")
-        if isinstance(fluxes, dict):
-            return fluxes
-        return {}
-    except (AttributeError, KeyError, TypeError):
-        return {}
 
 
 def _extract_environment_exchange(agent_state: dict | Any) -> dict[str, Any]:

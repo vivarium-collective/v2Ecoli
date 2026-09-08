@@ -6,7 +6,7 @@ RNAP Data Listener
 
 import numpy as np
 import warnings
-from v2ecoli.library.schema import numpy_schema, listener_schema, attrs
+from v2ecoli.library.schema import attrs
 from v2ecoli.library.schema_types import ACTIVE_RNAP_ARRAY, RNA_ARRAY, ACTIVE_RIBOSOME_ARRAY
 from v2ecoli.library.ecoli_step import EcoliStep as Step
 from v2ecoli.types.labeled_array import register_labeled_array

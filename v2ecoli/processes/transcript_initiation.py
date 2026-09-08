@@ -54,8 +54,6 @@ from typing import cast
 
 from v2ecoli.library.schema import (
     create_unique_indices,
-    listener_schema,
-    numpy_schema,
     counts,
     attrs,
     bulk_name_to_idx,

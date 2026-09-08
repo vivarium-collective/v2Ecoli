@@ -59,9 +59,7 @@ from v2ecoli.library.quantity_helpers import as_quantity
 from v2ecoli.library.schema import (
     counts,
     attrs,
-    numpy_schema,
     bulk_name_to_idx,
-    listener_schema,
 )
 from v2ecoli.library.data_predicates import monotonically_increasing
 # topology_registry removed

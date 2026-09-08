@@ -175,6 +175,8 @@ def build_workflow_config(
     study: str = "",
     base_config_overrides: "dict | None" = None,
     media: str = "minimal",
+    independent_founders: bool = False,
+    founder_sim_data: str = "",
     injected_processes: "dict | None" = None,
     features: "list | None" = None,
     ppgpp_regulation: bool = True,
@@ -233,6 +235,11 @@ def build_workflow_config(
         # Threaded to every per-seed baseline() build (see LineageProcess); a
         # lightweight in-cache media shift applied panel-wide across the sweep.
         config["media"] = media
+    if independent_founders and founder_sim_data:
+        # Threaded to every per-seed baseline() build so each seed re-draws its
+        # own founder from founder_sim_data (real cell-to-cell founder variability).
+        config["independent_founders"] = True
+        config["founder_sim_data"] = founder_sim_data
     if study:
         # Lets the flush place analyses/visualizations/report cards into this
         # study's report dir even when out_dir isn't under studies/<slug>/.
@@ -371,6 +378,8 @@ def dispatch_batch(
     study: str = "",
     base_config_overrides: "dict | None" = None,
     media: str = "minimal",
+    independent_founders: bool = False,
+    founder_sim_data: str = "",
     injected_processes: "dict | None" = None,
     features: "list | None" = None,
     ppgpp_regulation: bool = True,
@@ -403,6 +412,7 @@ def dispatch_batch(
         experiment_id=experiment_id, emitter=emitter, parallel=parallel,
         variants=variants, variant=variant, analyses=analyses, study=study,
         base_config_overrides=base_config_overrides, media=media,
+        independent_founders=independent_founders, founder_sim_data=founder_sim_data,
         injected_processes=injected_processes, features=features,
         ppgpp_regulation=ppgpp_regulation, trna_attenuation=trna_attenuation,
         supercoiling=supercoiling, mass_conservation=mass_conservation,
@@ -484,6 +494,9 @@ class BatchBaselineRunner(Step):
         "base_config_overrides": {"_default": {}},
         # Panel-wide media condition, threaded to every per-seed baseline() build.
         "media": {"_default": "minimal"},
+        # Opt-in per-seed independent founders (re-draw t=0 state per seed).
+        "independent_founders": {"_default": False},
+        "founder_sim_data": {"_default": ""},
         # Per-cell biological build kwargs, threaded panel-wide to every
         # generation's baseline() build (audit: batch mode used to drop these,
         # degrading an injected metabolism-redux/violacein batch to basal FBA).
@@ -534,6 +547,8 @@ class BatchBaselineRunner(Step):
         self.study = cfg.get("study") or ""
         self.base_config_overrides = dict(cfg.get("base_config_overrides") or {})
         self.media = cfg.get("media") or "minimal"
+        self.independent_founders = bool(cfg.get("independent_founders") or False)
+        self.founder_sim_data = cfg.get("founder_sim_data") or ""
         # Per-cell biological build kwargs (audit fix — see config_schema).
         self.injected_processes = dict(cfg.get("injected_processes") or {})
         self.features = list(cfg.get("features") or [])
@@ -586,6 +601,8 @@ class BatchBaselineRunner(Step):
                 seed=self.base_seed,
                 cache_dir=self.cache_dir,
                 media=self.media,
+                independent_founders=self.independent_founders,
+                founder_sim_data=self.founder_sim_data,
                 features=self.features,
                 ppgpp_regulation=self.ppgpp_regulation,
                 trna_attenuation=self.trna_attenuation,
@@ -657,6 +674,8 @@ class BatchBaselineRunner(Step):
             study=self.study,
             base_config_overrides=self.base_config_overrides,
             media=self.media,
+            independent_founders=self.independent_founders,
+            founder_sim_data=self.founder_sim_data,
             injected_processes=self.injected_processes,
             features=self.features,
             ppgpp_regulation=self.ppgpp_regulation,

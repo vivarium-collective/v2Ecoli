@@ -3,3 +3,6 @@ equilibrium_reactions	flat_overrides/equilibrium_reactions.tsv	v2ecoli DnaA-ATP 
 equilibrium_reaction_rates	flat_overrides/equilibrium_reaction_rates.tsv	v2ecoli DnaA-ATP hydrolysis rates (PR #123)	
 metabolic_reactions_added	flat_overrides/metabolic_reactions_added.tsv	v2ecoli metabolic additions (v2parca merge #16)	
 dna_sites	flat_overrides/dna_sites.tsv	DnaA-box catalog (8 oriC-low + 3 oriC-high + 2 promoter sites) for dnaa-3 box binding (Rashmi feat/aim2-dnaa-oric-box-binding)	
+metabolite_concentrations_added	flat_overrides/metabolite_concentrations_added.tsv	vEcoli-private #84: pABA + DHPPP homeostatic targets for DHPS/sulfadiazine competition (Run 3)	
+rna_half_lives_removed	flat_overrides/rna_half_lives_removed.tsv	vEcoli-private #79 (f4e9cc0a): remove TU0-941 measured half-life so it solves from cistron half-lives	
+protein_half_lives_modified	flat_overrides/protein_half_lives_modified.tsv	vEcoli-private b3e5a737/1bcbf91e: MurD stable half-life 1914.725 min (Gupta 2024), highest priority	

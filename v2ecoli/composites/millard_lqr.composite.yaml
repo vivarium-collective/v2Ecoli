@@ -1,0 +1,82 @@
+name: millard_lqr
+description: |
+  v2ecoli-pdmp Phase 1: Millard 2017 ODE + simplified scalar LQR outer
+  controller. The LQR drives a biomass-proxy growth-rate estimate toward
+  the Phase 0 M9-glucose reference μ(t) ensemble mean (real data from
+  64-replicate baseline).
+
+  Scope (proof of concept):
+    - 1-state continuous-time LQR (closed-form Riccati solution for the
+      scalar system ẋ = a x + b u)
+    - Reads reference μ(t) from v2ecoli/data/phase0_glucose_mu_ref.npy
+    - Computes tracking error + control signal per tick
+    - LOGS the control signal (does NOT yet feed it back into Millard's
+      reaction rates — closed-loop wiring is a follow-up; needs either a
+      CopasiUTCProcess parameter-mutation feature OR a per-tick model
+      rebuild wrapper)
+
+  This composite ships the LQR algebra + logging + Phase 0 reference
+  consumption. The `lqr-growth-rate-tracking` primary test in pdmp-01
+  can be evaluated against the logged tracking_err once the closed-loop
+  step is wired.
+
+tags: [pdmp, phase-1, lqr, millard2017, pbg-copasi, scalar-control]
+
+requires:
+  processes: [CopasiUTCProcess, LQRController]
+
+parameters:
+  millard_sbml:
+    type: string
+    default: "v2ecoli/models/sbml/millard2017_central_metabolism.xml"
+  reference_npy:
+    type: string
+    default: "v2ecoli/data/phase0_glucose_mu_ref.npy"
+  Q:
+    type: float
+    default: 1.0
+    description: "LQR state-tracking weight"
+  R:
+    type: float
+    default: 0.1
+    description: "LQR control-effort weight"
+  tick_s:
+    type: float
+    default: 100.0
+
+state:
+  millard_ode:
+    _type: process
+    address: "local:CopasiUTCProcess"
+    config:
+      model_source: "${millard_sbml}"
+      time: "${tick_s}"
+      intervals: 10
+    inputs: {}    # NO input feedback — see millard_fba_bridge.composite.yaml
+    outputs:
+      species_concentrations: ["shared", "central_metabolites"]
+      fluxes: ["shared", "central_fluxes"]
+      time: ["shared", "time"]
+    interval: "${tick_s}"
+
+  lqr_controller:
+    _type: process
+    address: "local:LQRController"
+    config:
+      reference_npy: "${reference_npy}"
+      Q: "${Q}"
+      R: "${R}"
+      tick_s: "${tick_s}"
+    inputs:
+      central_metabolites_millard: ["shared", "central_metabolites"]
+    outputs:
+      lqr_control: ["shared", "lqr_control"]
+      lqr_diagnostics: ["shared", "lqr_diagnostics"]
+    interval: "${tick_s}"
+
+  shared:
+    central_metabolites: {}
+    central_fluxes: {}
+    lqr_control: {}
+    lqr_diagnostics: {}
+    time: 0.0

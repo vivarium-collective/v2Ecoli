@@ -1,0 +1,25 @@
+{
+  "re_execution_2026_09_04": {
+    "summary": "On independent re-execution the mcs-05 reverse-ATP-synthase fix did NOT robustly reproduce the in-band biomass yield. At the same committed cap (4.5) two solve paths give different physiology, indicating FBA optimum degeneracy: the reverse-cap permits but does not force respiration.",
+    "explicit_solve_wrap_etc_fix_attempt_cap4.5": {
+      "biomass_yield": 0.395,
+      "RQ": 1.1,
+      "note": "respiring optimum (matches mcs-05's reported 0.390)"
+    },
+    "committed_default_path_cap4.5": {
+      "biomass_yield": 0.819,
+      "RQ": 2.85,
+      "acetate": 0.0,
+      "reverse_flux": 4.5,
+      "forward_flux": 0.0,
+      "note": "NON-respiring optimum: reverse pinned at the cap, forward ATP synthase 0 -> no respiratory ATP -> defect persists"
+    },
+    "no_fix_baseline": {
+      "biomass_yield": 0.819,
+      "RQ": 2.85,
+      "acetate": 0.0
+    },
+    "interpretation": "The ATP-synthase-in-reverse DIAGNOSIS is solid and independently valuable. The one-parameter reverse-cap FIX is not a robust correction: capping the reverse flux to 4.5 admits a non-respiring FBA optimum identical to the defect, so the in-band yield is solve-path dependent. A principled fix must additionally reward/force forward (respiratory) ATP synthase, not merely bound the reverse direction.",
+    "caught_by": "mcs-11 held-out re-execution (the acetate-overflow-onset check surfaced that the committed default reads as un-fixed physiology)."
+  }
+}

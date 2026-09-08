@@ -1,0 +1,159 @@
+{
+  "n_cells": 18,
+  "division_time": {
+    "mean_min": 49.26574074074074,
+    "sd_min": 3.4456824941365993,
+    "cv": 0.06994074264039557
+  },
+  "adder": {
+    "slope": 0.5849014702180683,
+    "intercept_fg": 105.89094899908397,
+    "interpretation": "sizer (slope>0)"
+  },
+  "cells": [
+    {
+      "seed_root": "arc3_seed0",
+      "gen": 2,
+      "division_time_min": 46.13333333333333,
+      "birth_mass_fg": 358.3854254082165,
+      "division_mass_fg": 699.9407440267994,
+      "added_mass_fg": 341.5553186185829
+    },
+    {
+      "seed_root": "arc3_seed0",
+      "gen": 3,
+      "division_time_min": 46.916666666666664,
+      "birth_mass_fg": 350.0776533944403,
+      "division_mass_fg": 683.0093744750013,
+      "added_mass_fg": 332.93172108056103
+    },
+    {
+      "seed_root": "arc3_seed0",
+      "gen": 4,
+      "division_time_min": 48.233333333333334,
+      "birth_mass_fg": 342.47236633492275,
+      "division_mass_fg": 614.5150101986139,
+      "added_mass_fg": 272.0426438636912
+    },
+    {
+      "seed_root": "arc3_seed1",
+      "gen": 2,
+      "division_time_min": 46.13333333333333,
+      "birth_mass_fg": 358.38540617312117,
+      "division_mass_fg": 709.5939187612375,
+      "added_mass_fg": 351.2085125881164
+    },
+    {
+      "seed_root": "arc3_seed1",
+      "gen": 3,
+      "division_time_min": 48.483333333333334,
+      "birth_mass_fg": 354.75633886186847,
+      "division_mass_fg": 631.8364795774744,
+      "added_mass_fg": 277.0801407156059
+    },
+    {
+      "seed_root": "arc3_seed1",
+      "gen": 4,
+      "division_time_min": 53.666666666666664,
+      "birth_mass_fg": 315.92223237650273,
+      "division_mass_fg": 589.7197754975375,
+      "added_mass_fg": 273.7975431210348
+    },
+    {
+      "seed_root": "arc3_seed2",
+      "gen": 2,
+      "division_time_min": 46.13333333333333,
+      "birth_mass_fg": 358.38549597678457,
+      "division_mass_fg": 715.0109844973779,
+      "added_mass_fg": 356.6254885205933
+    },
+    {
+      "seed_root": "arc3_seed2",
+      "gen": 3,
+      "division_time_min": 46.75,
+      "birth_mass_fg": 358.068616423305,
+      "division_mass_fg": 658.3808424612064,
+      "added_mass_fg": 300.3122260379014
+    },
+    {
+      "seed_root": "arc3_seed2",
+      "gen": 4,
+      "division_time_min": 50.9,
+      "birth_mass_fg": 329.86433920463855,
+      "division_mass_fg": 595.5231521035771,
+      "added_mass_fg": 265.65881289893855
+    },
+    {
+      "seed_root": "arc3_seed3",
+      "gen": 2,
+      "division_time_min": 46.13333333333333,
+      "birth_mass_fg": 358.38565619944234,
+      "division_mass_fg": 673.3909535267669,
+      "added_mass_fg": 315.00529732732457
+    },
+    {
+      "seed_root": "arc3_seed3",
+      "gen": 3,
+      "division_time_min": 49.18333333333333,
+      "birth_mass_fg": 336.29572360859095,
+      "division_mass_fg": 627.4248909837452,
+      "added_mass_fg": 291.1291673751542
+    },
+    {
+      "seed_root": "arc3_seed3",
+      "gen": 4,
+      "division_time_min": 54.53333333333333,
+      "birth_mass_fg": 313.5070573844873,
+      "division_mass_fg": 643.5360429970005,
+      "added_mass_fg": 330.0289856125132
+    },
+    {
+      "seed_root": "arc3_seed4",
+      "gen": 2,
+      "division_time_min": 46.13333333333333,
+      "birth_mass_fg": 358.38551637854937,
+      "division_mass_fg": 669.4926223813407,
+      "added_mass_fg": 311.1071060027913
+    },
+    {
+      "seed_root": "arc3_seed4",
+      "gen": 3,
+      "division_time_min": 49.68333333333333,
+      "birth_mass_fg": 334.3959316548156,
+      "division_mass_fg": 619.462950013726,
+      "added_mass_fg": 285.06701835891033
+    },
+    {
+      "seed_root": "arc3_seed4",
+      "gen": 4,
+      "division_time_min": 55.36666666666667,
+      "birth_mass_fg": 309.0527168859534,
+      "division_mass_fg": 603.0466998549498,
+      "added_mass_fg": 293.9939829689964
+    },
+    {
+      "seed_root": "arc3_seed5",
+      "gen": 2,
+      "division_time_min": 46.13333333333333,
+      "birth_mass_fg": 358.3855618487586,
+      "division_mass_fg": 658.8949979018275,
+      "added_mass_fg": 300.50943605306895
+    },
+    {
+      "seed_root": "arc3_seed5",
+      "gen": 3,
+      "division_time_min": 50.65,
+      "birth_mass_fg": 327.97963422897305,
+      "division_mass_fg": 619.7680266402547,
+      "added_mass_fg": 291.7883924112816
+    },
+    {
+      "seed_root": "arc3_seed5",
+      "gen": 4,
+      "division_time_min": 55.61666666666667,
+      "birth_mass_fg": 308.8243845539124,
+      "division_mass_fg": 611.360617947854,
+      "added_mass_fg": 302.53623339394164
+    }
+  ]
+}

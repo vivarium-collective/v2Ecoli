@@ -20,7 +20,7 @@ import pandas as pd
 from duckdb import DuckDBPyConnection
 
 from v2ecoli.workflow.analysis import Analysis
-from v2ecoli.workflow.analyses._helpers import ptools_heatmap_view
+from v2ecoli.workflow.analyses._helpers import ptools_heatmap_view, available_columns
 from v2ecoli.workflow.analyses._shims import (
     bulk_count_matrix,
     ACTIVE_RIBOSOME_SQL,
@@ -33,6 +33,7 @@ from v2ecoli.workflow.analyses.ptools_rna import (
     get_bulk_ids,
     build_bulk2monomers_matrix,
     consolidate_timepoints,
+    _groupby_time_keep_generation,
 )
 
 
@@ -40,10 +41,15 @@ from v2ecoli.workflow.analyses.ptools_rna import (
 # Module-level helpers
 # ---------------------------------------------------------------------------
 
-def build_query(columns, history_sql):
-    """Generate SQL query for user-specified parquet columns."""
+def build_query(columns, history_sql, include_generation=False):
+    """Generate SQL query for user-specified parquet columns.
+
+    ``include_generation`` carries the ``generation`` partition column for
+    per-generation consolidation; callers detect its presence first.
+    """
+    gen = ", generation" if include_generation else ""
     query_sql = f"""
-        SELECT {",".join(columns)}, global_time AS time
+        SELECT {",".join(columns)}, global_time AS time{gen}
         FROM ({history_sql})
         ORDER BY time
     """
@@ -64,10 +70,10 @@ def read_outputs(
             ACTIVE_RNAP_SQL,
             ACTIVE_RIBOSOME_SQL,
         ]
-    query_sql = build_query(columns, history_sql)
+    incl_gen = "generation" in available_columns(conn, history_sql)
+    query_sql = build_query(columns, history_sql, incl_gen)
     outputs_df = conn.sql(query_sql).df()
-    outputs_df = outputs_df.groupby("time", as_index=False).sum()
-    return outputs_df
+    return _groupby_time_keep_generation(outputs_df)
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +85,12 @@ class PtoolsProteins(Analysis):
 
     name = "ptools_proteins"
     scale = "single"
-    config_schema = {"n_tp": "integer", "time_unit": "string"}
+    config_schema = {
+        "n_tp": "integer",
+        "time_unit": "string",
+        "per_generation": "boolean",
+        "skip_n_gens": "integer",
+    }
 
     def _do_read_outputs(
         self,
@@ -171,9 +182,14 @@ class PtoolsProteins(Analysis):
         proteomics = np.matmul(bulk_mtx, bulk2protein_monomers)
 
         n_tp = int(params["n_tp"])
+        gens = (
+            output_df["generation"].values
+            if params.get("per_generation") and "generation" in output_df.columns
+            else None
+        )
 
         proteomics_bulksum, tp_idx = consolidate_timepoints(
-            proteomics, n_tp, normalized=True
+            proteomics, n_tp, normalized=True, generations=gens
         )
 
         tp_checkpoints = output_df["time"].values[tp_idx]

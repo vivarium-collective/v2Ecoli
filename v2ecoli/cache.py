@@ -30,16 +30,39 @@ def is_s3_uri(path: str) -> bool:
     return str(path).startswith(_S3_PREFIX)
 
 
-def _s3_download(uri: str, dest: str) -> None:
+# Bounded client config for checkpoint/state S3 I/O. A bare ``boto3.client("s3")``
+# applies no effective socket timeout to a stalled connection, so a hung S3 write
+# can block indefinitely with no error — observed as a lineage checkpoint upload
+# leaving a GovCloud run IDLE for 4+ hours right before the checkpoint was written
+# (sms-ecoli#210 / dispatch 313). An explicit connect/read timeout plus bounded
+# retries turns a stalled transfer into a loud failure in minutes instead of a
+# silent hang. read_timeout is per-request (per multipart part), so a legitimately
+# large upload is NOT killed — only a genuinely stuck part is.
+_S3_TIMEOUT_CONFIG = None
+
+
+def _s3_client():
+    """A boto3 S3 client with bounded timeouts + retries (see _S3_TIMEOUT_CONFIG)."""
     import boto3
+    global _S3_TIMEOUT_CONFIG
+    if _S3_TIMEOUT_CONFIG is None:
+        from botocore.config import Config
+        _S3_TIMEOUT_CONFIG = Config(
+            connect_timeout=15,
+            read_timeout=60,
+            retries={"max_attempts": 5, "mode": "standard"},
+        )
+    return boto3.client("s3", config=_S3_TIMEOUT_CONFIG)
+
+
+def _s3_download(uri: str, dest: str) -> None:
     bucket, _, key = uri[len(_S3_PREFIX):].partition("/")
-    boto3.client("s3").download_file(bucket, key, dest)
+    _s3_client().download_file(bucket, key, dest)
 
 
 def _s3_upload(local_path: str, uri: str) -> None:
-    import boto3
     bucket, _, key = uri[len(_S3_PREFIX):].partition("/")
-    boto3.client("s3").upload_file(local_path, bucket, key)
+    _s3_client().upload_file(local_path, bucket, key)
 
 
 class NumpyJSONEncoder(json.JSONEncoder):

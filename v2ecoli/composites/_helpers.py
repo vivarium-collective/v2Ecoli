@@ -1,9 +1,5 @@
 """Shared helpers for the v2ecoli composite generators.
 
-These were previously defined in ``v2ecoli/generate.py`` and re-imported by
-``generate_baseline.py``.  Task 14 moves
-them here so the legacy generate*.py files can be deleted.
-
 Exported names (all are considered semi-private implementation details):
   - make_edge
   - inject_flow_dependencies
@@ -137,8 +133,7 @@ ALL_PARTITIONED = list(PARTITIONED_PROCESSES.keys())
 # explicitly in its study.yaml `visualizations:` block. Auto-attaching them
 # here used to be the default, but the panels rendered confusingly empty for
 # planning-not-yet-run studies and for any study whose runs.db wasn't
-# populated yet — see docs/superpowers/notes/2026-05-19-dashboard-runner-friction.md
-# item #17. Re-enable per study by copying the two-entry list below into
+# populated yet. Re-enable per study by copying the two-entry list below into
 # the study's spec, OR opt back into project-wide auto-attach by setting
 # ``visualizations=v2ecoli_default_single_cell_visualizations()`` on the
 # specific @composite_generator call.
@@ -405,6 +400,40 @@ def set_default_emitter_decl(decl: dict | None) -> None:
     _DEFAULT_EMITTER_DECL = decl
 
 
+def _merge_emit_paths(emit_schema: dict, topo: dict, emit_paths) -> None:
+    """Add caller-declared EXTRA emit store paths to a parquet emit
+    schema/topology, in place — a general, domain-agnostic capability.
+
+    The baseline parquet emitter captures a fixed set (``global_time`` /
+    ``bulk`` / ``listeners``). A composite or config that wants to persist
+    additional stores declares them via the emitter config's ``emit_paths``: a
+    list of store paths, each a sequence of store-node segments (e.g.
+    ``["some_store", "sub_key"]`` or ``["compartment", "global", "volume"]``).
+    This honors them without any subsystem-specific schema baked into the
+    framework — the declaring config owns which stores matter.
+
+    Emit-schema leaf types collapse to ``node`` in the emitter, so only the
+    topology (store roots) selects what is captured: each path's first segment
+    becomes a top-level emit key wired to its own store root, and the nested
+    schema carries ``node`` at the path's leaf. Paths sharing a prefix merge.
+    """
+    for path in emit_paths or []:
+        segments = [str(s) for s in path]
+        if not segments:
+            continue
+        node = emit_schema
+        for segment in segments[:-1]:
+            child = node.get(segment)
+            if not isinstance(child, dict):
+                child = {}
+                node[segment] = child
+            node = child
+        leaf = segments[-1]
+        if not isinstance(node.get(leaf), dict):
+            node[leaf] = "node"
+        topo[segments[0]] = (segments[0],)
+
+
 def _build_declared_emitter(decl: dict, listeners_schema: dict, core,
                              *, allow_ram_fallback: bool = False):
     """Materialise the generator-declared default emitter step.
@@ -513,6 +542,9 @@ def _build_declared_emitter(decl: dict, listeners_schema: dict, core,
             "bulk": ("bulk",),
             "listeners": ("listeners",),
         }
+        # Config-declared EXTRA emit store paths (domain-agnostic; see
+        # _merge_emit_paths). Popped so it does not reach the emitter config.
+        _merge_emit_paths(emit_schema, topo, cfg_in.pop("emit_paths", None))
         cfg = {"emit": emit_schema, **preset, **cfg_in}
         return ParquetEmitter(cfg, core), topo
 
@@ -803,16 +835,15 @@ def parquet_emitter(*, out_dir: str | None = None,
             comp.update(...)
             flush_parquet(comp, success=True)   # explicit, no .bind()
 
-    If you neither call .bind() nor flush_parquet(), the context manager
-    silently degrades to the pre-2026-05-28 behaviour: the override
-    clears but the trailing partial batch + success sentinel are lost.
-    Friction note 2026-05-27 #3 for the original incident.
+    If you neither call .bind() nor flush_parquet(), the trailing partial
+    batch and the success sentinel are lost: the override clears but the
+    final rows never flush. Always .bind() (or call flush_parquet explicitly).
 
     Storage trade-off vs ``sqlite_emitter()``: Parquet is column-oriented and
     typically 3-5x smaller on disk for v2ecoli-shaped runs (sparse arrays,
-    listener-heavy schema). The dashboard's Simulations-DB tab does not yet
-    read parquet — for now use ``sqlite_emitter()`` if dashboard inspection
-    is required.
+    listener-heavy schema). The dashboard's Simulations-DB tab reads the sqlite
+    DB, so use ``sqlite_emitter()`` if you need a run to appear there; analyses
+    and the per-study parquet views read the parquet output directly.
     """
     if out_dir is None:
         ws_root = _find_workspace_root()
@@ -1402,6 +1433,12 @@ def _get_special_step(loader, step_name, core):
                 'bulk': ('bulk',),
                 'listeners': ('listeners',),
             }
+            # Config-declared EXTRA emit store paths (domain-agnostic; see
+            # _merge_emit_paths). Popped so it does not reach the emitter config.
+            _merge_emit_paths(
+                emit_schema, topo, dict(parquet_override).pop("emit_paths", None))
+            parquet_override = {k: v for k, v in parquet_override.items()
+                                if k != "emit_paths"}
             cfg = {'emit': emit_schema, **parquet_override}
             instance = ParquetEmitter(cfg, core)
             # Register under the override's metadata.agent_id (the runner's

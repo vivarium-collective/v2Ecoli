@@ -24,7 +24,7 @@ def test_translate_preserves_process_set_keys():
 # Task 2: classify_process + resolve_injections
 # ---------------------------------------------------------------------------
 import os
-import pytest
+
 from scripts._compare import inject
 
 FORK = os.path.join(os.path.dirname(__file__), "fixtures", "fork_example")
@@ -68,6 +68,28 @@ def test_resolve_rejects_unknown_name():
     cfg = {"add_processes": ["no-such-process"], "time_step": 1.0}
     with pytest.raises(inject.InjectionError, match="not in fork registry"):
         inject.resolve_injections(FORK, cfg)
+
+
+def test_resolve_rejects_config_less_native_swap_target():
+    """FAIL LOUD (sms-ecoli#210 Gate 0): a swap TARGET with no config on the native
+    path (no explicit process_config, no fork_sim_data) would run on config_schema
+    defaults -- for metabolism-redux an empty stoichiometry, which collapses the
+    generation to one tick while reporting success. Refuse instead."""
+    cfg = {"swap_processes": {"some-baseline": "example-secretion"}, "time_step": 1.0}
+    with pytest.raises(inject.InjectionError, match="swap target but has NO config"):
+        inject.resolve_injections(FORK, cfg)
+
+
+def test_native_swap_target_with_explicit_config_is_allowed():
+    """An explicit process_config on the swap target satisfies the guard -- the
+    process gets a real config, so it is NOT config-less."""
+    cfg = {"swap_processes": {"some-baseline": "example-secretion"},
+           "process_configs": {"example-secretion": {"rate": 1.5}},
+           "topology": {"example-secretion": {"counts": ["bulk"]}},
+           "time_step": 1.0}
+    specs = inject.resolve_injections(FORK, cfg)
+    assert specs[0]["name"] == "example-secretion"
+    assert specs[0]["config"] == {"rate": 1.5}
 
 
 def test_resolve_injections_memoized(monkeypatch):

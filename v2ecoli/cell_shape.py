@@ -22,6 +22,8 @@ import math
 
 from process_bigraph import Step
 
+from bigraph_schema.contract import ProcessContract
+
 # Unit bridge: 1 g/mL == 1000 fg/fL  (fg = 1e-15 g, fL = 1e-15 L); fL ≈ µm³.
 _G_PER_ML_TO_FG_PER_FL = 1000.0
 
@@ -97,6 +99,58 @@ def zero_shape():
 
 class ShapeStep(Step):
     """Compute capsule cell shape from mass (fixed width, density, periplasm frac)."""
+
+    contract = ProcessContract(
+        summary=(
+            "Derive capsule cell geometry (Skalnik et al. 2023 §3.1) from "
+            "cell_mass: fixed width and density fix the cross-section, so "
+            "volume comes straight from mass and length derives purely from "
+            "volume by elongation. Reports length, envelope surface areas, "
+            "and periplasm/cytoplasm volumes each step (overwrite, not "
+            "accumulated)."
+        ),
+        math=[
+            "v = mass / (density · 1000)                              (fg / (g/mL·1000) → fL = µm³)",
+            "r = w / 2",
+            "l_cyl = max(0, (v − 4/3·π·r³) / (π·r²))                    (cylindrical section length)",
+            "length = l_cyl + w                                        (tip-to-tip capsule length)",
+            "a_o = 4π·r² + 2π·r·l_cyl                                   (outer membrane surface area)",
+            "a_i = a_o · (1 − f_p)^(2/3)                                (inner membrane surface area)",
+            "v_p = v · f_p ,   v_c = v · (1 − f_p)                      (periplasm / cytoplasm volumes)",
+            "radius_A = r · 1e4 ,  half_len_A = (l_cyl/2) · 1e4         (µm → Å)",
+            "inner_radius_A = radius_A · (1 − f_p)^(1/3) ,  inner_half_len_A = half_len_A · (1 − f_p)^(1/3)",
+        ],
+        symbols={
+            "mass": "cell mass (fg), read from listeners.mass.cell_mass",
+            "density": "fixed cell density (g/mL), config 'density_g_per_ml' (default 1.1)",
+            "v": "total cell volume (fL = µm³), = mass/density",
+            "w": "fixed cell width/diameter (µm), config 'width_um' (default 1.0)",
+            "r": "capsule cap radius = w/2 (µm)",
+            "l_cyl": "length of the cylindrical (non-capped) section (µm)",
+            "length": "tip-to-tip capsule length = l_cyl + w (µm)",
+            "a_o": "outer membrane surface area (µm²)",
+            "a_i": "inner membrane surface area (µm²)",
+            "f_p": "periplasm volume fraction, config 'periplasm_fraction' (default 0.2)",
+            "v_p": "periplasm volume (fL)",
+            "v_c": "cytoplasm volume (fL)",
+            "radius_A": "outer cap radius in Å (r · 1e4)",
+            "half_len_A": "half the cylindrical section length in Å",
+            "inner_radius_A": "inner-membrane cap radius in Å, scaled by (1-f_p)^(1/3)",
+            "inner_half_len_A": "half the inner-membrane cylindrical length in Å",
+        },
+        inputs={
+            "mass": "Reads the nested cell_mass sub-store (listeners.mass.cell_mass) as the sole driver of shape; accepts a pint Quantity[fg] or a plain float.",
+        },
+        outputs={
+            "shape": "Overwrites the flat shape dict each step (map[overwrite[float]]): mass_fg, density_g_per_ml, width_um, volume_fl, length_um, outer_sa_um2, inner_sa_um2, periplasm_fraction, periplasm_vol_fl, cytoplasm_vol_fl, radius_A, half_len_A, inner_radius_A, inner_half_len_A.",
+        },
+        assumptions=[
+            "Cell shape is a capsule (cylinder capped by two hemispheres) of fixed width; growth is purely by elongation, so length derives from volume.",
+            "Width, density, and periplasm fraction are fixed config constants, not simulated quantities.",
+            "Density default is 1.1 g/mL; periplasm fraction default is 0.2 of total volume.",
+            "Output is overwritten (SET), not accumulated, each step — 'shape' reports current geometry, not a running sum.",
+        ],
+    )
 
     config_schema = {
         "width_um": {"_type": "float", "_default": 1.0},          # fixed cell width (diameter)

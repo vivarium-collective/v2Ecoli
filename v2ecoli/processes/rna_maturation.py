@@ -38,7 +38,7 @@ import numpy as np
 from bigraph_schema.contract import ProcessContract
 
 from v2ecoli.library.ecoli_step import EcoliStep as Step
-from v2ecoli.library.schema import listener_schema, numpy_schema, counts, bulk_name_to_idx
+from v2ecoli.library.schema import counts, bulk_name_to_idx
 
 # Register default topology for this process, associating it with process name
 NAME = "ecoli-rna-maturation"

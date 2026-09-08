@@ -55,8 +55,6 @@ from v2ecoli.library.ecoli_step import EcoliStep as Step
 # Engine removed
 # topology_registry removed
 from v2ecoli.library.schema import (
-    listener_schema,
-    numpy_schema,
     attrs,
     bulk_name_to_idx,
     get_free_indices,

@@ -10,7 +10,7 @@ import numpy as np
 from numpy.lib import recfunctions as rfn
 
 from v2ecoli.library.ecoli_step import EcoliStep as Step
-from v2ecoli.library.schema import numpy_schema, counts, attrs, bulk_name_to_idx
+from v2ecoli.library.schema import counts, bulk_name_to_idx
 # topology_registry removed — topology defined as class attribute
 from v2ecoli.types.quantity import ureg as units
 from v2ecoli.library.quantity_helpers import fg_magnitude

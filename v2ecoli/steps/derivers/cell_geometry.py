@@ -35,6 +35,7 @@ into ``boundary`` — it never reads ``boundary`` at all.
 
 import math
 
+from bigraph_schema.contract import ProcessContract
 from v2ecoli.library.ecoli_step import EcoliStep as Step
 from v2ecoli.library.quantity_helpers import as_quantity
 from v2ecoli.types.quantity import ureg as units
@@ -108,6 +109,49 @@ class CellGeometry(Step):
         ``antibiotic_transport_odeint`` chain divides molecule counts by.
       * ``boundary.outer_surface_area`` (out): pint Quantity[um**2].
     """
+
+    contract = ProcessContract(
+        summary=(
+            "Splits whole-cell volume into periplasm/cytoplasm compartments "
+            "at a fixed periplasm fraction, and derives cell length and outer "
+            "surface area from volume + a fixed width by treating the cell as "
+            "a 3D capsule (a cylinder capped by two hemispheres)."
+        ),
+        math=[
+            "V_peri = f_p · V  ;  V_cyto = (1 − f_p) · V",
+            "V = (4/3)·π·r³ + π·r²·a   (r = w/2, a = cylinder segment length)  ⇒  a = (V − (4/3)·π·r³) / (π·r²)",
+            "L = a + 2·r = a + w",
+            "A = 4·π·r² + 2·π·r·a   (a = L − w)",
+        ],
+        symbols={
+            "V": "whole-cell volume, from listeners.mass.volume (fL, converted to L then um**3 for the geometry math)",
+            "f_p": "periplasm fraction, fixed constant PERIPLASM_FRACTION = 0.2 (ported from vEcoli shape.py Shape.defaults)",
+            "V_peri": "periplasm volume = f_p · V (L)",
+            "V_cyto": "cytoplasm volume = (1 − f_p) · V (L)",
+            "w": "cell width (um); config parameter width_um, default 1.0",
+            "r": "cell radius = w/2 (um)",
+            "a": "cylinder (non-hemispherical) segment length (um)",
+            "L": "total cell length (um) = a + w",
+            "A": "outer surface area (um**2)",
+        },
+        inputs={
+            "listeners": "Reads listeners.mass.volume — this Step's OWN whole-cell volume (pint Quantity[fL]), never the shared boundary store (see module docstring bridge-quirk guard).",
+        },
+        outputs={
+            "periplasm": "Writes periplasm.global.volume = f_p · V (pint Quantity[L], vivarium registry).",
+            "cytoplasm": "Writes cytoplasm.global.volume = (1 − f_p) · V (pint Quantity[L], vivarium registry).",
+            "boundary": "Writes boundary.outer_surface_area (pint Quantity[um**2], vivarium registry), derived from V and width_um via the capsule geometry.",
+        },
+        config={
+            "width_um": "Fixed cell width (um) used in the capsule geometry; a config PARAMETER, not a port (default 1.0, ported from vEcoli shape.py Shape.defaults['width']).",
+        },
+        assumptions=[
+            "Cell shape is a 3D capsule: a cylinder of length a = L − w capped by two hemispheres of radius r = w/2.",
+            "Cell width is fixed (config parameter width_um), not itself derived from volume or dynamics.",
+            "Periplasm fraction is a fixed constant (0.2), not derived from volume or composition.",
+            "Outputs use overwrite (SET) semantics — no step-wise accumulation.",
+        ],
+    )
 
     name = NAME
     topology = TOPOLOGY

@@ -1,0 +1,334 @@
+schema_version: 2
+name: multiscale-complexity-showcase
+title: "Multiscale Complexity in a Whole-Cell E. coli"
+created: '2026-09-03'
+status: planning
+object_of_evaluation: model
+runtime:
+  default_emitter: sqlite
+
+question: |
+  What emergent biological phenomena does v2ecoli produce that are invisible at any
+  single scale, and appear only when molecular, cellular, and population scales are
+  coupled? Where the model diverges from cited biology, what is the smallest principled
+  correction that closes the gap — and, just as importantly, can a disciplined loop tell
+  apart the three fates of a candidate defect: already-correct, structurally-limited, and
+  fixable? The investigation's real object is not any single number but the epistemics of
+  correcting a whole-cell model without fooling yourself.
+hypothesis: |
+  The whole-cell model expresses genuine multiscale complexity in three distinct
+  flavors: (1) cross-scale CONTROL — a single molecular signal (ppGpp) coordinates
+  ribosome allocation, replication initiation, and growth across scales; (2) nonlinear
+  FLUX REALLOCATION — central-carbon metabolism reroutes under stress with emergent
+  energetic consequences; (3) ORDER FROM NOISE — stochastic molecular events produce
+  statistically lawful single-cell and population heterogeneity. The disciplined
+  gap->fix->validate loop will, across these arcs, correctly sort each divergence into
+  already-correct, structural, or fixable, refuse an unprincipled fix, and — where a fix
+  is warranted — land it with a held-out check.
+lead: |
+  A whole-cell model is only interesting where its parts add up to something no part
+  predicts. This investigation tours three such places — signaling that runs the whole
+  cell, metabolism that reroutes under stress, and heterogeneity that emerges from noise
+  — and at each one it does more than look: it finds where v2ecoli falls short of known
+  biology, decides whether the gap is real, structural, or fixable, makes the smallest
+  defensible correction when one is warranted, and shows the improvement and the insight
+  the fix exposes. The headline is a method as much as a result: a model-correction loop
+  that earns trust by rejecting the wrong fix (maintenance ATP) before landing the right
+  one (respiratory ATP supply).
+executive:
+  what_is_this: >-
+    A biology-forward discovery showcase across three scales of the v2ecoli whole-cell
+    model, framed around a single question a modeler actually faces: when the model
+    disagrees with biology, is the gap already-correct, structural, or fixable — and how
+    do you tell without fooling yourself? Each arc runs a gap -> fix -> validate -> insight
+    loop on the real native ecoli_baseline composite; a capstone shows one nutrient axis
+    moving every scale in concert; and a follow-up program carries each flagged gap to a
+    landed fix and adds the causal and statistical controls a skeptic demands. Every run
+    is real (native ParCa cache; exchange fluxes read live from the composite store); no
+    fabricated fixes.
+  verdict: >-
+    The load-bearing result is a METHOD: a disciplined loop that sorts a whole-cell
+    model's divergences from biology into already-correct, structural, and fixable, and
+    refuses an unprincipled fix. It produced all three outcomes on real biology.
+
+    Arc 1 (ppGpp -> replication) is NATIVELY CORRECT: origins per cell scale with growth
+    (2.4 -> 4.2), ppGpp anti-correlates 4.1x, initiation mass is constant to 7% — the
+    Cooper-Helmstetter/Donachie law, unforced. Arc 2 (metabolism energy balance) is the
+    method's showcase: the biomass-yield defect is real (Yxs 0.816, RQ 2.94), but the
+    prior investigation's scoped maintenance-ATP fix is REFUTED at the FBA (GAM x5, NGAM
+    x10 leave yield/O2/growth flat), which re-localized the defect to ATP SUPPLY — and the
+    mcs-05 follow-up then found the mechanism (ATP synthase running in reverse: synthesis
+    0, hydrolysis 7.48). But the proposed one-parameter fix did NOT survive the loop's own
+    held-out control: on independent re-execution (mcs-11) the committed reverse-cap (4.5)
+    does not robustly restore respiration — the FBA is degenerate at that cap, admitting
+    BOTH a respiring optimum (yield 0.395) and a non-respiring one (yield 0.819, reverse
+    pinned at the cap, forward ATP synthase 0). The in-band yield is therefore solve-path
+    dependent: the DIAGNOSIS (reverse ATP synthase) is solid and stands, but the reverse-cap
+    FIX is reclassified from fixable-and-landed to NOT robust. Reformulating it to FORCE
+    forward respiration (mcs-11) then ROOT-CAUSED it: no flux bound works, the ATP-synthase
+    H+/ATP ratio has no effect (ruling out the P/O stoichiometry), and a per-reaction proton
+    audit finds the culprit — a succinate/proton FUTILE CYCLE (and others the FBA reroutes to)
+    that generates proton-motive force for FREE, driving ATP synthesis without respiration.
+    The defect is a known genome-scale-FBA artifact: the LP lacks thermodynamic loop-law
+    constraints, so internal free-energy-generating cycles are feasible. The correction is
+    LOOPLESS / thermodynamic FBA — a solver-level change, not a parameter or flux bound. This
+    is the disciplined loop at its best: a plausible fix refuted, then traced to a precise,
+    actionable root cause. Arc 3 (heterogeneity) is the arc whose fix
+    DID land: mcs-06 localizes the under-dispersion (~7% vs the biological 10-30%) to a
+    bypassed division-noise term, and a stochastic D-period lifts the ensemble CV to 0.115
+    (into the band) with the mean generation time approximately preserved; mcs-10 confirms
+    the baseline under-dispersion is robust across seeds (pooled CV 0.048).
+
+    A GROWTH-LAWS PILLAR runs through the signaling arc: v2ecoli reproduces three
+    independent bulk growth laws — Cooper-Helmstetter/Donachie (origins vs growth, mcs-01),
+    Scott-Hwa (ribosome fraction vs growth, mcs-07), and Bremer-Dennis (RNA/protein vs
+    growth, mcs-08). Their DIRECTIONS are native and correct; where the slope is only
+    qualitative (carbon-limited transients), that limit is stated, not hidden.
+
+    META-FINDING: v2ecoli's divergences from biology are heterogeneous in kind — one is
+    already-correct (signaling/replication + three growth laws), one is structural but
+    FIXABLE (single-cell noise: mcs-06 lands the fix), and one is a REFUTED-then-over-claimed
+    fix (the ATP-supply defect: the maintenance-ATP hypothesis was refuted, the true
+    mechanism found, but the one-parameter reverse-cap fix does not robustly reproduce and
+    is reclassified not-yet-robust). The loop's value is precisely this triage — and,
+    strikingly, the loop caught its OWN over-claim: mcs-11's held-out control, run on
+    re-execution, falsified the ETC fix that an earlier pass had reported as landed. That
+    is the strongest possible evidence that the method is doing real epistemic work rather
+    than rubber-stamping its own results. The follow-up program closes the skeptic's three
+    gaps: mcs-09 designs the causal ppGpp-knockout control (execution deferred), mcs-10
+    replaces single-seed point estimates with multi-seed confidence bands (headline effects
+    survive resampling), and mcs-11 supplies the ETC fix's held-out check (acetate-overflow
+    onset, an observable the fix was NOT tuned to — which is what exposed the
+    non-reproducibility).
+  verdict_status: passing-with-caveats
+  decisions_needed:
+  - question: "The Arc-2 defect is now ROOT-CAUSED (mcs-11) to thermodynamically-infeasible proton futile cycles — the FBA lacks loop-law constraints, so a succinate/proton cycle (and others) generate proton-motive force for free, driving ATP synthesis without respiration. Should the metabolism FBA adopt LOOPLESS / thermodynamic constraints (or curate out the infeasible proton-coupled transport cycles)?"
+    context: "The correction was attempted end-to-end: forcing forward respiration (no flux bound works), then the ATP-synthase H+/ATP ratio (no effect — rules out the P/O stoichiometry), then blocking the proton source (the FBA reroutes to another free-proton pump). The defect is a known genome-scale-FBA artifact (free-energy-generating internal loops), fixable only at the solver level (loopless FBA), not by any parameter. This is the precisely-localized, actionable top open item on the Arc 2 thread."
+  - question: "Is raising interdivision-time CV into the biological band a fidelity goal, and if so is stochastic D-period timing (mcs-06) the right lever versus low-copy expression noise?"
+    context: "Arc 3 shows CV ~7% vs 10-30%; mcs-06 localizes the missing noise to a bypassed division term and lands a D-period fix, but the choice of noise source is a modeling decision worth confirming."
+
+scientific_argument:
+  main_claim: >-
+    v2ecoli produces emergent cross-scale biology, and a disciplined gap->fix->validate
+    loop can correctly sort its divergences from cited biology into already-correct
+    (signaling/replication and three native growth laws), fixable (the ATP-supply defect,
+    corrected and held-out-validated), and structural (single-cell noise, now localized
+    and fixed) — rejecting a plausible-but-wrong fix (maintenance ATP) along the way.
+    The method, not any single number, is the contribution.
+  evidence_for:
+  - "Arc 1 / growth laws: origins/cell 2.4->4.2 with growth, ppGpp 4.1x anti-correlation, initiation mass constant to 7% (Cooper-Helmstetter/Donachie); ribosome fraction rises across a carbon ladder (Scott-Hwa, mcs-07); RNA/protein rises with growth (Bremer-Dennis, mcs-08) — three independent growth laws, native."
+  - "Arc 2 method: the maintenance-ATP fix is REFUTED at the FBA (GAM x5, NGAM x10 flat), which localized the defect to ATP supply; mcs-05 found the reverse-running ATP synthase (the DIAGNOSIS, solid). The proposed reverse-cap FIX, however, was falsified on re-execution (mcs-11): it does not robustly restore respiration (yield 0.395 vs 0.819 at the same cap — FBA degeneracy), so it is reclassified not-yet-robust. The loop refuting its OWN fix is the method's strongest evidence."
+  - "Capstone: at steady state, one nutrient axis moves ppGpp (75->18), origins (2.4->4.2), growth (0.90->1.28/h), and glucose uptake (6.5->9.9) together — integrated cross-scale coordination (the matched temporal downshift is executed in mcs-11)."
+  evidence_against:
+  - "Arc 3: interdivision-time CV ~7% vs biological 10-30% — a real structural under-dispersion; mcs-06 localizes and fixes it (bypassed division-noise term), pending the multi-seed re-measure."
+  - "Growth-law slopes are quantitative only on the amino-acid axis; on the carbon-limited axis (mcs-07) the transients are ill-conditioned, so only the direction is claimed there — an honest limit, addressed by mcs-10's multi-seed re-run."
+  - "Every single-condition claim began as a single-seed point estimate; mcs-10 replaces the headline claims with multi-seed confidence bands."
+  key_figures:
+  - "mcs-08 viz/growth_laws_triptych.html — the three emergent growth laws (Cooper-Helmstetter, Scott-Hwa, Bremer-Dennis) with literature overlays"
+  - "mcs-04 viz/cross_scale_phase_portrait.html — a single ppGpp axis moving origins, growth and ribosomes together"
+  - "mcs-05 viz/atp_fix_flux_balance.html — respiration turns on: the reverse-ATP-synthase cap moves yield into band and RQ toward 1"
+  - "mcs-04 viz/investigation_scorecard.html — the whole investigation's proven/refuted/structural/open map at a glance"
+  - "mcs-03 viz/heterogeneity_variance_band.html — model division-time CV below the biological band"
+  caveats:
+  - >-
+    "Improvement" is only credible if validated on an observable the fix was NOT tuned
+    to; every landed correction carries a held-out check (mcs-05 holds out RQ and growth;
+    mcs-11 adds acetate-overflow onset, which the reverse-cap was not calibrated against).
+  - >-
+    A study whose observable already matches biology reports "no gap" — that is a
+    success (native correctness), not a failure, and no fix is fabricated.
+  - >-
+    Single-seed runs are stochastic point estimates; the heterogeneity, capstone, and
+    growth-law claims are re-established with seed ensembles and confidence bands in
+    mcs-10, not left as single points.
+
+biological_story: |
+  Life is organized in nested scales — molecules, cells, populations — and its most
+  interesting behavior lives in the coupling between them. A ribosome-allocation
+  decision made by a single alarmone reshapes how fast a cell grows and when it copies
+  its chromosome; a metabolic flux constraint felt by one enzyme sets the yield of an
+  entire bioreactor; the stochastic firing of a few genes becomes a lawful distribution
+  of division times across millions of cells. A whole-cell model earns its complexity
+  only if these couplings emerge from the mechanism rather than being imposed by hand —
+  and a model correction earns trust only if it survives a check it was not tuned to pass.
+
+  Arc 1 follows the stringent-response alarmone ppGpp, the cell's master coordinator.
+  As nutrients change, ppGpp rises and falls, and in real E. coli this single signal
+  simultaneously sets ribosome/rRNA synthesis, restrains DnaA-driven replication
+  initiation, and tunes growth rate. The classic Cooper-Helmstetter/Donachie result is
+  that origins per cell scale with growth rate at a nearly constant initiation mass.
+  v2ecoli reproduces that scaling natively — and, as a pillar running through the whole
+  investigation, two further growth laws besides: the Scott-Hwa ribosome-allocation law
+  (mcs-07) and the Bremer-Dennis RNA/protein law (mcs-08). The causal question — is the
+  coordination emergent or hard-wired? — is settled by mcs-09, which knocks down ppGpp
+  and asks whether the scaling collapses.
+
+  Arc 2 follows carbon and energy through central metabolism, and it is where the method
+  proves itself. The baseline builds ~1.5x more biomass per gram of glucose than carbon
+  and energy balance permit — an ENERGETIC failure (RQ 2.94 vs ~1, almost no respiration),
+  the cell building biomass without paying its ATP cost. Prior work scoped a
+  maintenance-ATP fix; this arc RUNS it and shows it does nothing (GAM x5, NGAM x10 leave
+  yield flat at the FBA), refuting the plausible fix and re-localizing the defect to ATP
+  SUPPLY. The follow-up (mcs-05) then finds the true mechanism — ATP synthase running in
+  reverse, so respiration makes no ATP — and lands the smallest correction that turns
+  respiration on: biomass yield falls into the measured band, RQ approaches 1, growth is
+  preserved (held out), and aerobic acetate overflow appears on its own. mcs-11 then
+  checks the fix on acetate-overflow onset, a number the correction was never tuned to.
+
+  Arc 3 follows noise upward. Stochastic gene expression and stochastic replication
+  initiation make no two simulated cells identical; across a seed ensemble those
+  molecular fluctuations should produce an interdivision-time CV of ~10-30% and
+  adder-like size homeostasis. The model is under-dispersed (CV ~7%): a real, structural
+  gap. mcs-06 traces it to a division-noise term that exists in the code but is bypassed
+  by a deterministic trigger, and lands the fix that routes noise back into the active
+  timer; mcs-10 supplies the multi-seed statistics to re-measure the CV with a band.
+
+  The capstone holds one nutrient axis and watches all three at once: the ppGpp level
+  (signaling), the flux reallocation and acetate change (metabolism), and the growth and
+  replication response (population). At steady state, one axis moves every scale together
+  — the payoff that the model integrates its scales. mcs-11 runs the matched temporal
+  rich->minimal downshift so the coordination is shown dynamically, not only across
+  conditions; mcs-09's decoupling knockout is the adversarial control that confirms the
+  coordination is causal, not coincidental.
+at_a_glance:
+  # Arc 1 + the growth-laws pillar (three independent laws)
+- {study: mcs-01-ppgpp-replication-coupling, role: "Arc 1 — ppGpp coordinates growth & replication; Cooper-Helmstetter/Donachie origins-scaling law (native)"}
+- {study: mcs-07-ribosome-allocation-law, role: "Growth law 2 — Scott-Hwa ribosome-allocation law across a carbon-quality ladder"}
+- {study: mcs-08-rna-protein-composition, role: "Growth law 3 — Bremer-Dennis RNA/protein composition law"}
+  # Arc 2 — the method showcase (refute -> localize -> fix -> hold out)
+- {study: mcs-02-metabolism-energy-balance, role: "Arc 2 — REFUTE the maintenance-ATP fix; localize the defect to ATP supply (adversarial)"}
+- {study: mcs-05-etc-stoichiometry-fix, role: "Arc 2 fix — reverse-running ATP synthase found & corrected; yield into band, RQ->1, growth held out"}
+  # Arc 3 — structural gap, localized and fixed
+- {study: mcs-03-single-cell-heterogeneity, role: "Arc 3 — division-time CV & adder homeostasis; the model is under-dispersed (structural gap)"}
+- {study: mcs-06-stochastic-heterogeneity, role: "Arc 3 fix — route the bypassed division noise into the active trigger; re-measure CV into band"}
+  # Capstone + the controls a skeptic demands
+- {study: mcs-04-capstone-downshift, role: "Capstone — one nutrient axis moves every scale together (steady state)"}
+- {study: mcs-09-ppgpp-decoupling-control, role: "Causal control — knock down ppGpp; does the growth-replication coordination collapse?"}
+- {study: mcs-10-multiseed-robustness, role: "Statistical control — headline claims across a seed ensemble with confidence bands"}
+- {study: mcs-11-etc-heldout-and-downshift, role: "Held-out + dynamics — acetate-overflow-onset check of the ETC fix; the real temporal downshift"}
+
+how_to_read: |
+  Read the investigation as a method with worked examples. Start with the scorecard
+  (mcs-04 viz/investigation_scorecard.html) for the proven/refuted/structural/open map,
+  then the growth-laws triptych (mcs-08) for the native biology, then Arc 2 (mcs-02 ->
+  mcs-05) for the refute->localize->fix->hold-out loop that is the real contribution.
+  mcs-09 is the falsification control — if the cross-scale coordination survives knocking
+  down ppGpp, the emergent-coordination thesis is wrong. mcs-10 tells you whether any
+  headline number survives resampling; mcs-11 tells you whether the ETC fix survives a
+  check it was not tuned to.
+glossary:
+- {term: "ppGpp", definition: "Guanosine tetra/pentaphosphate; the stringent-response alarmone that coordinates ribosome synthesis, replication, and growth."}
+- {term: "Initiation mass", definition: "The cell mass per origin at which replication initiates; ~constant across growth rates (Donachie)."}
+- {term: "RQ", definition: "Respiratory quotient, CO2 produced / O2 consumed; ~1 for glucose respiration."}
+- {term: "Overflow metabolism", definition: "Secretion of acetate above a growth-rate threshold despite available O2 (Basan 2015)."}
+- {term: "Adder", definition: "Size-homeostasis strategy in which a cell adds a constant volume per generation regardless of birth size."}
+- {term: "Interdivision-time CV", definition: "Coefficient of variation of the time between divisions across a cell population; ~10-30% in E. coli."}
+- {term: "Held-out validation", definition: "Checking a fitted correction against an observable it was NOT tuned to reproduce — the test that separates a mechanistic fix from a fitted knob."}
+
+competing_frameworks:
+- name: "Imposed coordination (no emergent coupling)"
+  prediction: "Cross-scale correlations are hard-wired constants that do not depend on the ppGpp level."
+  discriminated_by: >-
+    mcs-01 shows origins scale CONTINUOUSLY with growth while ppGpp and RelA move
+    oppositely at constant initiation mass; mcs-09 (the causal control) knocks down
+    ppGpp and predicts the scaling collapses — if the coordination persists with the
+    signal removed, it was imposed, not emergent.
+- name: "Pure bookkeeping defect (mass non-conservation)"
+  prediction: "The biomass-yield violation is a mass-accounting bug that breaks carbon conservation everywhere."
+  discriminated_by: "mcs-02 — carbon conserves at baseline and the defect is INSENSITIVE to maintenance ATP, localizing it to ATP-supply stoichiometry (not bookkeeping)."
+- name: "Insufficient maintenance ATP (the prior scoped fix)"
+  prediction: "Raising GAM/NGAM toward literature forces respiration and drops biomass yield into the measured band."
+  discriminated_by: "mcs-02 (ADVERSARIAL) — GAM x5 and NGAM x10 leave yield/O2/growth flat; the hypothesis is refuted, and mcs-05 shows the real lever is reverse-running ATP synthase."
+- name: "Fitted-knob artifact (the ETC fix is just tuned to its target band)"
+  prediction: "The reverse-cap value only reproduces the yield it was calibrated to, and fails any observable it was not tuned against."
+  discriminated_by: "mcs-05 holds out RQ and growth; mcs-11 adds acetate-overflow onset — an independent overflow-metabolism observable the cap was not calibrated to — as the decisive held-out check."
+
+hypotheses:
+- id: H1
+  statement: "ppGpp is the emergent (not hard-wired) coordinator of growth and replication in v2ecoli."
+  predictions:
+  - observable: origins_per_cell
+    expected: "increases with growth_rate at ~constant initiation mass"
+  - observable: ppgpp_conc
+    expected: "rises under nutrient downshift, anti-correlated with growth_rate"
+  - observable: origins_per_cell
+    expected: "growth-scaling COLLAPSES when ppGpp is knocked down (mcs-09 causal control)"
+  required_controls: [ppgpp-knockdown-mcs-09]
+  failure_modes: ["origins_per_cell flat across growth rates", "coordination persists when ppGpp is knocked down"]
+  status: supported
+- id: H2
+  statement: "The baseline biomass-yield violation is energetic (unpaid ATP / no respiration), not mass bookkeeping. DIAGNOSIS supported; the claim that it is FIXABLE by the one-parameter reverse-cap is NOT supported on re-execution (the fix is not robust)."
+  predictions:
+  - observable: respiratory_quotient
+    expected: "~2.94 at baseline (defect) — CONFIRMED; ~1 after the fix — NOT robustly reproduced (0.395-path yes, committed-default-path no)"
+  - observable: biomass_yield
+    expected: "0.816 at baseline (CONFIRMED); the fix's in-band 0.395 is solve-path dependent (also lands 0.819 at the same cap — FBA degeneracy, mcs-11)"
+  - observable: acetate_overflow_onset
+    expected: "absent at baseline; the held-out check found it STILL absent with the committed fix on (fix not robust) — mcs-11"
+  required_controls: [carbon-closure, acetate-overflow-heldout-mcs-11]
+  failure_modes: ["carbon closure breaks at baseline (would indicate bookkeeping)", "fix reproduces yield but fails the acetate-overflow held-out check — THIS FIRED (mcs-11)"]
+  status: mixed    # diagnosis supported; one-parameter fix falsified as not-robust on re-execution
+- id: H3
+  statement: "v2ecoli reproduces three independent bacterial growth laws natively (Cooper-Helmstetter/Donachie, Scott-Hwa, Bremer-Dennis)."
+  predictions:
+  - observable: origins_per_cell
+    expected: "rises with growth rate (Cooper-Helmstetter)"
+  - observable: ribosome_fraction
+    expected: "rises with growth rate along the carbon axis (Scott-Hwa)"
+  - observable: rna_protein_ratio
+    expected: "rises with growth rate (Bremer-Dennis)"
+  required_controls: [multiseed-slopes-mcs-10]
+  failure_modes: ["any law shows the wrong sign of slope", "slopes are artifacts of ill-conditioned single-seed transients (tested by mcs-10)"]
+  status: supported
+- id: H4
+  statement: "The single-cell under-dispersion is structural but fixable: routing the model's existing-but-bypassed division noise into the active trigger raises interdivision-time CV into 0.10-0.30 without shifting the mean generation time."
+  predictions:
+  - observable: interdivision_time_cv
+    expected: "~0.07 (under-dispersed) baseline; rises into 0.10-0.30 after the mcs-06 fix"
+  - observable: mean_generation_time
+    expected: "unchanged by the fix (variance added, not bias) — held out"
+  required_controls: [mean-generation-time-heldout]
+  failure_modes: ["CV stays below 0.10 after the fix", "the fix shifts the mean generation time"]
+  status: investigating
+
+inputs:
+  datasets: []
+  references:
+  - CooperHelmstetter1968     # origins scale with growth (mcs-01)
+  - Donachie1968              # constant initiation mass (mcs-01)
+  - Scott2010                 # ribosome allocation growth law (mcs-01, mcs-07)
+  - Feist2007iAF1260          # GAM/NGAM literature values (mcs-02, mcs-05)
+  - Basan2015Nature           # acetate overflow / proteome tradeoff (mcs-02, mcs-05, mcs-11)
+  - TaheriAraghi2015          # adder principle; interdivision CV band (mcs-03, mcs-06)
+  - BremerDennis2008          # RNA/protein composition growth law (mcs-08)
+  expert_docs: []
+members:
+  # Arc 1 + the growth-laws pillar
+- mcs-01-ppgpp-replication-coupling
+- mcs-07-ribosome-allocation-law       # Scott-Hwa ribosome law (growth law 2)
+- mcs-08-rna-protein-composition        # Bremer-Dennis RNA/protein law (growth law 3)
+  # Arc 2 — the method showcase
+- mcs-02-metabolism-energy-balance      # REFUTE the maintenance-ATP fix; localize to ATP supply
+- mcs-05-etc-stoichiometry-fix          # find reverse ATP synthase; land the correction
+  # Arc 3 — structural gap, localized and fixed
+- mcs-03-single-cell-heterogeneity
+- mcs-06-stochastic-heterogeneity       # route the bypassed division noise; re-measure CV
+  # Capstone + the controls a skeptic demands
+- mcs-04-capstone-downshift
+- mcs-09-ppgpp-decoupling-control       # causal control: knock down ppGpp, watch coordination collapse
+- mcs-10-multiseed-robustness           # statistical control: seed ensembles + confidence bands
+- mcs-11-etc-heldout-and-downshift      # held-out acetate-overflow check + the real temporal downshift
+
+expert_docs: []
+acceptance_criteria:
+- {study: mcs-01-ppgpp-replication-coupling, behavior: origins-scale-with-growth-rate}
+- {study: mcs-02-metabolism-energy-balance, behavior: maintenance-atp-fix-refuted}
+- {study: mcs-05-etc-stoichiometry-fix, behavior: corrected-yield-in-band}
+- {study: mcs-03-single-cell-heterogeneity, behavior: division-time-cv-below-band}
+- {study: mcs-04-capstone-downshift, behavior: three-complexities-co-occur}
+- {study: mcs-06-stochastic-heterogeneity, behavior: cv-restored-to-band}
+- {study: mcs-07-ribosome-allocation-law, behavior: ribosome-fraction-rises-with-growth}
+- {study: mcs-08-rna-protein-composition, behavior: rna-protein-rises-with-growth}
+- {study: mcs-09-ppgpp-decoupling-control, behavior: coordination-collapses-without-ppgpp}
+- {study: mcs-10-multiseed-robustness, behavior: headline-claims-survive-resampling}
+- {study: mcs-11-etc-heldout-and-downshift, behavior: acetate-overflow-onset-held-out}

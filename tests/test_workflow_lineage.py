@@ -8,8 +8,9 @@ def _make(monkeypatch, generations, divide_after=2, **wave_kwargs):
 
     ``wave_kwargs`` accepts the per-generation checkpoint/resume keys
     (initial_carry_state_path / initial_generation_index / daughter_state_out_path,
-    backlog item 34) -- omitted, they default to "" / 0 / "", i.e. today's
-    unchanged single-invocation-runs-every-generation behavior.
+    backlog item 34; checkpoint_dir, item 115) -- omitted, they default to
+    "" / 0 / "" / "", i.e. today's unchanged single-invocation-runs-every-
+    generation behavior.
     """
     lp = LineageProcess.__new__(LineageProcess)
     # Minimal config + state normally set by Process.__init__/initialize.
@@ -21,6 +22,7 @@ def _make(monkeypatch, generations, divide_after=2, **wave_kwargs):
         "initial_carry_state_path": wave_kwargs.get("initial_carry_state_path", ""),
         "initial_generation_index": wave_kwargs.get("initial_generation_index", 0),
         "daughter_state_out_path": wave_kwargs.get("daughter_state_out_path", ""),
+        "checkpoint_dir": wave_kwargs.get("checkpoint_dir", ""),
     }
     lp.initialize(lp.config)
     calls = {"built": 0}
@@ -349,6 +351,77 @@ def test_daughter_state_carries_prior_summaries_forward_across_resume(monkeypatc
         if out.get("summary") or out.get("complete"):
             break
     assert [s["generation"] for s in saved["state"]["_prior_summaries"]] == [0, 1]
+
+
+def test_checkpoint_dir_derives_a_distinct_per_generation_path(monkeypatch):
+    """Item 115: a pbg-native lineage has no external scheduler to pre-compute
+    each generation's own literal daughter_state_out_path (unlike chain-dispatch,
+    where JobScheduler computes it once per generation's own separate job) --
+    LineageProcess must derive it itself, and a DIFFERENT path per generation,
+    so a write failure at generation N can never corrupt generation N-1's
+    already-durable checkpoint."""
+    import v2ecoli.cache as cache_mod
+    saved_paths = []
+    monkeypatch.setattr(
+        cache_mod, "save_initial_state",
+        lambda state, path: saved_paths.append(path))
+
+    lp, _ = _make(monkeypatch, generations=3, divide_after=1,
+                  checkpoint_dir="s3://bucket/seed0/checkpoints")
+    out = {}
+    for _ in range(30):
+        out = lp.update({}, 1.0)
+        if out.get("complete"):
+            break
+    assert out["complete"] is True
+    assert saved_paths == [
+        "s3://bucket/seed0/checkpoints/gen_0000.pkl",
+        "s3://bucket/seed0/checkpoints/gen_0001.pkl",
+        "s3://bucket/seed0/checkpoints/gen_0002.pkl",
+    ], saved_paths
+    assert len(set(saved_paths)) == 3, "each generation must write a DISTINCT key"
+
+
+def test_checkpoint_dir_strips_a_trailing_slash(monkeypatch):
+    """A caller-supplied prefix with a trailing slash must not produce a
+    double-slash in the derived path."""
+    import v2ecoli.cache as cache_mod
+    saved = {}
+    monkeypatch.setattr(cache_mod, "save_initial_state",
+                         lambda state, path: saved.update(path=path))
+    lp, _ = _make(monkeypatch, generations=1, divide_after=1,
+                  checkpoint_dir="s3://bucket/seed0/checkpoints/")
+    lp.update({}, 1.0)
+    assert saved["path"] == "s3://bucket/seed0/checkpoints/gen_0000.pkl"
+
+
+def test_checkpoint_dir_takes_priority_over_daughter_state_out_path(monkeypatch):
+    """Both set is a real, meaningful precedence, not an ambiguity -- a literal
+    single path can only ever describe ONE generation's own destination, so
+    checkpoint_dir (which can describe all of them) must win."""
+    import v2ecoli.cache as cache_mod
+    saved = {}
+    monkeypatch.setattr(cache_mod, "save_initial_state",
+                         lambda state, path: saved.update(path=path))
+    lp, _ = _make(monkeypatch, generations=1, divide_after=1,
+                  checkpoint_dir="s3://bucket/checkpoints",
+                  daughter_state_out_path="s3://bucket/legacy/daughter.json")
+    lp.update({}, 1.0)
+    assert saved["path"] == "s3://bucket/checkpoints/gen_0000.pkl"
+
+
+def test_checkpoint_dir_empty_falls_back_to_daughter_state_out_path_unchanged(monkeypatch):
+    """The byte-identical regression: checkpoint_dir omitted (today's default,
+    "") must reproduce EXACTLY chain-dispatch's own existing behavior -- a
+    single literal path, unchanged by this feature's existence."""
+    import v2ecoli.cache as cache_mod
+    saved = {}
+    monkeypatch.setattr(cache_mod, "save_initial_state",
+                         lambda state, path: saved.update(path=path))
+    lp, _ = _make(monkeypatch, generations=1, divide_after=1,
+                  daughter_state_out_path="s3://bucket/seed0/gen0/daughter.json")
+    lp.update({}, 1.0)
+    assert saved["path"] == "s3://bucket/seed0/gen0/daughter.json"
 
 
 def test_daughter_state_not_persisted_without_a_daughter(monkeypatch):

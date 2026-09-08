@@ -1,0 +1,33 @@
+{
+  "ladder": [
+    {
+      "condition": "acetate",
+      "growth_per_h": 0.014,
+      "ribosome_conc": 1.45,
+      "n_cells": 1,
+      "note": "gen-1 transient, numerically unstable"
+    },
+    {
+      "condition": "succinate",
+      "growth_per_h": 0.042,
+      "ribosome_conc": 1.9,
+      "n_cells": 1,
+      "note": "gen-1 transient, numerically unstable"
+    },
+    {
+      "condition": "glucose",
+      "growth_per_h": 0.896,
+      "ribosome_conc": 20.78,
+      "n_cells": 4
+    },
+    {
+      "condition": "with_aa",
+      "growth_per_h": 1.284,
+      "ribosome_conc": 21.17,
+      "n_cells": 4
+    }
+  ],
+  "finding": "ribosome_conc rises monotonically with growth rate (Scott-Hwa C-line reproduced)",
+  "fix_applied": "modular_fba.py: clamp tiny-negative homeostatic targets (numerical noise) to 0 \u2014 unblocks acetate/succinate conditions",
+  "caveats": "acetate/succinate are gen-1 transient (glucose-adapted start) + ill-conditioned FBA, so absolute growth is under-estimated; the positive ribosome-growth trend is robust, absolute slope is not."
+}

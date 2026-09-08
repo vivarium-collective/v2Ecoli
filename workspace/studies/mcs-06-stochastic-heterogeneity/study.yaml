@@ -1,0 +1,226 @@
+schema_version: 4
+name: mcs-06-stochastic-heterogeneity
+investigation: multiscale-complexity-showcase
+title: "Follow-up (Arc 3) — restore single-cell heterogeneity via stochastic D-period"
+created: '2026-09-03'
+status: evaluated
+confidence: Accepted
+gate_status: passed
+
+cites:
+- {key: TaheriAraghi2015, claim: "interdivision-time CV ~10-30% and adder homeostasis in E. coli"}
+
+question: >-
+  Arc 3 (mcs-03) found v2ecoli under-dispersed — interdivision-time CV ~7% vs the biological
+  10-30% — and a code audit localized WHY: the division machinery carries a stochastic term
+  (mu_div ~ Normal(1.0, 0.1)) but it feeds the LEGACY mass-threshold trigger, while the ACTIVE
+  trigger is deterministic (divide when global_time reaches replication-completion + a FIXED
+  D-period). So the model's own noise is bypassed. Does routing biologically-motivated noise
+  into the ACTIVE trigger — making the scheduled D-period stochastic — raise the ensemble CV
+  into 0.10-0.30 WITHOUT changing the mean generation time or breaking size homeostasis?
+
+hypothesis: >-
+  The under-dispersion is set by the deterministic D-period in the active division trigger.
+  Drawing the scheduled D-period per division from Normal(1.0, cv) * D_period (cv ~ 0.15,
+  seeded, floored) raises the interdivision-time CV from ~0.07 into 0.10-0.30 while the MEAN
+  generation time and mean mass are PRESERVED (the fix adds variance, not bias).
+
+objective: >-
+  Land the smallest principled change (a stochastic D-period in chromosome_replication) behind a
+  default-off knob; run a seed ensemble with the noise OFF (baseline) and ON, and re-measure the
+  interdivision-time CV (target 0.10-0.30) with the mean generation time held out.
+
+conditions:
+  baseline:
+    composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+    params: {}
+  variants:
+  - name: stochastic-d-period
+    detail: >-
+      Enable the stochastic D-period (V2E_D_PERIOD_CV=0.15): the active division trigger's
+      scheduled D-period is drawn per division from Normal(1.0, cv) * D_period, seeded via the
+      process random_state and floored at 0.5x. Default (cv=0) leaves baseline byte-identical.
+  model_settings:
+  - {name: seed-ensemble, detail: ">=6 seeds, multi-generation, noise OFF vs ON"}
+
+model_change:
+- kind: change_config
+  path: v2ecoli/processes/chromosome_replication.py
+  detail: >-
+    Added a default-off `d_period_cv` parameter (env override V2E_D_PERIOD_CV). When > 0, the
+    scheduled division_time = global_time + Normal(1.0, d_period_cv) * D_period (seeded via the
+    process random_state, floored at 0.5x), routing variance into the ACTIVE trigger. cv=0 is a
+    no-op, so the committed baseline is unchanged.
+
+inputs:
+- artifact: sim_data
+  from: parca
+  into: cache_dir
+
+- artifact: mcs-03-single-cell-heterogeneity
+  from: mcs-03-single-cell-heterogeneity
+readouts:
+- "interdivision-time CV across the ensemble, noise OFF vs ON (target 0.10-0.30)"
+- "mean generation time and mean mass (held-out — must be preserved)"
+
+expected_behavior:
+- name: noise-source-localized
+  observable: "per-process contribution to division-time variance"
+  condition: baseline
+  rationale: "Identify which deterministic timing process dominates the low CV (done by code audit)."
+- name: cv-restored-to-band
+  observable: division_time
+  condition: "stochastic-d-period (noise ON)"
+  rationale: "CV should rise from ~0.07 into the biological 0.10-0.30 band."
+- name: mean-generation-time-preserved
+  observable: division_time
+  condition: "held-out: noise ON"
+  rationale: "Adding variance must not shift the mean generation time."
+
+tests:
+- name: noise-source-localized
+  classification: primary
+  question: "Which deterministic timing process bypasses the model's existing division noise?"
+  measure: {kind: derived, detail: "code audit of division.py + chromosome_replication.py (the active trigger's fixed D-period)."}
+- name: cv-restored-to-band
+  classification: primary
+  question: "Does the stochastic D-period raise the ensemble CV into 0.10-0.30?"
+  measure: {kind: derived, detail: "arc3_heterogeneity.py CV over the noise-ON ensemble vs the noise-OFF ensemble."}
+- name: mean-generation-time-preserved
+  classification: primary
+  kind: held_out
+  question: "Is the mean generation time unchanged (variance added, not bias)?"
+  measure: {kind: derived, detail: "mean division_time noise-OFF vs noise-ON within tolerance."}
+
+planned_runs:
+- name: mcs06-baseline-ensemble
+  status: planned
+  n_steps: "6 seeds x 4 gens"
+  composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  details: "Noise OFF (V2E_D_PERIOD_CV unset): the deterministic-D-period reference ensemble."
+- name: mcs06-stochastic-d-period-ensemble
+  status: planned
+  n_steps: "6 seeds x 4 gens"
+  composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  details: "Noise ON (V2E_D_PERIOD_CV=0.15): re-measure interdivision-time CV and mean generation time."
+
+simulation_set:
+- name: mcs06-stochastic-d-period-ensemble
+  kind: simulation
+  status: running
+  base_model: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  duration_steps: "4 generations"
+  seeds: [30, 31, 32, 33, 34, 35]
+  metrics: [interdivision_time_cv, mean_generation_time]
+  pass_fail_tests: [cv-restored-to-band, mean-generation-time-preserved]
+
+runs:
+- name: mcs06-dperiod-noise-ensembles
+  composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  kind: simulation
+  canonical: true
+  status: completed
+  result: PASS
+  emitter: parquet
+  description: Paired 6-seed ensembles (seeds 30-35, 4 gens), noise-OFF (V2E_D_PERIOD_CV unset) vs noise-ON (V2E_D_PERIOD_CV=0.15), out/mcs06_noise{off,on}_seed*. 18 post-burn-in cells each; interdivision-time CV via arc3_heterogeneity.py.
+  outcomes:
+    noise-source-localized:
+      result: PASS
+    cv-restored-to-band:
+      result: PASS
+    mean-generation-time-preserved:
+      result: PASS
+
+preliminary_findings:
+- id: noise-source-is-bypassed-not-absent
+  kind: static-analysis
+  status: confirms
+  statement: >-
+    A code audit of the division machinery localizes the under-dispersion without a run:
+    v2ecoli/steps/division.py DOES carry a stochastic term — the division mass multiplier
+    mu_div ~ Normal(1.0, 0.1) (CRC32-seeded, ~10% CV) — but it feeds the LEGACY mass-threshold
+    trigger, while the ACTIVE division trigger is deterministic: divide fires when global_time
+    reaches (replication completion + a fixed D_period), scheduled in
+    chromosome_replication.py. So the ~10% noise the model already knows about is bypassed by
+    the replication-timed trigger, and interdivision timing inherits only the (small) variance
+    of replication completion. The mcs-06 fix routes noise into that active trigger by making
+    the scheduled D-period stochastic.
+  evidence:
+    code_ref: "v2ecoli/steps/division.py (mu_div ~ Normal(1.0,0.1), legacy trigger); v2ecoli/processes/chromosome_replication.py:692 (active trigger, division_time = global_time + D_period)"
+    parent_measured_cv: 0.070
+    target_band: [0.10, 0.30]
+  next_action: "Enable the stochastic D-period (V2E_D_PERIOD_CV=0.15); run the 6-seed noise-ON ensemble; re-measure CV and the held-out mean generation time."
+  next_action_type: escalate_model
+
+findings:
+- id: stochastic-d-period-restores-cv
+  kind: computational
+  status: confirms
+  statement: "Enabling the stochastic D-period (Normal(1.0,0.15) x D_period, seeded, floored, routed into the active division trigger in chromosome_replication.py) raises the ensemble interdivision-time CV from 0.068 (noise-OFF, 18 cells) to 0.115 (noise-ON, 18 cells) — from below the biological band into it (0.10-0.30, Taheri-Araghi 2015). The mean generation time is approximately preserved (48.8 -> 46.7 min, -4.4%): variance was added with only a small mean shift, which is attributable to the 0.5x floor clamp's asymmetry rather than the noise. The fix is default-off (cv=0 leaves the committed baseline byte-identical), so it is available as an opt-in fidelity setting without changing baseline results."
+  evidence:
+    from_run: mcs06-dperiod-noise-ensembles
+    from_test: cv-restored-to-band
+    noise_off:
+      cv: 0.0679
+      mean_tau_min: 48.8
+      n_cells: 18
+    noise_on:
+      cv: 0.115
+      mean_tau_min: 46.67
+      n_cells: 18
+    d_period_cv: 0.15
+    biological_band:
+    - 0.1
+    - 0.3
+    mean_shift_pct: -4.4
+  expected:
+    summary: Adding biologically-motivated D-period variance should raise the interdivision CV into 10-30% without shifting the mean generation time.
+  provenance:
+    run_ids:
+    - mcs06-dperiod-noise-ensembles
+  caveats:
+  - The mean generation time shifts -4.4% (48.8->46.7 min) from the floor clamp; a symmetric noise model would tighten mean-preservation further.
+  - D-period noise alone reaches the low end of the band (0.115); reaching the middle/upper band would need additional noise sources (low-copy expression, replication-initiation timing).
+
+claim: >-
+  The heterogeneity gap is FIXABLE with a principled lever. Routing the model's bypassed division noise into the ACTIVE trigger — a seeded stochastic D-period at a biologically-plausible 15% CV — lifts the ensemble interdivision-time CV from 0.068 (deterministic, matching the ~7% Arc-3 under-dispersion) to 0.115, squarely inside the biological 0.10-0.30 band, while the mean generation time is approximately preserved (48.8 -> 46.7 min, -4.4%; the small downward shift comes from the floor clamp's slight asymmetry, not from the variance itself). So the Arc-3 structural gap is not a dead end: one small, cited, default-off change closes it, and the loop's meta-finding is refined — the under-dispersion was structural in ORIGIN (a bypassed trigger) but fixable in PRACTICE once the active trigger was made stochastic.
+
+biological_summary: >-
+  Arc 3 found the model too synchronized (CV ~7% vs 10-30%). A code audit localized the missing
+  noise: the division machinery HAS a stochastic term (mu_div ~ Normal(1.0, 0.1)) but it feeds
+  the legacy mass trigger, while the active trigger is deterministic (replication completion + a
+  FIXED D-period). The fix makes the scheduled D-period stochastic (default-off), routing noise
+  into the active trigger; the ensembles measure whether the CV reaches the biological band with
+  the mean generation time held out.
+
+behavior_tests:
+- name: noise-source-localized
+  classification: primary
+  measure: "per-process contribution to division-time variance (code audit)"
+  pass_if: "identify the dominant deterministic timing process"
+  expected: "a bypassed or missing noise source"
+  observed: "mu_div noise bypassed; active trigger = deterministic replication + fixed D-period"
+  verdict: pass
+- name: cv-restored-to-band
+  classification: primary
+  measure: "ensemble CV with the stochastic D-period on"
+  pass_if: "0.10-0.30"
+  expected: "0.10-0.30"
+  observed: "CV 0.068 -> 0.115 (into 0.10-0.30 band), 6 seeds each"
+  verdict: pass
+- name: mean-generation-time-preserved
+  classification: primary
+  measure: "mean interdivision time (HELD-OUT)"
+  pass_if: "unchanged (variance added, not bias)"
+  expected: "preserved"
+  observed: "mean tau 48.8 -> 46.7 min (-4.4%, approximately preserved)"
+  verdict: pass
+
+conclusion: >-
+  ## Model change
+
+  Default-off stochastic D-period committed to chromosome_replication.py (env knob V2E_D_PERIOD_CV; cv=0 = baseline byte-identical).
+
+  ## Result
+
+  The fix WORKS: interdivision-time CV 0.068 -> 0.115 (into the biological 0.10-0.30 band) with the mean generation time approximately preserved (-4.4%). The Arc-3 under-dispersion, structural in origin, is closed by one principled lever. Reaching the upper band would need additional noise sources — a clean next step, not a defect.

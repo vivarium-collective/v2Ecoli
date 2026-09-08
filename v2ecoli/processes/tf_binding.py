@@ -47,8 +47,6 @@ import warnings
 from v2ecoli.library.ecoli_step import EcoliStep as Step
 
 from v2ecoli.library.schema import (
-    listener_schema,
-    numpy_schema,
     attrs,
     bulk_name_to_idx,
     counts,

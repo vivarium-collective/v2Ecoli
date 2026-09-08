@@ -1,0 +1,256 @@
+schema_version: 4
+name: mcs-11-etc-heldout-and-downshift
+investigation: multiscale-complexity-showcase
+title: "ETC fix: held-out check + root-cause trace to thermodynamic FBA loops"
+created: '2026-09-04'
+status: evaluated
+confidence: Accepted
+gate_status: failed
+
+cites:
+- {key: Basan2015Nature, claim: "aerobic acetate overflow onset above a growth-rate threshold"}
+- {key: Feist2007iAF1260, claim: "genome-scale oxidative-phosphorylation stoichiometry"}
+
+question: >-
+  Two loose ends from Arc 2 and the capstone. (1) The mcs-05 ETC fix centres biomass yield in
+  the measured band, but the reverse-ATP-synthase cap (4.5) was CALIBRATED to that band — a
+  skeptic will call it a fitted knob. Does the fix also reproduce an observable it was NOT
+  tuned to, namely the aerobic acetate-overflow ONSET (Basan 2015: acetate secretion rising
+  with growth rate above a threshold)? (2) The capstone showed cross-scale coordination across
+  STEADY-STATE conditions but did not run the titular temporal rich->minimal downshift. Does a
+  genuine downshift produce the transient ppGpp spike and flux reallocation dynamically?
+
+hypothesis: >-
+  (1) If the ETC fix is mechanistic rather than a fitted knob, the respiring cell secretes
+  acetate in a growth-rate-dependent way whose ONSET the cap never saw during calibration —
+  an independent, held-out confirmation. (2) A rich->minimal downshift transiently spikes ppGpp
+  and reroutes central-carbon flux before the cell re-equilibrates at the lower growth rate,
+  reproducing the stringent-response transient dynamically rather than as a between-condition
+  contrast.
+
+objective: >-
+  (1) With the committed ETC fix on, sweep growth rate (across the carbon-quality / +AA
+  conditions) and measure acetate secretion vs growth; test whether overflow ONSET emerges
+  without having been tuned. (2) Run the rich->minimal media downshift (resume a rich-adapted
+  lineage into minimal media) and record the ppGpp / flux / growth transient.
+
+conditions:
+  baseline:
+    composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+    params: {}
+  variants:
+  - name: overflow-onset-sweep
+    detail: "ETC fix on; measure acetate secretion vs growth rate across conditions (acetate/succinate/glucose/+AA) — the held-out overflow-onset curve."
+  - name: temporal-downshift
+    detail: >-
+      Resume a rich/with_aa-adapted lineage (gen dill) into minimal/basal media and record the
+      transient ppGpp spike and central-carbon flux reallocation. (Time-varying media is not a
+      native runner flag; the downshift is staged as a resume-into-new-condition, which is the
+      feasible approximation of a step downshift.)
+  model_settings: []
+
+inputs:
+- artifact: sim_data
+  from: parca
+  into: cache_dir
+
+- artifact: mcs-05-etc-stoichiometry-fix
+  from: mcs-05-etc-stoichiometry-fix
+- artifact: mcs-04-capstone-downshift
+  from: mcs-04-capstone-downshift
+readouts:
+- "acetate secretion vs growth rate with the ETC fix on (held-out overflow-onset curve; the cap was tuned to YIELD, never to acetate)"
+- "ppgpp_conc, growth_rate and central-carbon flux transient across a rich->minimal downshift"
+
+expected_behavior:
+- name: acetate-overflow-onset-held-out
+  observable: acetate_secretion
+  condition: overflow-onset-sweep
+  rationale: "A mechanistic ETC fix should secrete acetate in a growth-dependent way whose onset was not part of the calibration — an independent confirmation."
+- name: downshift-transient-ppgpp-spike
+  observable: ppgpp_conc
+  condition: temporal-downshift
+  rationale: "A genuine downshift should transiently spike ppGpp before re-equilibration, the dynamic signature the steady-state capstone only approximated."
+
+tests:
+- name: acetate-overflow-onset-held-out
+  classification: primary
+  kind: held_out
+  question: "With the ETC fix on, does acetate secretion rise with growth rate (overflow onset) though the cap was tuned only to yield?"
+  measure: {kind: derived, detail: "acetate secretion vs growth across conditions (metabolism_probe.py), fix on."}
+- name: downshift-transient-ppgpp-spike
+  classification: primary
+  question: "Does a rich->minimal downshift transiently spike ppGpp and reroute flux?"
+  measure: {kind: derived, detail: "ppgpp_conc + flux time-course across a resume-into-minimal downshift."}
+
+planned_runs:
+- name: mcs11-overflow-onset-sweep
+  status: planned
+  n_steps: "in-process probe x conditions"
+  composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  details: "ETC fix on; acetate secretion vs growth across conditions — the held-out overflow-onset curve (reuses mcs-05 fix + carbon-ladder caches)."
+- name: mcs11-temporal-downshift
+  status: planned
+  n_steps: "resume rich->minimal, transient"
+  composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  details: "Resume a with_aa-adapted lineage into basal media; record the ppGpp / flux / growth transient."
+
+simulation_set:
+- name: mcs11-overflow-onset-sweep
+  kind: simulation
+  status: completed
+  base_model: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  duration_steps: "in-process probe"
+  seeds: [0]
+  metrics: [acetate_secretion, growth_rate]
+  pass_fail_tests: [acetate-overflow-onset-held-out]
+- name: mcs11-temporal-downshift
+  kind: simulation
+  status: planned
+  base_model: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  duration_steps: "resume transient"
+  seeds: [20]
+  metrics: [ppgpp_conc, growth_rate]
+  pass_fail_tests: [downshift-transient-ppgpp-spike]
+
+runs:
+- name: mcs11-overflow-onset-heldout
+  composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  kind: simulation
+  canonical: true
+  status: completed
+  result: FAIL
+  emitter: in-process
+  description: 'In-process metabolism probes with the committed ETC fix on (atp_synthase_reverse_cap=4.5), across conditions, plus a controlled comparison of the committed-default path vs the explicit solve-wrapping diagnostic at the same cap. Provenance: analysis/mcs05_reexecution_reproducibility.json.'
+  outcomes:
+    acetate-overflow-onset-held-out:
+      result: FAIL
+    downshift-transient-ppgpp-spike:
+      result: SKIP
+
+claim: >-
+  The held-out check did its job — and FALSIFIED the fix as characterized. With the committed ETC fix on, acetate secretion stayed at 0 and RQ at ~2.85 (no overflow, no respiration): the held-out observable the cap was never tuned to REVEALED that the committed default reads as un-fixed physiology (yield ~0.82). A controlled comparison pins the cause: at the same cap (4.5) the explicit solve-wrapping diagnostic lands a respiring optimum (yield 0.395, RQ 1.10) while the committed-default path lands a NON-respiring optimum (reverse pinned at 4.5, forward ATP synthase 0, yield 0.819). The reverse-cap does not UNIQUELY force respiration — the FBA is degenerate at that cap — so mcs-05's in-band yield is solve-path dependent, not robust. This is the meta-finding in action: the loop's own held-out control caught an over-claimed fix on re-execution. The temporal downshift is deferred.  [REFORMULATION: forcing forward respiration was then attempted systematically. No ATP-synthase flux bound can simultaneously force respiration, hit the measured yield, and preserve growth (in-band yield 0.41 requires growth 1.48/h vs ~0.97). The defect is STOICHIOMETRIC (P/O ratio), not a flux bound — the principled fix is a reaction-stoichiometry change, now precisely localized.]
+
+findings:
+- id: etc-fix-not-robustly-reproducible
+  kind: computational
+  status: contradicts
+  statement: 'The held-out acetate-overflow-onset check falsifies the mcs-05 fix AS CHARACTERIZED. Run with the committed reverse-cap (4.5) on, the cell does not respire (acetate 0, RQ 2.85, yield 0.819) — the overflow the fix should produce is absent. A controlled two-path comparison at the SAME cap shows why: the explicit solve-wrapping path reaches a respiring optimum (yield 0.395, RQ 1.10, matching mcs-05), while the committed-default path reaches a non-respiring optimum (reverse flux pinned at the cap 4.5, forward ATP synthase 0). Capping the REVERSE direction to 4.5 permits but does not FORCE forward (respiratory) operation, so the FBA optimum — and the biomass yield — is solve-path dependent. The ATP-synthase-in-reverse DIAGNOSIS (mcs-05 finding 1) stands; the one-parameter reverse-cap FIX is not robust and must be reformulated to reward/force forward ATP synthase, not merely bound the reverse.'
+  evidence:
+    from_run: mcs11-overflow-onset-heldout
+    from_test: acetate-overflow-onset-held-out
+    committed_default_cap4.5:
+      yield: 0.819
+      RQ: 2.85
+      acetate: 0.0
+      reverse_flux: 4.5
+      forward_flux: 0.0
+    explicit_wrap_cap4.5:
+      yield: 0.395
+      RQ: 1.1
+    no_fix:
+      yield: 0.819
+      RQ: 2.85
+    artifact: analysis/mcs05_reexecution_reproducibility.json
+  expected:
+    summary: A robust respiratory fix should secrete acetate in a growth-dependent way (overflow) regardless of solve path; instead overflow is absent under the committed default.
+  next_action: Reformulate the ETC fix to lower-bound FORWARD ATP synthase (or set an ATP-maintenance-linked respiratory demand) so respiration is forced, not merely permitted; re-run the overflow-onset held-out check.
+  next_action_type: escalate_model
+  provenance:
+    run_ids:
+    - mcs11-overflow-onset-heldout
+  caveats:
+  - The reverse ATP-synthase diagnosis is unaffected and solid; only the one-parameter cap FIX is falsified as non-robust.
+
+- id: etc-fix-is-stoichiometric-not-flux-bound
+  kind: computational
+  status: confirms
+  statement: 'Following the mcs-11 non-reproducibility, the ETC fix was systematically reformulated to FORCE forward respiration. Three formulations were tested on the real composite: (1) lower-bounding the FORWARD ATP-synthase reaction alone does NOTHING — the reverse flux rises to match it (a futile cycle), so net stays reverse-hydrolysis and yield stays 0.815; (2) forcing net-forward via reverse=0 gives robust respiration (RQ 1.22, O2 up, acetate overflow, 0 infeasible) but yield 0.268, BELOW the band, with ATP synthase bypassed; (3) forcing net-forward THROUGH ATP synthase (forward-min + reverse=0) reaches the band (yield 0.41) ONLY at forward-min=12, where growth blows up to 1.48/h (vs the physiological ~0.97) with non-physiological O2/acetate (O2 ~104). Across the sweep, yield and growth rise together, so an in-band yield REQUIRES growth ~1.5. Conclusion: no ATP-synthase FLUX BOUND simultaneously forces respiration, reproduces the measured yield, and preserves growth. The defect is STOICHIOMETRIC — the effective oxidative-phosphorylation P/O ratio (ATP per O2 / per glucose) is mis-set — and the principled correction is a reaction-stoichiometry change (H+/ATP coupling, ETC proton pumping), NOT a flux bound. This localizes the Arc-2 defect one level deeper than mcs-05 and explains WHY the reverse-cap was degenerate: a flux bound cannot fix a stoichiometric error.'
+  evidence:
+    from_run: mcs11-overflow-onset-heldout
+    forward_only: no effect (futile cycle), yield 0.815
+    reverse0:
+      yield: 0.268
+      RQ: 1.22
+      growth: 0.972
+      atpsyn_forward: 0.0
+    netforward_through_atpsyn:
+    - fmin: 4
+      yield: 0.268
+      growth: 0.972
+    - fmin: 8
+      yield: 0.327
+      growth: 1.182
+    - fmin: 12
+      yield: 0.41
+      growth: 1.476
+    band:
+    - 0.355
+    - 0.444
+    physiological_growth: 0.97
+    artifact: analysis/etc_reformulation_result.json
+  expected:
+    summary: A robust fix should force respiration AND reproduce the measured yield AND preserve growth simultaneously — no flux bound does all three, indicating a stoichiometric root cause.
+  next_action: Correct the oxidative-phosphorylation stoichiometry (ATP-synthase H+/ATP ratio or ETC proton-pumping coefficients) toward the genome-scale (Feist iAF1260) value, then re-validate yield/RQ/growth together.
+  next_action_type: escalate_model
+  provenance:
+    run_ids:
+    - mcs11-overflow-onset-heldout
+- id: root-cause-is-thermodynamic-futile-proton-cycles
+  kind: computational
+  status: confirms
+  statement: 'Tracing the ATP-supply defect to its root: the model synthesizes ATP via ATP synthase (flux ~7.5) while consuming almost no O2 (~0.9), so the proton-motive force is NOT respiratory. A per-reaction proton-balance audit finds the source — a succinate/proton FUTILE CYCLE: TRANS-RXN-300 exports succinate with 3 H+ (SUC[c]+3H+[c]->SUC[p]+3H+[p]) and TRANS-RXN0-517 re-imports it with 2 H+ (SUC[p]+2H+[p]->SUC[c]+2H+[c]); run together (~18 flux each) succinate is unchanged but 1 net H+ is pumped cytoplasm->periplasm per turn — proton-motive force generated for FREE, thermodynamically impossible. That free PMF drives ATP synthase, so the cell makes ATP without respiring (yield 0.82, RQ 2.94, no acetate overflow). Two controls prove this is the mechanism and that it is SYSTEMIC: (1) changing the ATP-synthase H+/ATP ratio (4->3->6) has NO effect on yield or O2 (rules out the P/O ratio); (2) blocking TRANS-RXN-300 does NOT fix it (yield stays 0.817) — the FBA reroutes to another free-proton pump (TRANS-RXN0-601 (reverse), a direct H+/H+ translocator, ~22 H+). The defect is a KNOWN class of genome-scale-FBA artifact: the LP has no thermodynamic loop-law constraints, so internal free-energy-generating proton cycles are feasible. The principled correction is LOOPLESS / THERMODYNAMIC FBA (loop-law constraints forbidding free-energy-generating internal cycles) — a solver-level change, not a parameter, stoichiometry, or single-reaction flux bound.'
+  evidence:
+    from_run: mcs11-overflow-onset-heldout
+    futile_cycle:
+    - 'TRANS-RXN-300: SUC[c]+3H+[c]->SUC[p]+3H+[p] (flux ~18)'
+    - 'TRANS-RXN0-517: SUC[p]+2H+[p]->SUC[c]+2H+[c] (flux ~18)'
+    - 'net: +1 H+ pumped per turn, free PMF'
+    hplusper_sweep_no_effect:
+      h4: 0.817
+      h3: 0.816
+      h6: 0.817
+    block_trans300_no_effect:
+      yield: 0.817
+      reroute_to: TRANS-RXN0-601 (reverse), ~22 H+
+    artifact: analysis/etc_root_cause.json
+  expected:
+    summary: A thermodynamically-consistent FBA (loopless) cannot generate proton-motive force from an internal cycle, forcing the cell to respire (O2-coupled) to make ATP.
+  next_action: 'Build a MetabolismLoopless process module that applies general loop-law / chemiosmotic constraints (only the ETC may net-pump protons) so no internal free-energy-generating cycle is feasible; validate yield/RQ/growth/acetate together across conditions, then offer it as a drop-in replacement for the current metabolism process. Prototype scaffold: analysis/loopless_test.py.'
+  next_action_type: escalate_model
+  provenance:
+    run_ids:
+    - mcs11-overflow-onset-heldout
+  caveats:
+  - "Prototype loopless constraint tested (analysis/loopless_test.py): a chemiosmotic loop-law constraint enforcing 'net proton translocation by transport <= 0' (a pseudo-metabolite over 461 transport reactions + a relief source) was added at build time. It correctly ELIMINATES the primary succinate futile cycle (TRANS-RXN-300 flux 18.1 -> 0), confirming the approach binds — but the FBA reroutes to another free-proton source and the yield stays ~0.83. So a name/subset-targeted constraint is not enough; a GENERAL loopless / thermodynamic FBA (loop-law constraints over all internal cycles, or the full non-ETC proton-translocation set) is required. That is a dedicated metabolism-process module (a MetabolismLoopless drop-in replacement), correctly scoped as its own effort — not a parameter or a single constraint."
+biological_summary: >-
+  The mcs-05 ETC fix centres biomass yield in-band, but the cap was calibrated to that band, so
+  a skeptic can call it a fitted knob. This study checks the fix against acetate-overflow ONSET
+  (Basan 2015) — a growth-dependent observable the cap was never tuned to — as the decisive
+  held-out test, and additionally runs the genuine rich->minimal downshift to show the ppGpp
+  spike and flux reallocation as a transient rather than a between-condition contrast.
+
+behavior_tests:
+- name: acetate-overflow-onset-held-out
+  classification: primary
+  measure: "acetate secretion vs growth with the ETC fix on (HELD-OUT — cap tuned to yield only)"
+  pass_if: "acetate rises with growth (overflow onset emerges)"
+  expected: "growth-dependent overflow"
+  observed: "acetate 0 / RQ 2.85 with the committed fix on — overflow ABSENT; fix not robustly reproduced (0.395 vs 0.819 at same cap)"
+  verdict: fail
+- name: downshift-transient-ppgpp-spike
+  classification: primary
+  measure: "ppGpp / flux transient across a rich->minimal downshift"
+  pass_if: "transient ppGpp spike then re-equilibration"
+  expected: "dynamic stringent-response transient"
+  observed: "(deferred — temporal media-switch not run)"
+  verdict: skip
+
+conclusion: >-
+  ## Result
+
+  The held-out check FALSIFIED the mcs-05 fix as characterized: with the committed reverse-cap on, respiration is absent (acetate 0, yield 0.82). The reverse-cap admits a non-respiring FBA optimum, so the in-band yield (0.395) is solve-path dependent, not robust — the same cap gives 0.395 or 0.82. The ATP-synthase-reversal diagnosis stands; the one-parameter fix must be reformulated to force forward respiration. The temporal downshift is deferred. This is the loop catching its own over-claim.
+
+  ## Root cause (this pass)
+
+  The correction was attempted: forcing forward respiration, then a P/O (H+/ATP) stoichiometry change, then blocking the proton source. None works as a parameter/flux fix. The defect is a THERMODYNAMICALLY-INFEASIBLE proton futile cycle (succinate/proton, and others the FBA reroutes to) that generates proton-motive force for free — a missing FBA loop-law constraint. The principled fix is loopless / thermodynamic FBA, a solver-level change. The defect is now root-caused and precisely actionable, not a fitted knob.

@@ -92,7 +92,7 @@ FALLBACK_DISSOLVED_O2_MGL = 8.0
 FALLBACK_DISSOLVED_CO2_MGL = 0.5
 
 # Medium glucose recipe seed (mmol/L) for the ReactorCellCoupler medium
-# accumulator (#225 req-3). Default ~ M9 batch glucose (4 g/L / 180.16 g/mol =
+# accumulator. Default ~ M9 batch glucose (4 g/L / 180.16 g/mol =
 # 22.2 mM); the coupler draws this pool down by the cell's GLC uptake so
 # reactor.glucose_medium_mM is a gradeable remaining-glucose CONCENTRATION
 # (vs Beulig reactor_glucose_data.csv). Byproduct leaves seed at 0 (cumulative
@@ -178,9 +178,9 @@ def _reactor_store(
     ``volume_L``) and the transport diagnostics are seeded so wires resolve.
 
     ``glucose_medium_mM`` + the ``*_mM`` byproduct leaves are ADDITIVE float
-    medium-concentration accumulators the coupler integrates exchange counts into
-    (#225 req-3): glucose seeds at the medium recipe (drawn down by uptake);
-    byproducts seed at 0 (accumulate secretion).
+    medium-concentration accumulators the coupler integrates exchange counts into:
+    glucose seeds at the medium recipe (drawn down by uptake); byproducts seed at
+    0 (accumulate secretion).
     """
     cstar_o2, cstar_co2 = _transport_equilibrium(bird_config)
     medium = {GLUCOSE_MEDIUM_LEAF: float(initial_glucose_mM),
@@ -391,7 +391,7 @@ def add_reactor_coupling(
             "type": "object", "default": dict(DEFAULT_BIRD_REACTOR_CONFIG)},
         # Population-aggregator knobs forwarded to baseline_population.
         "cells_per_agent": {"type": "number", "default": 1.0},
-        # "fixed" (default) | "representative_doubling" (#225 item #1): grow the
+        # "fixed" (default) | "representative_doubling": grow the
         # represented population 2x per generation so the coupled reactor sees an
         # ACCUMULATING biomass / O2 demand instead of the single-lineage plateau.
         "population_growth_mode": {"type": "string", "default": "fixed"},
@@ -406,7 +406,7 @@ def add_reactor_coupling(
         # reactor trajectory is chunk-independent. Default False = no-op.
         "single_daughters": {"type": "boolean", "default": False},
         # Medium glucose recipe seed (mmol/L) for the coupler's drawdown
-        # accumulator (#225 req-3 substrate/glucose-conc axis).
+        # accumulator (substrate/glucose-conc axis).
         "initial_glucose_mM": {"type": "number",
                                "default": DEFAULT_INITIAL_GLUCOSE_MM},
         # Medium ammonium recipe seed (mmol/L) -- a finite, drawn-down pool

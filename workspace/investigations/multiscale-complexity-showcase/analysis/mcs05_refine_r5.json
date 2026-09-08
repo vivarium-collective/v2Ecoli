@@ -1,0 +1,17 @@
+{
+  "cache_dir": "out/cache",
+  "fix_applied": true,
+  "fix_reaction": "ATPSYN-RXN (reverse)",
+  "reverse_max": 5.0,
+  "infeasible_ticks": 0,
+  "n_post": 74,
+  "exchange_mmol_gDW_h": {
+    "glucose": 12.35573082825096,
+    "o2": 14.174782003008628,
+    "co2": 15.875608781095234
+  },
+  "RQ": 1.1199896250768162,
+  "O2_glucose": 1.1472232763923984,
+  "biomass_yield_gDW_g_glucose": 0.43512053225175806,
+  "growth_rate_per_h": 0.9718768918150597
+}

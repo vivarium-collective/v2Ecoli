@@ -16,6 +16,26 @@ def test_build_core_returns_core_with_ecoli_types():
     assert sample_type in core.registry
 
 
+@pytest.mark.fast
+def test_build_core_registers_ray_lineage_without_touching_ray():
+    """item 101/109 N3: build_core() must make a raw ray:LineageProcess address
+    resolvable (for /compose/v1/run-document, which has no --composite-id and so
+    never runs apply_core_extensions) WITHOUT eagerly calling ray.init() -- that
+    would break every other caller of build_core (chain-dispatch, local scripts,
+    tests). Confirmed directly: RayProtocolRuntime.__init__ calls ray.init()
+    whenever Ray isn't already running (process_bigraph/protocols/ray.py:528-536),
+    so build_core must register the process class WITHOUT calling
+    prewarm_lineage_pool / get_or_create_runtime."""
+    import ray
+    from process_bigraph.protocols import ray as ray_protocol
+    from v2ecoli.core import build_core
+    from v2ecoli.workflow.lineage import LineageProcess
+
+    build_core()
+    assert ray_protocol.get_registry()["LineageProcess"] is LineageProcess
+    assert not ray.is_initialized()
+
+
 @pytest.mark.sim
 def test_load_cache_bundle_returns_expected_keys(tmp_path):
     """If the cache exists at out/cache, load_cache_bundle returns a dict

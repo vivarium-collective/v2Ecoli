@@ -1,0 +1,22 @@
+{
+  "baseline": {
+    "biomass_yield": 0.816,
+    "RQ": 2.94,
+    "O2_glucose": 0.137,
+    "o2_uptake_mmol_gDW_h": 0.888,
+    "glucose_uptake_mmol_gDW_h": 6.49
+  },
+  "atp_synthase": {
+    "forward_synthesis_flux": 0.0,
+    "reverse_hydrolysis_flux": 7.48,
+    "h_per_atp": 4,
+    "interpretation": "ATP synthase runs in REVERSE (hydrolyzing ATP to pump protons) \u2014 zero respiratory ATP synthesis"
+  },
+  "etc_audit": {
+    "NDH1_proton_pumping": "present (NADH-DEHYDROG-A-RXN)",
+    "NDH2_non_pumping": "present (NADH-DEHYDROGENASE-QUINONE-RXN)",
+    "terminal_oxidase": "present"
+  },
+  "localization": "ATP is over-supplied by substrate-level phosphorylation and DISSIPATED through the reverse ATP synthase; the cell behaves fermentatively despite available O2. This is one level deeper than Arc 2 (which showed maintenance-ATP is irrelevant).",
+  "fix_status": "NOT applied \u2014 forcing net-forward ATP synthase / correcting the substrate-level over-supply is FBA reaction-bound surgery that risks infeasibility; flagged as a dedicated effort."
+}

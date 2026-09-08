@@ -131,14 +131,23 @@ jobs:
         # roughly halve the wall time (target ~7 min vs ~14 min serial).
         # --dist=loadfile keeps a file's tests on one worker so any
         # module-level ParCa-cache-warm fixture pays its cost once.
-        run: >-
-          uv run pytest
-          -m "sim and not slow"
-          --ignore=tests/test_initialize.py
-          --ignore=tests/test_kinetics_units.py
-          --ignore=tests/test_unit_bridge.py
-          -n auto --dist=loadfile
-          -v --tb=short
+        #
+        # Quarantine: like the fast gate, deselect the node ids in
+        # tests/known_failures.txt (the single source of truth) so a KNOWN
+        # flaky/broken sim test doesn't hard-block every PR. Entries that aren't
+        # sim tests simply aren't collected here, so their --deselect is a no-op.
+        # The non-blocking quarantine-watch job still runs the full quarantined set.
+        run: |
+          deselect=$(grep -vE '^[[:space:]]*(#|$)' tests/known_failures.txt \
+            | sed 's/^/--deselect=/' | tr '\n' ' ')
+          uv run pytest \
+            -m "sim and not slow" \
+            --ignore=tests/test_initialize.py \
+            --ignore=tests/test_kinetics_units.py \
+            --ignore=tests/test_unit_bridge.py \
+            $deselect \
+            -n auto --dist=loadfile \
+            -v --tb=short
 
   lint:
     # Breakage gate (ruff F + E722) scoped to PROJECT-OWN code only — the ported

@@ -44,11 +44,9 @@ from bigraph_schema.contract import ProcessContract
 
 # simulate_process removed
 from v2ecoli.library.schema import (
-    numpy_schema,
     attrs,
     counts,
     bulk_name_to_idx,
-    listener_schema,
     zero_listener,
 )
 

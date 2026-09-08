@@ -126,8 +126,34 @@ def register_ecoli_core(core):
 
 
 def build_core():
-    """Create and configure a bigraph-schema core with ecoli types."""
-    return register_ecoli_core(allocate_core())
+    """Create and configure a bigraph-schema core with ecoli types.
+
+    Also registers ``LineageProcess`` for the ``ray:`` address protocol (item 101/109) --
+    unlike other composite-specific registrations (colony's ``_register_colony_core``,
+    lineage_ray_batch's ``register_ray_lineage`` via its own ``core_extensions``), this one
+    lives here, on the CORE BUILDER ITSELF, because ``run_pbg.py`` only runs
+    ``apply_core_extensions`` on its ``--composite-id`` branch -- the ``/compose/v1`` raw-document
+    branch has no ``composite_id`` at all, so a raw ``.pbg`` document with a ``ray:LineageProcess``
+    address would otherwise fail to resolve under ``PBG_CORE_BUILDER=v2ecoli.core:build_core``.
+
+    Deliberately calls ONLY ``register_ray_lineage`` (a pure registry write: ``register_types`` +
+    ``register_process_class``, no Ray connection) -- NOT ``prewarm_lineage_pool``. Confirmed
+    directly (``process_bigraph/protocols/ray.py:528-536``): ``RayProtocolRuntime.__init__`` calls
+    ``ray.init()`` eagerly whenever Ray isn't already running. Calling ``prewarm_lineage_pool``
+    unconditionally here would make EVERY caller of ``build_core()`` -- chain-dispatch's per-
+    generation jobs, local scripts, tests, anything -- eagerly try to init Ray, whether or not it
+    ever resolves a ``ray:`` address. Known, accepted trade-off from omitting it: a raw document
+    dispatched through ``/compose/v1/run-document`` (the one path this unblocks) gets the ray:
+    protocol's own DEFAULT pool sizing (``os.cpu_count()``) on first real resolution, not the
+    cluster-derived ``RAY_SHARDS_DEFAULT`` -- callers on that path who need correct sizing must
+    still call ``prewarm_lineage_pool`` themselves before dispatch, same as ``lineage_ray_batch``'s
+    own composite_generator already does via its own ``core_extensions``.
+    """
+    from v2ecoli.workflow.batch_lineage_ray import register_ray_lineage
+
+    core = register_ecoli_core(allocate_core())
+    register_ray_lineage(core)
+    return core
 
 
 # Importing v2ecoli.core also registers the pulled-in pbg-ketchup composite
@@ -299,7 +325,8 @@ def _resolve_n_seeds() -> int | None:
 def _write_sim_input_bundle(loader, bundle_dir, *, seed=None, condition=None,
                             fixed_media=None, condition_manifest_hash=None,
                             new_genes=None, bundle_overrides=None,
-                            bundle_manifest=None, perturbations=None):
+                            bundle_manifest=None, perturbations=None,
+                            sources=None):
     """Write the simulation-input bundle from an instantiated LoadSimData.
 
     Shared body of ``save_cache`` (path-based) and ``save_sim_input``
@@ -322,6 +349,13 @@ def _write_sim_input_bundle(loader, bundle_dir, *, seed=None, condition=None,
     of silently mis-calibrating the sim. ``perturbations`` is fingerprinted to
     a stable digest (see ``_fingerprint_perturbations``); the other three are
     recorded verbatim.
+
+    ``sources`` (schema 3) declares the upstream artifacts this bundle was
+    DERIVED FROM — each a ``{"layer","path"}`` dict, e.g. the ParCa
+    ``parca_state.pkl`` chassis. It is threaded into ``write_cache_version`` so
+    the ``derived_from`` provenance chain is recorded and folded into
+    ``inputs_hash``. Default ``None`` (no declared chain) is backward
+    compatible for callers that don't yet know their sources.
     """
     os.makedirs(bundle_dir, exist_ok=True)
 
@@ -441,27 +475,33 @@ def _write_sim_input_bundle(loader, bundle_dir, *, seed=None, condition=None,
         'perturbations': _fingerprint_perturbations(perturbations),
     }
     write_cache_version(bundle_dir, build_params=build_params,
-                        configs=sorted(configs.keys()))
+                        configs=sorted(configs.keys()), sources=sources)
     print(f"Sim-input bundle saved to {bundle_dir}")
 
 
-def save_cache(sim_data_path, cache_dir='out/cache', seed=0):
+def save_cache(sim_data_path, cache_dir='out/cache', seed=0, sources=None):
     """Generate the simulation-input bundle from a dilled SimulationDataEcoli.
 
     Prefer ``save_sim_input(sim_data, ...)`` when the SimulationDataEcoli is
     already in memory — this entry point exists for callers that only have a
     pickle path (legacy vEcoli ``simData.cPickle``).
+
+    ``sources`` (schema 3): the upstream artifacts consumed (e.g. the ParCa
+    chassis ``{"layer":"chassis","path": sim_data_path}``), recorded into the
+    cache's ``derived_from`` provenance chain. Default ``None`` is backward
+    compatible.
     """
     from v2ecoli.library.sim_data import LoadSimData
     loader = LoadSimData(sim_data_path=sim_data_path, seed=seed)
-    _write_sim_input_bundle(loader, cache_dir, seed=seed)
+    _write_sim_input_bundle(loader, cache_dir, seed=seed, sources=sources)
 
 
 def save_sim_input(sim_data, bundle_dir='out/cache', seed=0,
                    condition=None, fixed_media=None,
                    condition_manifest_hash=None,
                    new_genes=None, bundle_overrides=None,
-                   bundle_manifest=None, perturbations=None):
+                   bundle_manifest=None, perturbations=None,
+                   sources=None):
     """Generate the simulation-input bundle from a live ``SimulationDataEcoli``.
 
     Skips the ~300 MB dill round-trip that ``save_cache`` performs to load
@@ -496,4 +536,5 @@ def save_sim_input(sim_data, bundle_dir='out/cache', seed=0,
                             new_genes=new_genes,
                             bundle_overrides=bundle_overrides,
                             bundle_manifest=bundle_manifest,
-                            perturbations=perturbations)
+                            perturbations=perturbations,
+                            sources=sources)

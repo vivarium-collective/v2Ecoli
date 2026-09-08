@@ -17,6 +17,8 @@ These tests are hermetic — no ParCa fixture / fit required.
 """
 from __future__ import annotations
 
+import json
+
 import dill
 import pytest
 
@@ -32,12 +34,26 @@ STRAIN_B = {"new_genes": "gfp_MG1655_v2"}
 
 
 def _write_strain_cache(cache_dir, build_params):
-    """Write a minimal but structurally valid bundle stamped for a strain."""
+    """Write a minimal but structurally valid bundle stamped for a strain.
+
+    Schema 3 requires a ``derived_from`` chain, so this stamps a clean chassis
+    source (committed, not dirty) beside the bundle — the wrong-strain check
+    under test is about ``build_params``, orthogonal to the chain, and a
+    chainless schema-3 cache is independently rejected by guard (a).
+    """
     cache_dir.mkdir(parents=True, exist_ok=True)
     (cache_dir / "initial_state.json").write_text("{}")
     with open(cache_dir / "sim_data_cache.dill", "wb") as f:
         dill.dump({"configs": {}}, f)
-    write_cache_version(str(cache_dir), build_params=build_params)
+    chassis = cache_dir / "parca_state.pkl"
+    chassis.write_bytes(b"fake-chassis")
+    (cache_dir / "parca_state.provenance.json").write_text(json.dumps({
+        "schema": "chassis-provenance/1", "layer": "chassis",
+        "code": {"v2ecoli": {"commit": "abc123", "dirty": False,
+                             "source": "git"}},
+    }))
+    write_cache_version(str(cache_dir), build_params=build_params,
+                        sources=[{"layer": "chassis", "path": str(chassis)}])
 
 
 # ---------------------------------------------------------------------------

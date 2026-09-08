@@ -3,11 +3,6 @@
 Upstream-parity architecture: the partitioned model matches the
 vivarium-collective/vEcoli composite tick-for-tick. See AGENTS.md.
 
-Migration note: the document-building body was migrated from
-``v2ecoli/generate.py:build_document`` and
-``v2ecoli/composite.py:_build_from_cache``.  Both legacy files were deleted
-in Task 14.
-
 Shared helpers (``make_edge``, ``inject_flow_dependencies``,
 ``_seed_state_from_defaults``, ``seed_mass_listener``,
 ``_normalize_boundary_units``, ``_make_instance``, ``_get_special_step``,
@@ -60,6 +55,35 @@ def _apply_match_simdata(cell_state: dict, *, match_simdata: str, seed: int,
         os.environ.get("V2E_VECOLI_DIR"))
     fake_composite = SimpleNamespace(state={"agents": {"0": cell_state}})
     return _apply_bulk_overlay(fake_composite, ref_bulk)
+
+
+def _independent_founder_state(sim_data_path: str, seed: int,
+                               condition: str = "basal") -> dict:
+    """Re-draw a fresh founder (t=0 cell state) for this lineage_seed.
+
+    Opt-in alternative to loading the SHARED cached initial_state: draws a new
+    founder from ``sim_data_path`` seeded by ``seed`` via the SAME generator the
+    cache build uses (``LoadSimData(sim_data_path, seed).generate_initial_state()``
+    — see ``v2ecoli/core.py``'s ``_write_sim_input_bundle``), then round-trips
+    through ``save_initial_state``/``load_initial_state`` so the result is
+    byte-format-identical to a cached founder. Gives each seed of a multiseed
+    ensemble an INDEPENDENT founder, so the spread reflects real cell-to-cell
+    founder variability rather than only downstream per-process stochasticity.
+    Slower than the cached path (loads sim_data + regenerates initial conditions
+    per seed) — opt-in via ``independent_founders``.
+    """
+    import tempfile
+    from v2ecoli.library.sim_data import LoadSimData
+    from v2ecoli.cache import save_initial_state, load_initial_state
+    kwargs = {"sim_data_path": os.path.abspath(sim_data_path), "seed": seed}
+    if condition and condition != "basal":
+        kwargs["condition"] = condition
+    loader = LoadSimData(**kwargs)
+    state = loader.generate_initial_state()
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "initial_state.json")
+        save_initial_state(state, p)
+        return load_initial_state(p)
 
 
 def _derive_process_seed(master_seed: int, process_name: str) -> int:
@@ -968,6 +992,8 @@ def _build_batch_document(
     knockouts: list[str] | None,
     config_overrides: dict | None,
     media: str,
+    independent_founders: bool = False,
+    founder_sim_data: str = "",
     variant: int = 0,
     injected_processes: dict | None = None,
     features: list | None = None,
@@ -1057,6 +1083,8 @@ def _build_batch_document(
         "parallel": parallel or "",
         "base_config_overrides": base_config_overrides,
         "media": media,
+        "independent_founders": independent_founders,
+        "founder_sim_data": founder_sim_data,
         # Per-cell biological build kwargs (metabolism-redux/violacein swap,
         # feature toggles, exchange-flux readouts, PDMP initiation modes).
         # WITHOUT these in the runner config they never reach build_workflow_config
@@ -1262,6 +1290,27 @@ WCM_PARAMETERS = {
                            "existing cache, no ParCa re-fit. Default 'minimal' = "
                            "unchanged. For a rigorously-calibrated condition, run a "
                            "per-condition ParCa cache instead (see showcase-4).",
+        },
+        "independent_founders": {
+            "type": "boolean",
+            "default": False,
+            "description": "Opt-in: re-draw the founder (t=0 cell state) per "
+                           "lineage_seed from founder_sim_data instead of loading "
+                           "the shared cached initial_state, so a multiseed "
+                           "ensemble's spread reflects true cell-to-cell founder "
+                           "variability, not just downstream per-process "
+                           "stochasticity. Requires founder_sim_data. Slower "
+                           "(loads sim_data + regenerates initial conditions per "
+                           "seed); default False keeps the fast shared-founder path.",
+        },
+        "founder_sim_data": {
+            "type": "string",
+            "default": "",
+            "description": "Path to the v2 simData.cPickle to re-draw per-seed "
+                           "founders from when independent_founders is set — the "
+                           "same sim_data the cache was built from. Each seed gets "
+                           "LoadSimData(sim_data_path, seed).generate_initial_state(). "
+                           "Ignored unless independent_founders=True.",
         },
         "features": {
             "type": "list",
@@ -1513,6 +1562,7 @@ _BATCH_FORWARDED_PARAMETERS = frozenset({
     "n_seeds", "n_generations", "stop_at_division",
     # Threaded into the batch document / runner config -> workflow config.
     "seed", "cache_dir", "config_overrides", "knockouts", "media",
+    "independent_founders", "founder_sim_data",
     "single_daughters", "time_step", "max_duration", "variants", "variant",
     "out_dir", "experiment_id", "analyses", "study", "parallel", "emitter",
     "initial_carry_state_path", "initial_generation_index",
@@ -1612,6 +1662,8 @@ def baseline(
     config_overrides: dict | None = None,
     knockouts: list[str] | None = None,
     media: str = "minimal",
+    independent_founders: bool = False,
+    founder_sim_data: str = "",
     features: list | None = None,
     ppgpp_regulation: bool = True,
     trna_attenuation: bool = False,
@@ -1804,6 +1856,7 @@ def baseline(
             experiment_id=experiment_id, emitter=emitter, analyses=analyses,
             study=study, parallel=parallel, variants=variants, variant=variant,
             knockouts=knockouts, config_overrides=config_overrides, media=media,
+            independent_founders=independent_founders, founder_sim_data=founder_sim_data,
             injected_processes=injected_processes, features=features,
             ppgpp_regulation=ppgpp_regulation, trna_attenuation=trna_attenuation,
             supercoiling=supercoiling, mass_conservation=mass_conservation,
@@ -1837,7 +1890,13 @@ def baseline(
     # accumulates across samples, eventually triggering a spurious mid-run
     # division). configs is already deep-copied below for the same reason —
     # initial_state needs the same isolation.
-    initial_state = copy.deepcopy(bundle["initial_state"])
+    if independent_founders and founder_sim_data:
+        # Opt-in: draw a fresh founder for THIS lineage's seed instead of the
+        # shared cached one, so a multiseed ensemble varies at t=0 too (real
+        # cell-to-cell founder variability), not only in downstream stochastics.
+        initial_state = _independent_founder_state(founder_sim_data, seed, match_condition)
+    else:
+        initial_state = copy.deepcopy(bundle["initial_state"])
 
     # Injected bulk-species seeding (opt-in, drug-agnostic). The ParCa cache
     # bundle is built without any injected subsystem's extra species, so an
@@ -2251,6 +2310,22 @@ def baseline(
             or injected_processes.get("swap_processes")
             or injected_processes.get("exclude_processes")):
         assert_injection_sourcing(injected_processes)
+        # Thread baseline()'s own cache_dir onto the injection spec. The native
+        # resolver builds an injected process's config from the bundle sim_data
+        # (build_native_redux_config), gated on the spec carrying `cache_dir` —
+        # but resolve_injections sees only the spec, never baseline()'s own args.
+        # Without this seed the redux SWAP gets an empty config (0 metabolites,
+        # 0 homeostatic targets) and collapses to one tick while reporting success
+        # (sms-ecoli#210 Gate 0). A caller-supplied cache_dir on the spec wins
+        # (deliberate override, e.g. a per-seed cache); else seed baseline's.
+        # Copy, don't mutate — the same spec is reused across per-seed builds.
+        # (v2ecoli#667: right for the deployment; that PR closed for the wrong
+        # reason — its no-op was only against the in-repo resolver, while the
+        # image's resolver consumes this key.)
+        injected_processes = {
+            **injected_processes,
+            "cache_dir": injected_processes.get("cache_dir") or cache_dir,
+        }
         import sys, os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__),
                                         "..", "..", "scripts"))

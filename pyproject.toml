@@ -91,6 +91,12 @@ dependencies = [
 [project.optional-dependencies]
 # Test-only deps. `uv sync --extra dev` pulls these in.
 dev = ["pytest-timeout>=2.3", "pytest-xdist>=3.6"]
+# Report/dashboard tooling. `uv sync --extra report` pulls in the vivarium-workbench
+# CLI used to render investigation reports and serve the interactive dashboard. Kept
+# OPTIONAL so the core model install stays lean (the workbench carries heavier deps).
+# Pinned via [tool.uv.sources] so the version is reproducible instead of drifting
+# (it had silently gone stale to 0.3.29 as an ad-hoc, undeclared venv install).
+report = ["vivarium-workbench"]
 # The Parquet and XArray emitter deps moved into base [project.dependencies]
 # above (they are now default/always-installed). These groups are kept as
 # empty back-compat aliases so `pip install v2ecoli[parquet]` /
@@ -123,6 +129,11 @@ v2e-compare = "scripts.compare_cli:main"
 # through the installed package. The large ParCa blob (models/parca/parca_state.pkl.gz)
 # is intentionally NOT shipped here — it is provided by ecoli-sources / the workspace.
 "v2ecoli" = ["configs/*.json", "models/sbml/*.xml"]
+# Ship the declarative composite specs so yaml-defined composites (millard_lqr,
+# millard_fba_bridge, millard2017_metabolism, …) are discoverable from a wheel/git
+# install, not only a source checkout — the workbench registry scans these files,
+# so without them those composites read as "not found in registry".
+"v2ecoli.composites" = ["*.composite.yaml", "*.composite.yml", "*.composite.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "v2ecoli/tests"]
@@ -169,7 +180,11 @@ packages = { find = { where = ["."], include = ["v2ecoli*", "pbg_v2ecoli*"] } }
 
 
 [tool.uv.sources]
-process-bigraph = { git = "https://github.com/vivarium-collective/process-bigraph.git", branch = "main" }
+# process-bigraph `main`. #205 merged (78d14883), so this is no longer a PR
+# branch head -- the renderer fixes workflow_nf requires (a `nextflow_script()`
+# override wrapped as Groovy, and `cache = 'lenient'` so `-resume` can match)
+# are on main now. Also picks up #206 (`analyses` on GeneratorEntry).
+process-bigraph = { git = "https://github.com/vivarium-collective/process-bigraph.git", rev = "78d14883e8bee2643b646f74f149b9b884442bad" }
 bigraph-schema = { git = "https://github.com/vivarium-collective/bigraph-schema.git", branch = "main" }
 viva-superpowers = { git = "https://github.com/vivarium-collective/viva-superpowers.git", branch = "main" }
 viva-workspace = { git = "https://github.com/vivarium-collective/viva-workspace.git", branch = "main" }
@@ -188,3 +203,6 @@ investigation-contracts = { git = "https://github.com/vivarium-collective/invest
 viva-munk = { git = "https://github.com/vivarium-collective/Viva-munk.git", branch = "main" }
 spatio-flux = { git = "https://github.com/vivarium-collective/spatio-flux.git", branch = "main" }
 ecoli-sources = { git = "https://github.com/vivarium-collective/ecoli-sources.git", rev = "840bc9739d25ad76841bfeaa3b97f133a84676c9" }
+# Report/dashboard tooling (optional `report` extra). Pinned to a rev so the version is
+# reproducible (0.3.78 — the current published main at time of pin).
+vivarium-workbench = { git = "https://github.com/vivarium-collective/vivarium-workbench.git", rev = "0e7c24b497218e7f38c70e9fe3222f999bb48ef6" }

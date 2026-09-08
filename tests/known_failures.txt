@@ -20,3 +20,11 @@ tests/test_parquet_emitter_ported.py::TestParquetEmitterEdgeCases::test_expected
 # Unquarantine: generate + commit baseline_parsimony's composite-state snapshot
 # (scripts that produce reports/composite-state/*.json), then remove this line.
 tests/test_composite_state_coverage.py::test_every_v2ecoli_generator_has_committed_default_state
+
+# Intermittently fails with a parquet emit-flush race: FileNotFoundError on a
+# `.../generation=N/agent_id=M/NNN.pq.tmp` temp file — a generation's final
+# partial batch is not always flushed/renamed before the parity read opens the
+# history. Flaky (some runs pass), not a regression; it reds main + PRs at random.
+# Unquarantine: fix the emitter's per-generation final-batch flush / temp-file
+# rename so the history parquet is complete before analyses read it.
+tests/test_growth_parity.py::test_baseline_growth_trajectory_matches_vecoli

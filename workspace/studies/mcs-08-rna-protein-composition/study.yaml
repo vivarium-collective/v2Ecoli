@@ -1,0 +1,161 @@
+schema_version: 4
+name: mcs-08-rna-protein-composition
+investigation: multiscale-complexity-showcase
+title: "Composition scale — the RNA/protein growth law"
+created: '2026-09-03'
+status: evaluated
+confidence: Accepted
+gate_status: passed
+
+# Consolidated into the showcase from a parallel-development branch. Sits alongside
+# mcs-07 (the ribosome allocation law) as the bulk-composition view of the same
+# Scott-Hwa / Bremer-Dennis growth law.
+
+cites:
+- {key: BremerDennis2008, claim: "RNA/protein mass ratio increases with growth rate in E. coli"}
+- {key: Scott2010, claim: "ribosomal fraction rises linearly with growth rate (C-line)"}
+
+question: >-
+  Does v2ecoli reproduce the Bremer-Dennis growth law that the RNA/protein mass ratio rises
+  with growth rate — a completely different observable (bulk chemical composition) from the
+  signaling/metabolism/heterogeneity arcs — and is the slope consistent with the measured law?
+
+hypothesis: >-
+  RNA/protein rises with growth rate (more ribosomes at faster growth). v2ecoli reproduces the
+  positive slope natively; the magnitude discriminates whether ribosome/rRNA allocation is
+  correctly growth-coupled.
+
+objective: >-
+  Read RNA and protein mass from native mass listeners at two growth rates (minimal glucose,
+  amino-acid-rich), compute RNA/protein vs growth rate, and compare the slope direction to the
+  Bremer-Dennis law.
+
+# Complements mcs-07: mcs-07 reads ribosome CONCENTRATION across a carbon ladder (C-line);
+# this study reads the bulk RNA/protein MASS RATIO across the amino-acid axis (R-line).
+readouts:
+- "RNA/protein mass ratio (listeners.mass.rna_mass / protein_mass) per condition"
+- "growth rate (1/h) and rRNA/RNA fraction"
+
+conditions:
+  baseline:
+    composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+    params: {}
+  variants:
+  - {name: minimal-glucose, detail: "basal minimal glucose, growth ~0.90/h"}
+  - {name: rich-amino-acids, detail: "with amino acids, growth ~1.28/h"}
+  model_settings: []
+
+inputs:
+- artifact: sim_data
+  from: parca
+  into: cache_dir
+
+- artifact: mcs-07-ribosome-allocation-law
+  from: mcs-07-ribosome-allocation-law
+expected_behavior:
+- name: rna-protein-rises-with-growth
+  observable: rna_protein_ratio
+  condition: "rich vs minimal"
+  rationale: "Bremer-Dennis: RNA/protein rises with growth rate (ribosome content increases)."
+
+tests:
+- name: rna-protein-rises-with-growth
+  classification: primary
+  question: "Does RNA/protein increase from minimal to rich medium?"
+  measure: {kind: derived, detail: "slope of rna_mass/protein_mass vs growth_rate across conditions; positive expected."}
+
+visualizations:
+- {name: "rna protein law", address: "html:viz/rna_protein_law.html"}
+- name: Emergent growth laws (triptych)
+  address: html:viz/growth_laws_triptych.html
+  description: Three independent bacterial growth laws — Cooper-Helmstetter, Scott-Hwa, Bremer-Dennis — reproduced natively (direction), literature overlaid.
+
+report_cards:
+- viz/rna_protein_law.html
+
+runs:
+- name: mcs08-composition-two-conditions
+  composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  kind: analysis
+  canonical: true
+  status: completed
+  result: PASS
+  description: >-
+    Composition from the minimal + rich mass listeners (the same basal + with_aa 3-gen runs
+    Arc 1 used). 4 cells per condition.
+  computed_outcomes:
+    rna-protein-rises-with-growth:
+      measured_value: 0.02143
+      result: PASS
+      detail: >-
+        RNA/protein 0.310 (mu 0.90/h) -> 0.318 (mu 1.28/h); slope +0.021 per (1/h), POSITIVE,
+        reproducing the Bremer-Dennis direction. Magnitude shallow (~3% rise) across the
+        amino-acid axis (R-line); the carbon-quality (C-line) ladder is covered by mcs-07.
+
+  outcomes:
+    rna-protein-rises-with-growth:
+      result: PASS
+  emitter: parquet
+claim: >-
+  v2ecoli reproduces the Bremer-Dennis composition law DIRECTION natively: RNA/protein mass ratio
+  rises with growth rate (0.310->0.318, slope +0.021/h). The rise is shallow across the
+  amino-acid (R-line) axis, echoing the flat ribosome concentration seen in mcs-01/mcs-07 on that
+  axis; the carbon-quality (C-line) ladder (mcs-07) is where the ribosomal fraction climbs steeply.
+
+findings:
+- id: rna-protein-rises-with-growth-shallow
+  kind: computational
+  status: confirms
+  statement: >-
+    v2ecoli reproduces the qualitative Bremer-Dennis growth law: the RNA/protein mass ratio
+    rises with growth rate, from 0.310 at mu 0.90/h (minimal glucose) to 0.318 at mu 1.28/h
+    (amino-acid-rich), a positive slope of +0.021 per (1/h). The direction is correct and
+    emerges from the native mass balance. The magnitude is shallow — only a ~3% rise in
+    RNA/protein for a 43% rise in growth rate — where the classic law predicts a steeper climb.
+    This is consistent with the two conditions spanning an amino-acid-supply (R-line) axis
+    rather than a carbon-quality (C-line) series: supplying amino acids raises growth without
+    demanding proportionally more ribosomes. The C-line test (where ribosomal fraction tracks
+    growth steeply) is carried by the sibling study mcs-07, which shows ribosome concentration
+    climbing across an acetate/succinate/glucose carbon ladder.
+  evidence:
+    from_test: rna-protein-rises-with-growth
+    from_run: mcs08-composition-two-conditions
+    minimal: {growth_per_h: 0.896, rna_protein_ratio: 0.310, rrna_mass: 49.85, protein_mass: 200.8}
+    rich: {growth_per_h: 1.284, rna_protein_ratio: 0.318, rrna_mass: 91.33, protein_mass: 349.3}
+    slope_per_h: 0.0214
+  expected:
+    summary: "Bremer-Dennis / Scott 2010: RNA/protein (ribosome content) rises ~linearly with growth rate; the C-line slope is steep."
+  next_action: "The carbon-quality (C-line) ladder is covered by mcs-07; a denser composition ladder would quantify the slope."
+  next_action_type: replicate
+  provenance:
+    run_ids: [mcs08-composition-two-conditions]
+  caveats:
+  - "Two conditions only (a first result); the amino-acid axis is the R-line, not the classic C-line."
+
+biological_summary: >-
+  One of microbiology's most robust laws: faster-growing cells commit more mass to ribosomes, so
+  the RNA/protein mass ratio climbs with growth rate (Bremer-Dennis). v2ecoli reproduces the
+  direction natively; the magnitude is shallow on the amino-acid (R-line) axis (the steep C-line
+  is mcs-07's carbon ladder).
+
+behavior_tests:
+- name: rna-protein-rises-with-growth
+  classification: primary
+  measure: "slope of RNA/protein mass ratio vs growth rate"
+  pass_if: "positive slope (Bremer-Dennis)"
+  expected: "positive"
+  observed: "+0.021 per (1/h): 0.310 (μ 0.90) → 0.318 (μ 1.28)"
+  verdict: pass
+
+conclusion: >-
+  ## Result
+  The Bremer-Dennis composition-law DIRECTION is reproduced natively; the shallow R-line slope
+  echoes the flat-ribosome finding, with the steep C-line covered by mcs-07.
+simulation_set:
+- name: mcs08-composition-two-conditions
+  kind: analysis
+  status: completed
+  base_model: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  result: PASS
+  pass_fail_tests:
+  - rna-protein-rises-with-growth

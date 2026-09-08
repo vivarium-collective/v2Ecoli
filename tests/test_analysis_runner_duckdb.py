@@ -9,16 +9,35 @@ def test_single_sql_filters_full_cell():
     assert "generation = 2" in sql and "agent_id = '00'" in sql
 
 
-def test_multiseed_sql_filters_variant_only():
+def test_multiseed_sql_filters_variant_and_canonical_lineage():
     sql = scale_history_sql("multiseed", _FROM, (3,))
     assert "variant = 3" in sql
-    assert "lineage_seed" not in sql and "agent_id" not in sql
+    assert "lineage_seed" not in sql
+    # lineage-collapsing scale: restrict to the all-zeros single-daughter chain
+    assert "NOT LIKE '%1%'" in sql
 
 
-def test_multivariant_sql_is_unfiltered():
+def test_multivariant_sql_filters_canonical_lineage_only():
     sql = scale_history_sql("multivariant", _FROM, ())
-    assert "WHERE" not in sql.upper()
+    # No variant/seed key, but still restrict to the canonical all-zeros lineage
+    assert "NOT LIKE '%1%'" in sql
     assert _FROM in sql
+
+
+def test_multigeneration_sql_excludes_birth_stubs():
+    sql = scale_history_sql("multigeneration", _FROM, (0, 1))
+    assert "variant = 0" in sql and "lineage_seed = 1" in sql
+    # the d?1 birth-stub partitions (agent_id containing '1') must be excluded
+    # so they don't contaminate the cross-generation aggregation
+    assert "NOT LIKE '%1%'" in sql
+
+
+def test_multidaughter_keeps_sisters_not_allzeros_filter():
+    # multidaughter deliberately keeps sister daughters — must NOT get the
+    # all-zeros lineage filter that the collapsing scales use.
+    sql = scale_history_sql("multidaughter", _FROM, (0, 1, 2, "00"))
+    assert "agent_id LIKE '00_'" in sql
+    assert "NOT LIKE '%1%'" not in sql
 
 
 def test_all_connection_sites_use_configured_factory_not_bare_connect():
@@ -57,10 +76,12 @@ def test_all_connection_sites_use_configured_factory_not_bare_connect():
         inspect.getsource(mod).count("create_duckdb_conn(temp_dir=")
         for mod in (ar, sio)
     )
-    assert connect_call_count == 4, (
-        "expected all 4 known connection sites (sweep_io.history_files, "
+    assert connect_call_count == 5, (
+        "expected all 5 known connection sites (sweep_io.history_files, "
         "sweep_io.connect_for, analysis_runner.build_cell_records, "
-        "analysis_runner.run_analyses._analysis_ctx) to use "
+        "analysis_runner.run_analyses._analysis_ctx, and "
+        "analysis_runner._run_identity_candidates -- the S3 run_identity.json "
+        "glob) to use "
         f"create_duckdb_conn(temp_dir=...), found {connect_call_count}"
     )
 

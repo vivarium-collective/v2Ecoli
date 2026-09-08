@@ -22,6 +22,7 @@ from v2ecoli.composites import (  # noqa: F401
     reactor_bird_coupled,
     reactor_bird_coupled_millard,
     vecoli,
+    workflow_nf,
 )
 
 
