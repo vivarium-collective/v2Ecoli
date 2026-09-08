@@ -491,7 +491,29 @@ behavior_tests:
       kind: theory
       note: Identical to lineage-completes so the contingency is read as a direct comparison against
         12.
-  status: pending
+  status: passed
+  result: PASS
+  measured_value: 12
+  evaluated_by: agent
+  detail: '12 against a band of [8, 12]. Divided-generation counts [12, 12, 12] — every seed completes,
+    with median generation time over generations 1-3 of 45.0 min, identical to the promoter-specific
+    arm alone and against the control''s 46.0. Redistributing the operon''s expression within the
+    optimal face changes nothing the cell notices.
+
+    MY PRE-REGISTERED PREDICTION WAS WRONG. I predicted arrest, on the reasoning that TU00435 would
+    carry both the expression and the repressor. It carries only 6.8% of the operon''s expression,
+    not the ~33% I assumed, so 93% still sits on LexA-free transcripts and the lineage is unaffected.
+    The prediction and its reasoning are left on the record unchanged.
+
+    WHAT THIS DOES AND DOES NOT ESTABLISH. It shows the rescue survives ONE representative alternative
+    allocation — the minimum-norm point, which is the optimum closest to the origin and moved only
+    6.8% onto TU00435. It does NOT show robustness to the degeneracy as a whole. An allocation putting
+    the majority of the operon''s expression on TU00435 is equally consistent with the cistron data
+    and would presumably silence dnaG again; nothing here tests that. The honest claim is ''robust
+    to a representative alternative'', not ''robust to the arbitrary choice''.
+
+    Taken with lexa-exposed-expression-fraction, which FAILED at 0.0676: the contingency is real
+    in direction but does not reach the phenotype at this magnitude.'
 preregistered:
   declared_before_runs: true
   registered_at: '2026-09-04T19:00:00Z'
@@ -785,12 +807,20 @@ limitations:
   studies -- divides by a control quantity that collapses toward zero and varies a million-fold across
   seeds. It is not a gradeable statistic in that regime. Future studies should gate on the treated
   arm's absolute residual deficit, which is stable, and pre-register a threshold for it.
+- The tie-break robustness check covers one alternative allocation, not the optimal face. Minimum-norm
+  is by construction the optimum closest to the origin and moved only 6.8% of the operon's expression
+  onto the LexA-carrying TU00435. An allocation placing the majority there is equally consistent
+  with the cistron data and is untested; the face-width measurement in tu-expression-identifiability
+  shows such allocations exist.
 claim: Promoter-specific attribution -- correcting only the edges EcoCyc actively contradicts --
   moves LexA off TU00352 onto TU00435, changes 474 of 1464 edges while leaving 0.6762 unchanged,
   and rescues the lineage from 4-9 generations to a full 12 with growth indistinguishable from control.
   dnaG transcription rises three to four orders of magnitude to a 6.93x residual deficit, slightly
   beating the ceiling measured for deleting the LexA edge outright, though the pre-registered recovery
-  axis fails by 0.0017 against an anchor inherited from another study.
+  axis fails by 0.0017 against an anchor inherited from another study. The rescue survives a representative
+  equally-optimal reallocation of the operon's expression (12/12/12 generations, tau unchanged),
+  though only 6.8% of that expression moves onto the repressed transcript under that particular alternative,
+  so robustness across the whole optimal face is untested.
 conclusion: 'Phase A settles the approach without a simulation, and the answer is a qualified no.
 
   The rule works where it was aimed: applied uniformly, with no special-casing and stated in full
