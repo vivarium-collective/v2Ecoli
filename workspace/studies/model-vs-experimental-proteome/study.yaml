@@ -96,8 +96,10 @@ cohorts:
     as editing an expression value. The DNA-helicase and 30S entries protect exactly the kind of
     essential subunit this investigation cares about.
 
-    SCOPE WARNING: data-level only. Several _comments name fit_sim_data_1.py as the source, so code-level
-    tuning exists and is NOT enumerated (req-3). Treat 65 as a lower bound.'
+    SCOPE RESOLVED (req-3): the inventory is COMPLETE, not a lower bound. v2ecoli''s ParCa applies
+    no code-level tuning — the adjust_* helpers are data-driven, and adjust_final_expression, the
+    one function that could hard-code per-gene factors, is never called. fit_sim_data_1.py is the
+    upstream wcEcoli fitter and is not on v2ecoli''s execution path.'
 - name: baseline
   definition: every remaining gene with a measured abundance in the primary dataset
   note: the reference distribution the cohorts are compared against
@@ -374,8 +376,8 @@ implementation_requirements:
   detail: Highest-risk step. Emit matched and unmatched counts per cohort; a cohort losing most of
     its genes to the join is a coverage failure, not a small-n result.
 - id: req-3
-  status: not_started
-  blocking: true
+  status: done
+  blocking: false
   summary: Enumerate CODE-level parameter adjustments; the data-level sweep is a lower bound.
   detail: 'Several _comments name fit_sim_data_1.py as the source, so the 65-molecule inventory from
     flat/adjustments/ is a lower bound. Any molecule tuned in code must join the exclusion cohort
@@ -385,6 +387,20 @@ implementation_requirements:
     it cannot see is tuning applied in Python: fit_sim_data_1.py is named as the _source in rna_expression_adjustments,
     translation_efficiencies_adjustments, rna_deg_rates_adjustments and protein_deg_rates_adjustments,
     so that file is the place to look first.'
+  finding: "ANSWERED, and negatively: v2ecoli's ParCa applies NO code-level parameter tuning beyond\
+    \ the flat files, so the 65-molecule inventory is COMPLETE rather than a lower bound.\nEvidence,\
+    \ four independent checks:\n  1. No hard-coded molecule id paired with a numeric tweak anywhere\
+    \ in v2ecoli/processes/parca/ (regex over EG#####/G####/CPLX*/MONOMER* against *=, /=, factor,\
+    \ scale).\n  2. The five adjust_*/balance_* helpers in step_02_input_adjustments.py are PURE:\
+    \ each takes an `adjustments` dict argument and applies it. No ids are named in code.\n  3. That\
+    \ dict is state['adjustments'], and its contents match the flat files exactly — translation_efficiencies\
+    \ 25, balanced_translation_efficiencies 4 groups, rna_expression 10, rna_deg_rates 3, protein_deg_rates\
+    \ 1.\n  4. simulation_data.adjust_final_expression — the one function that COULD apply arbitrary\
+    \ per-gene factors, mutating synth_prob, rna_expression, exp_free, exp_ppgpp, basal_prob and\
+    \ delta_prob together — is DEFINED BUT NEVER CALLED in v2ecoli. It is dead code inherited from\
+    \ wcEcoli; step_09 mentions it only in docstrings.\nThe fit_sim_data_1.py named in several _source\
+    \ fields is the upstream wcEcoli fitter, present in .venv but not on v2ecoli's execution path.\
+    \ Those fields record where the VALUES came from, not code that runs here."
 - id: req-4
   status: not_started
   blocking: false
