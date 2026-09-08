@@ -63,6 +63,42 @@ def select_carry_daughter(agents_before, agents_now, mother_snapshot):
 _FRESH_ENVIRONMENT_SUBSTORES = ("exchange_data",)
 
 
+def _debug_build_composite_dumping_species_paths(doc, core):
+    """LINEAGE_DEBUG_SPECIES_AMBIGUITY=1 diagnostic (temporary, throwaway --
+    not for merge). Investigating a real, still-open AmbiguousLookupError on
+    ``jump(Empty, Key('species'))`` inside ``Composite(doc, core=core).initialize()``
+    (CD2 Run 3, Dispatch 579/682/685; sms-ecoli#291/#292 fixed two known
+    ``species``-keyed orphan wires but the ambiguity still reproduces). The real
+    exception carries no path/node context (bigraph_schema's own ``jump()``
+    context dict shows ``'path': ()`` regardless of tree depth), so this dumps
+    (a) every location in the real, fully-constructed ``doc`` where a literal
+    ``"species"`` key exists, and (b) every process address anywhere in the
+    tree -- to settle whether the ambiguity originates in one of the four
+    CD2-injected processes or in baseline()'s own native composite."""
+    from process_bigraph import Composite
+
+    def _walk(node, path):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == "species":
+                    print(f"[species-debug] SPECIES KEY at path: {path + (k,)}")
+                if k == "address":
+                    print(f"[species-debug] address {v!r} at path: {path}")
+                _walk(v, path + (k,))
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                _walk(v, path + (i,))
+
+    print("[species-debug] ==== walking doc for every 'species' key and every address ====")
+    _walk(doc, ())
+    print("[species-debug] ==== walk complete, constructing Composite ====")
+    try:
+        return Composite(doc, core=core)
+    except Exception as e:
+        print(f"[species-debug] Composite() raised {type(e).__name__}: {e}")
+        raise
+
+
 def apply_carry_state(agent, carry_state):
     """Overlay an inherited daughter's biological state onto a fresh agent doc.
 
@@ -461,7 +497,10 @@ class LineageProcess(Process):
             agent["listeners"]["mass"] = {"dry_mass": 0.0, "cell_mass": 0.0}
             seed_mass_listener(agent, core)
 
-        self._composite = Composite(doc, core=core)
+        if os.environ.get("LINEAGE_DEBUG_SPECIES_AMBIGUITY") == "1":
+            self._composite = _debug_build_composite_dumping_species_paths(doc, core)
+        else:
+            self._composite = Composite(doc, core=core)
         self._core = core
         self._gen_elapsed = 0.0
 
