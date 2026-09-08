@@ -37,6 +37,7 @@ from v2ecoli.workflow.analyses._helpers import (
 from v2ecoli.workflow.analyses.ptools_rna import PtoolsRna
 from v2ecoli.workflow.analyses.ptools_rxns import PtoolsRxns
 from v2ecoli.workflow.analyses.ptools_proteins import PtoolsProteins
+from v2ecoli.workflow.analyses.ptools_overview import PtoolsCellOverview
 
 
 def drop_leading_generations(
@@ -185,4 +186,22 @@ class PtoolsRxnsMultiseed(_MultiseedMixin, PtoolsRxns):
 
 class PtoolsProteinsMultiseed(_MultiseedMixin, PtoolsProteins):
     name = "ptools_proteins_multiseed"
+    scale = "multiseed"
+
+
+# The combined Cellular-Overview upload (genes + reactions + proteins in one
+# "a mixture" Omics-Viewer dataset) had only a single-scale registration, so a
+# multi-generation or multi-seed sweep could only export one generation at a
+# time. Register it at the aggregating scales too, the same way the per-category
+# ptools analyses are: PtoolsCellOverview.analyze forwards the (already time-rewritten
+# / cross-seed-collapsed) history_sql to its sibling analyses, so the mixins work
+# unchanged — multigeneration lays the lineage on one absolute time axis, and
+# multiseed element-wise aggregates across seeds.
+class PtoolsOverviewMultigeneration(_MultigenMixin, PtoolsCellOverview):
+    name = "ptools_overview_multigeneration"
+    scale = "multigeneration"
+
+
+class PtoolsOverviewMultiseed(_MultiseedMixin, PtoolsCellOverview):
+    name = "ptools_overview_multiseed"
     scale = "multiseed"
