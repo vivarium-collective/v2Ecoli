@@ -57,8 +57,6 @@ from v2ecoli.library.schema import (
     bulk_name_to_idx,
     counts,
     attrs,
-    numpy_schema,
-    listener_schema,
 )
 
 from v2ecoli.types.quantity import ureg as units

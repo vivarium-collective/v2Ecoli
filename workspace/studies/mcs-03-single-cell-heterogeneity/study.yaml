@@ -1,0 +1,206 @@
+schema_version: 4
+name: mcs-03-single-cell-heterogeneity
+investigation: multiscale-complexity-showcase
+title: "Arc 3 — single-cell heterogeneity from molecular noise"
+created: '2026-09-03'
+status: evaluated
+confidence: Investigating
+gate_status: failed
+
+cites:
+- {key: TaheriAraghi2015, claim: "interdivision-time CV ~10-30% and the adder principle in E. coli"}
+
+question: >-
+  Across a seed ensemble, does v2ecoli produce lawful single-cell heterogeneity —
+  an interdivision-time coefficient of variation in the ~10-30% E. coli range and
+  adder-like size homeostasis (constant added size, slope ~0 of added vs birth size)?
+  Where the model's heterogeneity is unlawful (too deterministic, or non-adder), what
+  small correction to the stochastic sources restores it?
+
+hypothesis: >-
+  Stochastic gene expression and stochastic replication initiation make the seeds
+  diverge, yielding division_time CV ~10-30% and an adder slope near 0. If the
+  ensemble is too tight (CV too low) or homeostasis is not adder-like, the dominant
+  missing noise source is identifiable and correctable.
+
+objective: >-
+  Run an ecoli_baseline seed ensemble and measure the division_time distribution,
+  its CV, and the added-size vs birth-size relationship to characterize how molecular
+  noise becomes population-level heterogeneity.
+
+# Multiscale role: stochastic molecular events -> statistical single-cell law —
+# ORDER FROM NOISE.
+
+conditions:
+  baseline:
+    composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+    params: {}
+    detail: "Seed ensemble (>=8 seeds) on basal medium, multi-generation."
+  variants:
+  - name: seed-ensemble
+    detail: Multi-seed ensemble (measures the native heterogeneity distribution; no model perturbation). The stochastic-timing perturbation is the mcs-06 variant.
+  model_settings:
+  - name: seed-ensemble
+    detail: "Vary seed across the ensemble; each seed is an independent stochastic lineage."
+
+comparison:
+  seeds: 8
+  generations: 6
+
+inputs:
+- artifact: sim_data
+  from: parca
+  into: cache_dir
+
+- artifact: mcs-01-ppgpp-replication-coupling
+  from: mcs-01-ppgpp-replication-coupling
+expected_behavior:
+- name: division-time-cv-in-band
+  observable: division_time
+  condition: "seed ensemble"
+  rationale: >-
+    Interdivision-time CV in E. coli is ~10-30%; a value far below indicates the
+    model is too deterministic, far above indicates runaway noise.
+- name: size-homeostasis-adder
+  observable: added_size vs birth_size
+  condition: "seed ensemble"
+  rationale: "Adder principle: added size is independent of birth size (slope ~0)."
+
+tests:
+- name: division-time-cv-in-band
+  classification: primary
+  question: "Is the interdivision-time CV within ~10-30%?"
+  measure:
+    kind: derived
+    detail: >-
+      CV = sd(division_time)/mean(division_time) over post-burn-in cells across the
+      ensemble; band 0.10-0.30.
+- name: size-homeostasis-adder
+  classification: secondary
+  question: "Is size homeostasis adder-like (added vs birth size slope ~0)?"
+  measure:
+    kind: derived
+    detail: "Linear regression of (division_mass - birth_mass) on birth_mass; slope near 0 = adder."
+
+readouts:
+- "division_time (interdivision time, min) per cell across the seed ensemble; CV"
+- "birth_mass, division_mass, added_mass (adder test)"
+
+visualizations:
+- {name: "Arc 3 heterogeneity", address: "html:viz/arc3_heterogeneity.html"}
+- name: Heterogeneity vs biological band
+  address: html:viz/heterogeneity_variance_band.html
+  description: 'Interdivision-time distribution: model CV ~7% against the shaded 10-30% biological band; adder plot.'
+
+report_cards:
+- viz/arc3_heterogeneity.html
+
+runs:
+- name: arc3-seed-ensemble-6x4
+  composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  kind: simulation
+  canonical: true
+  status: completed
+  result: FAIL
+  description: >-
+    6-seed x 4-generation basal ensemble (seeds 0-5), single-lineage. 18 post-burn-in
+    cells (gens 2-4). Division time from global_time range; masses from dry_mass.
+  computed_outcomes:
+    division-time-cv-in-band:
+      measured_value: 0.070
+      result: FAIL
+      detail: >-
+        Interdivision-time CV 0.070 (mean tau 49.3 min) — below the biological 0.10-0.30
+        band. CV accumulates across generations: 0.000 (gen2, identical across seeds) ->
+        0.029 (gen3) -> 0.050 (gen4). The model under-produces cell-to-cell heterogeneity.
+    size-homeostasis-adder:
+      measured_value: 0.585
+      result: INCONCLUSIVE
+      detail: >-
+        Added-vs-birth slope 0.59, but birth mass spans only 309-358 fg (CV ~4%), so the
+        adder/sizer/timer distinction is not resolvable — the low birth-size variation is
+        itself a consequence of the under-dispersion.
+
+  outcomes:
+    division-time-cv-in-band:
+      result: FAIL
+    size-homeostasis-adder:
+      result: SKIP
+  emitter: parquet
+claim: >-
+  v2ecoli under-produces single-cell heterogeneity: interdivision-time CV is ~7% (mean tau 49 min) against a biological 10-30%, accumulating slowly across generations (0%->5% over gens 2-4). The cells stay more synchronized than real E. coli, and birth-size variation is too small to classify size homeostasis. The gap is structural (the model runs many processes at expected rather than fully stochastic rates), not a small parameter — a landed correction would require enabling additional stochastic mechanisms. [Follow-ups: mcs-10 confirms the under-dispersion is robust across 6 seeds (pooled CV 0.048) and resolves adder-like homeostasis (slope ~0); mcs-06 then LANDS a fix — a stochastic D-period lifts the CV to 0.115, into the biological 0.10-0.30 band, with the mean generation time approximately preserved.]
+
+findings:
+- id: heterogeneity-under-dispersed-vs-biology
+  kind: computational
+  status: contradicts
+  statement: >-
+    Across a 6-seed ensemble, v2ecoli's interdivision-time coefficient of variation is 7%
+    (mean generation time 49 min), well below the 10-30% measured in single-cell E. coli.
+    The heterogeneity is real but slow to develop: sibling lineages started from different
+    seeds are IDENTICAL in division time at generation 2 (CV 0.000), diverging only to 3%
+    by generation 3 and 5% by generation 4. Birth mass spans just 309-358 fg (CV ~4%), too
+    narrow to resolve whether the cell is an adder, sizer or timer — and that narrowness is
+    itself the signature of under-dispersion. The whole-cell model is more deterministic /
+    synchronized than real cells, consistent with its use of expected (mean) rates in many
+    processes rather than fully stochastic kinetics. Closing this gap is a structural
+    modeling change (adding stochastic mechanisms), not a parameter tweak, so it is flagged
+    rather than applied here.
+  evidence:
+    from_test: division-time-cv-in-band
+    from_run: arc3-seed-ensemble-6x4
+    division_time_cv: 0.070
+    mean_tau_min: 49.3
+    cv_by_generation: {gen2: 0.000, gen3: 0.029, gen4: 0.050}
+    biological_band: [0.10, 0.30]
+    n_cells: 18
+    n_seeds: 6
+    birth_mass_range_fg: [309, 358]
+  expected:
+    summary: "Single-cell E. coli shows interdivision-time CV ~10-30% and clear adder-like size homeostasis."
+  next_action: >-
+    Localize the missing noise: audit which processes run at expected rather than stochastic
+    rates (division D-period, replication initiation timing, low-copy expression) and whether
+    an existing stochastic mode can be enabled. Structural change; out of scope for a small fix.
+  next_action_type: escalate_model
+  provenance:
+    run_ids: [arc3-seed-ensemble-6x4]
+  caveats:
+  - "Small ensemble (6 seeds, 3 post-burn-in gens); the CV estimate has wide uncertainty but is robustly below the biological band across every generation."
+
+pipeline_gate:
+  enables: [mcs-04-capstone-downshift]
+biological_summary: >-
+  Stochastic gene expression and replication initiation should make no two cells identical,
+  giving an interdivision-time CV of ~10–30% and adder-like size homeostasis. v2ecoli
+  under-produces this: it is more synchronized/deterministic than real E. coli.
+
+behavior_tests:
+- name: division-time-cv-in-band
+  classification: primary
+  measure: "CV of interdivision time across a 6-seed ensemble"
+  pass_if: "0.10–0.30 (biological E. coli range)"
+  expected: "0.10–0.30"
+  observed: "0.070 — below band (accumulates 0%→3%→5% over gens 2–4)"
+  verdict: fail
+- name: size-homeostasis-adder
+  classification: secondary
+  measure: "slope of added-size vs birth-size"
+  pass_if: "slope ≈ 0 (adder)"
+  expected: "≈ 0"
+  observed: "0.59, but birth-size CV ~4% too narrow to resolve"
+  verdict: inconclusive
+
+conclusion: >-
+  ## Result
+  The model is under-dispersed (CV 7% vs 10–30%). A code audit (see mcs-06) traces it to a
+  bypassed division-noise term; the fix is a structural modeling change, flagged not applied.
+simulation_set:
+- name: arc3-seed-ensemble-6x4
+  kind: simulation
+  status: completed
+  base_model: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  result: FAIL
+  pass_fail_tests:
+  - division-time-cv-in-band
+  - size-homeostasis-adder

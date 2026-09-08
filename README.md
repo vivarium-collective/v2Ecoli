@@ -93,6 +93,7 @@ Every investigation under `workspace/investigations/`, with its research questio
 | [Metabolism — biomass yield _(active)_](https://vivarium-collective.github.io/v2ecoli/investigations/metabolism-biomass-yield.html) | Does the v2ecoli baseline conserve carbon and respect the thermodynamic ceiling on biomass yield? |
 | [Does v2ecoli reproduce aerobic acetate overflow — the acetate-carbon yield vs growth rate curve? _(in-progress)_](https://vivarium-collective.github.io/v2ecoli/investigations/metabolism-overflow.html) | Does v2ecoli reproduce aerobic acetate overflow — the acetate-carbon yield Y_ac = (2·acetate)/(6·glucose) rising from ~0 to ~linearly above a critical growth rate, as measured in glucose-limited chem… |
 | [v2ecoli — Bioprocess Migration & Reactor Coupling _(active)_](https://vivarium-collective.github.io/v2ecoli/investigations/multiscale-bioprocess.html) | Can v2ecoli be migrated and enhanced to run inside a bench-scale bioreactor? |
+| [Multiscale Complexity in a Whole-Cell E. coli _(planning)_](https://vivarium-collective.github.io/v2ecoli/investigations/multiscale-complexity-showcase.html) | What emergent biological phenomena does v2ecoli produce that are invisible at any single scale, and appear only when molecular, cellular, and population scales are coupled? |
 | [Parameter UQ — global sensitivity of v2ecoli _(closed)_](https://vivarium-collective.github.io/v2ecoli/investigations/parameter-uq.html) | Which sim_data parameters drive variance in v2ecoli single-cell observables? |
 | [Perturbation demo — gene knockouts and media shifts on the baseline whole cell](https://vivarium-collective.github.io/v2ecoli/investigations/perturbation-demo.html) | How do you apply a gene knockout or a media change to the v2ecoli baseline, minimally? |
 | [Surrogate Modeling — can a neural net emulate the v2ecoli baseline? _(complete)_](https://vivarium-collective.github.io/v2ecoli/investigations/surrogate-modeling.html) | Can a neural-network surrogate, trained on v2ecoli baseline rollouts, emulate the model's per-step dynamics across a broad observable panel (growth/mass, exchange fluxes, metabolic fluxes, protein an… |
@@ -289,12 +290,16 @@ same biological processes and differ only in how cells are scheduled and embedde
 | `ecoli_time_varying_env` | v2ecoli baseline + EnvironmentDriver/Mirror hooks so external physics can drive environment.external_concentrations each tick. |
 | `lineage_ray_batch` | Process-bigraph-native multiseed batch: N real LineageProcess nodes, one per seed, wired directly into the composite's own state tree and addressed via the ray: protocol -- unlike batch_baseline's Ba… |
 | `millard2017_metabolism` | Standalone Millard et al. 2017 kinetic ODE of E. coli central carbon and energy metabolism (BioModels MODEL1505110000), wrapped as a process-bigraph composite via pbg-copasi's CopasiUTCProcess. |
+| `millard_fba_bridge` | v2ecoli-pdmp Phase 1 FBA-BRIDGE composite — couples the Millard 2017 kinetic ODE (central carbon + energy metabolism, via pbg-copasi CopasiUTCProcess) with v2ecoli's bulk store (via v2ecoli.steps.fba… |
 | `millard_fba_bridge_harness` | Whole-cell E. coli baseline (real tFBA ecoli-metabolism) with the Millard 2017 central-carbon ODE wired in as a flux SOURCE: the Millard fluxes are mapped+converted by fba-flux-coupler into pinned_fl… |
+| `millard_lqr` | v2ecoli-pdmp Phase 1: Millard 2017 ODE + simplified scalar LQR outer controller. |
+| `millard_pdmp_baseline` | Whole-cell E. coli composite with v2ecoli's tFBA Metabolism replaced by the Millard 2017 ODE + multi-state LQR controller + FBA-bridge. |
 | `parca` | ParCa parameter-calculation pipeline — the 9-step fit (initialize → input_adjustments → … → final_adjustments) that produces sim_data. |
 | `parca_prep` | ParCa pull-or-compute prerequisite, as an ordinary study on the investigation-as-composite substrate. |
 | `reactor_bird_coupled` | v2ecoli baseline_population coupled to the BiRD bioreactor (BiRDTransportProcess) via ReactorCellCoupler. |
 | `reactor_bird_coupled_millard` | v2ecoli Millard kinetic-metabolism cell (baseline_millard) + PopulationAggregator coupled to the BiRD bioreactor (BiRDTransportHours) via ReactorCellCoupler. |
 | `vecoli` | Genuine upstream vEcoli, run on its own vivarium-core Engine inside ONE process-bigraph node (agents/<agent_id>/vivarium_ecoli) — the REFERENCE model for the v2ecoli<->vEcoli comparison. |
+| `workflow_nf` | The campaign DAG for task-granularity dispatch: one ParCa per variant, each feeding that variant's M LineageStep tasks, all N x M gathering into one analysis. |
 <!-- END:composites -->
 
 Reach a generator by name — `build_composite("<name>")`; a `*.composite.yaml`

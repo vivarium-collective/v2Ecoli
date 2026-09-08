@@ -46,7 +46,7 @@ from bigraph_schema.contract import ProcessContract
 
 # simulate_process removed
 
-from v2ecoli.library.schema import numpy_schema, bulk_name_to_idx, counts, listener_schema
+from v2ecoli.library.schema import bulk_name_to_idx, counts
 from v2ecoli.library.ecoli_step import EcoliStep as Step
 
 # Register default topology for this process, associating it with process name

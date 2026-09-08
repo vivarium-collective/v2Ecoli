@@ -217,14 +217,12 @@ class V2EcoliUnitsResolver:
 # Resilient figure helpers — prefer the shared base hook, fall back locally
 # ---------------------------------------------------------------------------
 #
-# v2ecoli visualizations label axes via the pluggable hook on the shared
-# ``viva_superpowers.visualization.Visualization`` base. But the installed base
-# may transiently lack that hook (the units-aware base PR is not merged yet, or
-# a concurrent session reinstalled the non-editable git build into the shared
-# venv). These wrappers delegate to the base hook when it is present and apply
-# the identical labeling locally otherwise, so v2ecoli rendering never crashes
-# on a stale base. Once the base PR is merged and pinned, the delegate path is
-# always taken and the fallback is dead weight (cheap to keep for safety).
+# v2ecoli visualizations label axes via the pluggable finalize_figure hook on
+# the shared ``viva_superpowers.visualization.Visualization`` base. That hook is
+# present in the shared package now; the local fallback below exists only for a
+# stale or non-editable shared venv that predates it. These wrappers delegate to
+# the base hook when it is present and apply the identical labeling locally
+# otherwise, so v2ecoli rendering never crashes on an old base.
 
 
 def _base_visualization():

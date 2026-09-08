@@ -1,0 +1,54 @@
+{
+  "etc_reformulation_2026_09_04": {
+    "goal": "Reformulate the ETC fix to FORCE forward respiration (robustly), addressing the mcs-11 non-reproducibility.",
+    "formulations_tested": [
+      {
+        "name": "forward lower-bound only",
+        "result": "NO EFFECT \u2014 reverse rises to match forward (futile cycle); net stays reverse-hydrolysis, yield 0.815 at every forward-min (6..22)."
+      },
+      {
+        "name": "reverse=0 (net-forward, forward free)",
+        "yield": 0.268,
+        "RQ": 1.22,
+        "o2": 25.5,
+        "acetate": 26.0,
+        "growth": 0.972,
+        "atpsyn_forward": 0.0,
+        "note": "Robust respiration (0 infeasible) but yield BELOW band; ATP synthase bypassed (cell reroutes carbon to acetate)."
+      },
+      {
+        "name": "forward-min + reverse=0 (net-forward THROUGH ATP synthase)",
+        "sweep": [
+          {
+            "forward_min": 4,
+            "yield": 0.268,
+            "growth": 0.972,
+            "o2": 44.7,
+            "acetate": 43.5
+          },
+          {
+            "forward_min": 8,
+            "yield": 0.327,
+            "growth": 1.182,
+            "o2": 72.5,
+            "acetate": 68.5
+          },
+          {
+            "forward_min": 12,
+            "yield": 0.41,
+            "growth": 1.476,
+            "o2": 103.8,
+            "acetate": 99.2
+          }
+        ],
+        "note": "Yield reaches the band (0.41) ONLY at forward-min=12, where growth blows up to 1.48/h (vs physiological ~0.97) with non-physiological O2/acetate. Yield-in-band REQUIRES growth ~1.5."
+      }
+    ],
+    "conclusion": "No ATP-synthase FLUX BOUND simultaneously (a) forces respiration, (b) reproduces the measured biomass yield (0.355-0.444), and (c) preserves growth (~0.97/h). Forcing net-forward respiration is achievable and robust, but the yield band is only reachable by distorting growth. The defect is therefore STOICHIOMETRIC \u2014 the effective oxidative-phosphorylation P/O ratio (ATP made per O2 / per glucose) is mis-set \u2014 and the principled correction is a reaction-stoichiometry change (H+/ATP coupling, ETC proton pumping), NOT a flux bound. This precisely localizes the Arc-2 defect one level deeper than mcs-05.",
+    "artifacts": [
+      "etc_v2_rev0.json",
+      "etc_v2_fmin*.json",
+      "etc_v2_fwd*_rev0.json"
+    ]
+  }
+}

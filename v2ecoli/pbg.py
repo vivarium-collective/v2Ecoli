@@ -136,9 +136,3 @@ def save_pbg_doc(state_dict, path):
     with open(path, 'w') as f:
         json.dump(doc, f, cls=PbgEncoder, indent=2)
     return path
-
-
-def load_pbg(path):
-    """Load a .pbg file and return the document dict."""
-    with open(path) as f:
-        return json.load(f)

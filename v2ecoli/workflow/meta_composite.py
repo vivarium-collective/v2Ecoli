@@ -15,7 +15,25 @@ from v2ecoli.workflow.variants import expand_branches, BranchSpec
 def register_workflow_processes(core) -> None:
     """Register workflow Processes/Steps so ``local:`` addresses resolve."""
     from v2ecoli.workflow.lineage import LineageProcess
+    from v2ecoli.workflow.lineage_step import LineageStep
+
     core.register_link("LineageProcess", LineageProcess)
+    # A whole lineage as one atomic task node (see lineage_step.py): the Step is
+    # what a task-granularity dispatcher addresses, the Process is what runs the
+    # generations inside it.
+    core.register_link("LineageStep", LineageStep)
+    # Task DECLARATIONS for the rendered campaign DAG (composites/workflow_nf.py):
+    # ports plus a nextflow_script(), no simulation logic. Registered so a
+    # local: address resolves when the document is constructed for rendering.
+    from v2ecoli.composites.workflow_nf import AnalysisTaskStep, ParcaTaskStep
+
+    # A nested Composite node (address local:composite) is how a document expresses
+    # a sub-scope; #201 renders one as a Nextflow sub-workflow with take:/emit:.
+    from process_bigraph.composite import Composite as _Composite
+
+    core.register_link("composite", _Composite)
+    core.register_link("ParcaTaskStep", ParcaTaskStep)
+    core.register_link("AnalysisTaskStep", AnalysisTaskStep)
 
 
 def _branch_key(spec: BranchSpec) -> str:

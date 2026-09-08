@@ -1,0 +1,61 @@
+{
+  "baseline": {
+    "biomass_yield": 0.816,
+    "RQ": 2.94,
+    "O2_glucose": 0.137,
+    "growth": 0.956
+  },
+  "measured_band": [
+    0.355,
+    0.444
+  ],
+  "theoretical_max": 0.538,
+  "diagnostic_reference": {
+    "yield": 0.831,
+    "RQ": 3.43
+  },
+  "sweep": [
+    {
+      "knob": "baseline",
+      "scale": 1.0,
+      "model_ngam_mmol_gDW_h": 8.39,
+      "biomass_yield_gDW_g_glucose": 0.8156376413258601,
+      "RQ": 2.9448724750036277,
+      "O2_glucose": 0.13680079739088824,
+      "growth_rate_per_h": 0.9563212151760623
+    },
+    {
+      "knob": "GAM",
+      "scale": 1.5,
+      "biomass_yield_gDW_g_glucose": 0.8230447438209456,
+      "RQ": 2.593789930269286,
+      "O2_glucose": 0.14537329004820684,
+      "growth_rate_per_h": 0.9568713300989728
+    },
+    {
+      "knob": "GAM",
+      "scale": 5.0,
+      "biomass_yield_gDW_g_glucose": 0.8210643606606796,
+      "RQ": 2.5192321909526063,
+      "O2_glucose": 0.1480971016064915,
+      "growth_rate_per_h": 0.966280361029134
+    },
+    {
+      "knob": "NGAM",
+      "scale": 10.0,
+      "biomass_yield_gDW_g_glucose": 0.8305428896590783,
+      "RQ": 2.5878202891480515,
+      "O2_glucose": 0.13851346754226174,
+      "growth_rate_per_h": 0.9582268738040737
+    },
+    {
+      "knob": "NGAM",
+      "scale": 3.0,
+      "biomass_yield_gDW_g_glucose": 0.8290570076036775,
+      "RQ": 2.591528262883607,
+      "O2_glucose": 0.14276174799517216,
+      "growth_rate_per_h": 0.9528412263438875
+    }
+  ],
+  "conclusion": "maintenance-ATP (GAM/NGAM) insensitive: NGAM to 10x (83.9 mmol/gDW/h, verified at FBA) leaves yield/O2/growth flat; defect re-localized to ATP-generation stoichiometry (RQ~3)."
+}

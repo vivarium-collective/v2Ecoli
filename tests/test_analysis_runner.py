@@ -67,12 +67,18 @@ def test_run_analyses_over_synthetic_records(monkeypatch):
     assert os.path.isfile(os.path.join(d, "analysis.json"))
 
 
-def test_run_analyses_unknown_name_skips(monkeypatch):
+def test_run_analyses_unknown_name_is_error(monkeypatch):
+    """A declared analysis that isn't registered is a loud error, not a silent
+    skip: status goes PARTIAL and the name lands in errors, so a missing KPI
+    (e.g. an sms_modules analysis whose registration import never ran in the
+    container) can't pass as a clean run."""
     import v2ecoli.workflow.analysis_runner as ar
     monkeypatch.setattr(ar, "build_cell_records", lambda sweep_dir: {})
     import tempfile
     out = ar.run_analyses(tempfile.mkdtemp(), {"single": {"nope_not_real": {}}})
     assert out["single"] == {}
+    assert out["status"] == "PARTIAL"
+    assert any(e.get("name") == "nope_not_real" for e in out["errors"])
 
 
 _CACHE = os.environ.get("V2ECOLI_CACHE", "out/cache")
@@ -191,7 +197,7 @@ def test_duckdb_only_analyses_skip_timeseries_extraction(tmp_path, monkeypatch):
     # no sim_data present the run fails resolving it — and that is the point:
     # reaching sim_data resolution proves record building was skipped, since
     # _boom would have fired first otherwise.
-    with pytest.raises(FileNotFoundError, match="no sim_data pickle"):
+    with pytest.raises(FileNotFoundError, match="could not resolve sim_data"):
         ar.run_analyses(
             str(tmp_path),
             {"multiseed": {"central_carbon_metabolism_scatter": {}}})
@@ -362,25 +368,34 @@ def test_parallel_analyses_use_distinct_cursors_not_shared_connection(monkeypatc
     ar = _duckdb_test_ctx(monkeypatch, tmp_path)
     from v2ecoli.workflow.analysis import Analysis
 
-    seen_conn_ids = []
+    # Hold the CONNECTIONS THEMSELVES, not their id()s. An id() is only unique
+    # among objects that are simultaneously alive: once a cursor is garbage
+    # collected CPython may hand its address to the next allocation, so three
+    # genuinely distinct cursors can report two distinct ids. That made this
+    # test intermittently fail in CI (observed ids [x, y, x] with the first and
+    # third identical) while passing locally -- a flake that accused the
+    # thread-safety design of a bug it did not have. Keeping strong references
+    # makes distinctness a property of the objects rather than of GC timing.
+    seen_conns = []
 
-    class _RecordsConnId(Analysis):
+    class _RecordsConn(Analysis):
         scale = "multiseed"
 
         def update(self, state, interval=None):
-            seen_conn_ids.append(id(state["conn"]))
+            seen_conns.append(state["conn"])
             return {"data": {"ok": True}}
 
     for n in ("c1", "c2", "c3"):
-        _register_fake(monkeypatch, ar, n, _RecordsConnId)
+        _register_fake(monkeypatch, ar, n, _RecordsConn)
     opts = {"multiseed": {n: {} for n in ("c1", "c2", "c3")}}
     ar.run_analyses(str(tmp_path), opts, max_workers=3)
 
-    assert len(seen_conn_ids) == 3
-    assert len(set(seen_conn_ids)) == 3, (
+    assert len(seen_conns) == 3
+    # every reference is still live here, so identity is unambiguous
+    assert len({id(c) for c in seen_conns}) == 3, (
         "two or more modules were handed the identical connection/cursor "
-        f"object (ids: {seen_conn_ids}) — concurrent queries on a shared "
-        "DuckDB connection are not safe")
+        f"object (ids: {[id(c) for c in seen_conns]}) — concurrent queries on a "
+        "shared DuckDB connection are not safe")
 
 
 # ---------------------------------------------------------------------------

@@ -96,6 +96,9 @@ def build_lineage_ray_batch_document(
     config_overrides: dict | None = None,
     emitter_arg: dict | None = None,
     seed_overrides: dict[Any, dict[str, Any]] | None = None,
+    exchange_fluxes: dict | None = None,
+    exchange_flux_basis: str | None = None,
+    variant_grid: list[dict] | None = None,
 ) -> dict:
     """Build a document with N real ``ray:LineageProcess`` nodes, one per seed.
 
@@ -120,6 +123,13 @@ def build_lineage_ray_batch_document(
       "A real variant sweep across ray:-distributed lineages is real, separate,
       not-yet-scoped work" -- this is that work, scoped to the per-seed case).
 
+    ``exchange_fluxes``/``exchange_flux_basis`` (item 106): ``ecoli_baseline.baseline()`` and
+    ``LineageProcess`` both already accept these (a caller-supplied exchange-species-to-flux-column
+    map, plus the units basis those columns are reported in -- e.g. ``{"violacein_exchange":
+    "VIOLACEIN"}``/``"gdcw"``), but this document builder never threaded them onto a lineage's own
+    config -- the same class of gap ``variants``/``injected_processes`` had before item109/#663.
+    Needed for real CD2 Run 2 KPI reporting (a violacein-exchange flux column), not just raw state.
+
     Omitted entirely (the default): every lineage starts fresh at generation 0
     against the one shared ``cache_dir`` -- today's exact behavior, unchanged.
 
@@ -139,6 +149,17 @@ def build_lineage_ray_batch_document(
     Per-seed lineage_seed follows ``base_seed + i`` (mirrors ``BatchBaselineRunner``'s own
     ``seeds = list(range(base_seed, base_seed + n_seeds))`` convention, so results stay directly
     comparable against the existing mechanism).
+
+    The returned document carries that requirement machine-readably as a top-level
+    ``required_run_interval`` (= ``n_generations * max_duration_per_gen``), which
+    ``Composite`` ignores. A runner that calls ``Composite.run(n)`` with ``n`` below
+    it invokes NOTHING: process-bigraph only invokes a process whose next event
+    (``time + interval``) lies within the run window, so with every node's
+    ``interval = max_duration_per_gen`` a ``run(1)`` advances global_time 0 -> 1,
+    builds no cell, emits no row and returns cleanly -- the CD2 K4 canary /
+    dispatch-438 "no emitted output" failure (thirteen dispatches carried ``-n 1``).
+    A generic runner should run ``max(steps, document['required_run_interval'])``
+    or refuse a shorter request; see :func:`required_run_interval`.
     """
     if n_seeds < 1:
         raise ValueError(f"build_lineage_ray_batch_document: n_seeds must be >= 1, got {n_seeds}")
@@ -151,69 +172,115 @@ def build_lineage_ray_batch_document(
 
     resolved_out_dir = resolve_out_dir(out_dir)
 
+    # ``variant_grid``: one entry per variant to sweep, each a dict of LineageProcess
+    # config keys -- any of ``variant_index``, ``variant_name``, ``config_overrides``.
+    # LineageProcess is itself "one (variant, seed) lineage" (its own module docstring)
+    # and applies ``variant_index`` + ``config_overrides`` via ``baseline()`` at each
+    # generation build, so the sweep is a genuine (variant, seed) cross-product of real
+    # ``ray:``-distributed nodes -- not the older single-shared-override shape. ``None``/
+    # ``[]`` means one implicit variant, preserving the seeds-only node naming and the
+    # legacy ``variants`` single-shared-override behavior.
+    grid = variant_grid if variant_grid else [None]
+    swept = bool(variant_grid)
+
     state: dict[str, Any] = {"lineages": {}}
-    for i in range(n_seeds):
-        seed = base_seed + i
-        node_name = f"lineage_{seed:04d}"
-        # Item 115: always give every lineage a REAL per-generation checkpoint
-        # destination -- zero caller effort, matching this composite's own
-        # established "no per-request tuning needed for the common case"
-        # philosophy (n_workers's own docstring). LineageProcess writes a
-        # checkpoint after EVERY generation already; it was only ever a no-op
-        # here because this builder never gave it anywhere real to write to.
-        checkpoint_dir = f"{resolved_out_dir.rstrip('/')}/checkpoints/{experiment_id}/seed_{seed:04d}"
-        config: dict[str, Any] = {
-            "cache_dir": cache_dir,
-            "seed": seed,
-            "lineage_seed": seed,
-            "generations": int(n_generations),
-            "single_daughters": True,
-            "experiment_id": experiment_id,
-            "out_dir": resolved_out_dir,
-            "max_duration_per_gen": float(max_duration_per_gen),
-            "time_step": float(time_step),
-            "media": media,
-            "emitter": emitter,
-            "checkpoint_dir": checkpoint_dir,
-        }
-        override = None
-        if seed_overrides:
-            override = seed_overrides.get(seed)
-            if override is None:
-                override = seed_overrides.get(str(seed))
-        if override:
-            if "cache_dir" in override:
-                config["cache_dir"] = override["cache_dir"]
-            if "initial_carry_state_path" in override:
-                config["initial_carry_state_path"] = override["initial_carry_state_path"]
-            if "initial_generation_index" in override:
-                config["initial_generation_index"] = int(override["initial_generation_index"])
+    for v_pos, variant in enumerate(grid):
+        variant = dict(variant or {})
+        variant_index = int(variant.get("variant_index", v_pos))
+        variant_name = variant.get("variant_name")
+        # Merge overrides: shared ``config_overrides``, then this variant's own, then the
+        # legacy single-shared ``variants`` dict (applied to every node, back-compat).
+        merged_overrides: dict[str, Any] = {}
+        if config_overrides:
+            merged_overrides.update(config_overrides)
+        if variant.get("config_overrides"):
+            merged_overrides.update(variant["config_overrides"])
         if variants:
-            # LineageProcess itself has no variant concept (that's applied one layer up in
-            # BatchBaselineRunner today, via _apply_config_variant before dispatch) -- fold any
-            # caller-supplied override in via config_overrides for now. A real variant sweep
-            # across ray:-distributed lineages is real, separate, not-yet-scoped work.
-            config["config_overrides"] = {**(config_overrides or {}), **variants}
-        elif config_overrides:
-            config["config_overrides"] = dict(config_overrides)
-        if injected_processes:
-            config["injected_processes"] = dict(injected_processes)
-        if emitter_arg:
-            config["emitter_arg"] = dict(emitter_arg)
+            merged_overrides.update(variants)
 
-        state[node_name] = {
-            "_type": "process",
-            "address": "ray:LineageProcess",
-            "config": config,
-            "interval": float(max_duration_per_gen),
-            "inputs": {},
-            "outputs": {
-                "summary": ["lineages", node_name, "summary"],
-                "complete": ["lineages", node_name, "complete"],
-            },
-        }
+        for i in range(n_seeds):
+            seed = base_seed + i
+            node_name = (
+                f"lineage_v{variant_index:03d}_s{seed:04d}" if swept
+                else f"lineage_{seed:04d}"
+            )
+            # Per-node per-generation checkpoint destination (item 115 / #680):
+            # LineageProcess checkpoints after every generation, but only when
+            # given a real dir. Disambiguate by variant when sweeping so two
+            # variants of one seed do not collide; keep the seeds-only path
+            # unchanged when not swept.
+            checkpoint_dir = (
+                f"{resolved_out_dir.rstrip('/')}/checkpoints/{experiment_id}/"
+                + (f"v{variant_index:03d}_s{seed:04d}" if swept
+                   else f"seed_{seed:04d}")
+            )
+            config: dict[str, Any] = {
+                "cache_dir": cache_dir,
+                "seed": seed,
+                "lineage_seed": seed,
+                "variant_index": variant_index,
+                "generations": int(n_generations),
+                "single_daughters": True,
+                "experiment_id": experiment_id,
+                "out_dir": resolved_out_dir,
+                "max_duration_per_gen": float(max_duration_per_gen),
+                "time_step": float(time_step),
+                "media": media,
+                "emitter": emitter,
+                "checkpoint_dir": checkpoint_dir,
+            }
+            if variant_name:
+                config["variant_name"] = variant_name
+            if merged_overrides:
+                config["config_overrides"] = dict(merged_overrides)
+            if injected_processes:
+                config["injected_processes"] = dict(injected_processes)
+            if emitter_arg:
+                config["emitter_arg"] = dict(emitter_arg)
+            # Per-seed cache/resume override (#680), keyed by seed (int or str).
+            override = None
+            if seed_overrides:
+                override = seed_overrides.get(seed)
+                if override is None:
+                    override = seed_overrides.get(str(seed))
+            if override:
+                if "cache_dir" in override:
+                    config["cache_dir"] = override["cache_dir"]
+                if "initial_carry_state_path" in override:
+                    config["initial_carry_state_path"] = override["initial_carry_state_path"]
+                if "initial_generation_index" in override:
+                    config["initial_generation_index"] = int(override["initial_generation_index"])
+            # Declared exchange-flux measurements (#691), forwarded per node.
+            if exchange_fluxes:
+                config["exchange_fluxes"] = dict(exchange_fluxes)
+            if exchange_flux_basis:
+                config["exchange_flux_basis"] = exchange_flux_basis
 
-    return {"state": state}
+            state[node_name] = {
+                "_type": "process",
+                "address": "ray:LineageProcess",
+                "config": config,
+                "interval": float(max_duration_per_gen),
+                "inputs": {},
+                "outputs": {
+                    "summary": ["lineages", node_name, "summary"],
+                    "complete": ["lineages", node_name, "complete"],
+                },
+            }
+
+    return {
+        "state": state,
+        "required_run_interval": required_run_interval(
+            n_generations=n_generations, max_duration_per_gen=max_duration_per_gen),
+    }
+
+
+def required_run_interval(*, n_generations: int, max_duration_per_gen: float) -> float:
+    """The TOTAL SIMULATED TIME ``Composite.run`` must be given for a lineage-batch
+    document to invoke every generation of every lineage: one ``max_duration_per_gen``
+    per generation. Anything shorter than ONE generation invokes nothing at all (see
+    :func:`build_lineage_ray_batch_document`)."""
+    return float(int(n_generations) * float(max_duration_per_gen))
 
 
 def build_lineage_ray_composite(

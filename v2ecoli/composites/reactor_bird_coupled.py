@@ -51,10 +51,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from viva_superpowers.composite_generator import composite_generator
+from viva_superpowers.composite_generator import (
+    composite_generator,
+    emitter_defaults,
+)
 
-from v2ecoli.composites._helpers import _make_instance, make_edge
-from v2ecoli.composites.ecoli_population import baseline_population
+from v2ecoli.composites._helpers import (
+    _make_instance,
+    make_edge,
+    set_enclosing_emitter_decl,
+)
+from v2ecoli.composites.ecoli_population import (
+    LINEAGE_STORE_NAME,
+    baseline_population,
+)
 from v2ecoli.composites.ecoli_time_varying_env import (
     ENVIRONMENT_DRIVER_STEP_NAME,
     ENVIRONMENT_MIRROR_STEP_NAME,
@@ -75,6 +85,15 @@ from v2ecoli.steps.reactor_cell_coupler import (
 # Top-level state keys / step names.
 REACTOR_STORE_NAME = "reactor"
 REACTOR_TRANSPORT_NAME = "reactor_transport"
+
+# The declared emit roots that live at the DOCUMENT level (siblings of
+# ``agents``), not inside the cell. The per-agent sink reaches them with an
+# upward ``../../<root>`` wire (see the generator's ``emitters=`` declaration
+# and ``_helpers.set_enclosing_emitter_decl``). Every other declared root is
+# agent-relative.
+COUPLED_DOCUMENT_EMIT_ROOTS: tuple[str, ...] = (
+    REACTOR_STORE_NAME, "population", LINEAGE_STORE_NAME,
+)
 REACTOR_CELL_COUPLER_STEP_NAME = "reactor_cell_coupler"
 
 
@@ -92,7 +111,7 @@ FALLBACK_DISSOLVED_O2_MGL = 8.0
 FALLBACK_DISSOLVED_CO2_MGL = 0.5
 
 # Medium glucose recipe seed (mmol/L) for the ReactorCellCoupler medium
-# accumulator (#225 req-3). Default ~ M9 batch glucose (4 g/L / 180.16 g/mol =
+# accumulator. Default ~ M9 batch glucose (4 g/L / 180.16 g/mol =
 # 22.2 mM); the coupler draws this pool down by the cell's GLC uptake so
 # reactor.glucose_medium_mM is a gradeable remaining-glucose CONCENTRATION
 # (vs Beulig reactor_glucose_data.csv). Byproduct leaves seed at 0 (cumulative
@@ -178,9 +197,9 @@ def _reactor_store(
     ``volume_L``) and the transport diagnostics are seeded so wires resolve.
 
     ``glucose_medium_mM`` + the ``*_mM`` byproduct leaves are ADDITIVE float
-    medium-concentration accumulators the coupler integrates exchange counts into
-    (#225 req-3): glucose seeds at the medium recipe (drawn down by uptake);
-    byproducts seed at 0 (accumulate secretion).
+    medium-concentration accumulators the coupler integrates exchange counts into:
+    glucose seeds at the medium recipe (drawn down by uptake); byproducts seed at
+    0 (accumulate secretion).
     """
     cstar_o2, cstar_co2 = _transport_equilibrium(bird_config)
     medium = {GLUCOSE_MEDIUM_LEAF: float(initial_glucose_mM),
@@ -391,7 +410,7 @@ def add_reactor_coupling(
             "type": "object", "default": dict(DEFAULT_BIRD_REACTOR_CONFIG)},
         # Population-aggregator knobs forwarded to baseline_population.
         "cells_per_agent": {"type": "number", "default": 1.0},
-        # "fixed" (default) | "representative_doubling" (#225 item #1): grow the
+        # "fixed" (default) | "representative_doubling": grow the
         # represented population 2x per generation so the coupled reactor sees an
         # ACCUMULATING biomass / O2 demand instead of the single-lineage plateau.
         "population_growth_mode": {"type": "string", "default": "fixed"},
@@ -406,7 +425,7 @@ def add_reactor_coupling(
         # reactor trajectory is chunk-independent. Default False = no-op.
         "single_daughters": {"type": "boolean", "default": False},
         # Medium glucose recipe seed (mmol/L) for the coupler's drawdown
-        # accumulator (#225 req-3 substrate/glucose-conc axis).
+        # accumulator (substrate/glucose-conc axis).
         "initial_glucose_mM": {"type": "number",
                                "default": DEFAULT_INITIAL_GLUCOSE_MM},
         # Medium ammonium recipe seed (mmol/L) -- a finite, drawn-down pool
@@ -428,6 +447,32 @@ def add_reactor_coupling(
                            "baseline_population -> baseline().",
         },
     },
+    emitters=[
+        {
+            # Default observation sink: the same vEcoli-shaped ParquetEmitter
+            # ecoli_baseline declares, materialised as the PER-AGENT
+            # ``agents/<id>/emitter`` step baseline() builds. The declared roots
+            # are resolved in that sink's frame: ``global_time`` / ``bulk`` /
+            # ``listeners`` / ``boundary`` are the cell's own stores (agent-
+            # relative, so the omics readers get bulk__id / bulk__count /
+            # listeners__fba_results__* / listeners__mass__* per cell), while
+            # ``reactor`` / ``population`` / ``lineage`` live at the DOCUMENT
+            # level and are wired upward (``../../<root>``) out of the agent --
+            # see COUPLED_DOCUMENT_EMIT_ROOTS + _helpers.set_enclosing_emitter_decl.
+            # One hive row per tick thus carries the cell's molecular state AND
+            # the shared reactor/population stores, the row layout the coupled
+            # analyses already read from run_multigen_parquet's extra_root_paths.
+            # Without this declaration the coupled composite declared nothing:
+            # its only sink was baseline()'s own (bulk + listeners, no reactor),
+            # and every runner had to carry its own allow-list.
+            "address": "local:ParquetEmitter",
+            "config": {},
+            "paths": [
+                "global_time", "bulk", "listeners", "boundary",
+                "reactor", "population", "lineage",
+            ],
+        },
+    ],
 )
 def reactor_bird_coupled(
     core: Any = None,
@@ -459,15 +504,27 @@ def reactor_bird_coupled(
         bird_config.update(bird_reactor_config)
 
     # --- cell side: baseline + PopulationAggregator -----------------------
-    document = baseline_population(
-        core, seed=seed, cache_dir=cache_dir, cells_per_agent=cells_per_agent,
-        reactor_volume_L=float(bird_config.get("volume_L", 1.0)),
-        population_growth_mode=population_growth_mode,
-        carbon_exhaustion_arrest=carbon_exhaustion_arrest,
-        carbon_source_ids=carbon_source_ids,
-        single_daughters=single_daughters,
-        injected_processes=injected_processes,
+    # Publish THIS generator's emitter declaration for the per-agent sink
+    # baseline() builds inside the cell, naming which declared roots live at
+    # the document level; cleared in the finally so nothing leaks into a later
+    # build in the same process (same discipline as baseline()'s own decl).
+    _decls = emitter_defaults(reactor_bird_coupled)
+    set_enclosing_emitter_decl(
+        _decls[0] if _decls else None,
+        document_roots=COUPLED_DOCUMENT_EMIT_ROOTS,
     )
+    try:
+        document = baseline_population(
+            core, seed=seed, cache_dir=cache_dir, cells_per_agent=cells_per_agent,
+            reactor_volume_L=float(bird_config.get("volume_L", 1.0)),
+            population_growth_mode=population_growth_mode,
+            carbon_exhaustion_arrest=carbon_exhaustion_arrest,
+            carbon_source_ids=carbon_source_ids,
+            single_daughters=single_daughters,
+            injected_processes=injected_processes,
+        )
+    finally:
+        set_enclosing_emitter_decl(None)
 
     # --- env hook + reactor + coupler (shared with reactor_bird_coupled_millard)
     return add_reactor_coupling(

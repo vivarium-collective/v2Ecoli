@@ -1,0 +1,276 @@
+schema_version: 4
+name: mcs-02-metabolism-energy-balance
+investigation: multiscale-complexity-showcase
+title: "Arc 2 — fix the energetic biomass-yield defect"
+created: '2026-09-03'
+status: evaluated
+confidence: Investigating
+gate_status: failed
+kind: adversarial   # falsification study: it PASSES by refuting the scoped maintenance-ATP fix
+
+cites:
+- {key: Feist2007iAF1260, claim: "GAM 59.81 and NGAM 8.39 mmol ATP/gDW literature maintenance values"}
+- {key: Basan2015Nature, claim: "aerobic acetate overflow / proteome-allocation energetic tradeoff"}
+
+question: >-
+  The v2ecoli baseline builds ~1.5x more biomass per gram of glucose than carbon and
+  energy balance permit — an ENERGETIC defect (RQ 3.43 vs ~1, O2:glucose 0.096, 94.5%
+  of glucose carbon retained as biomass): the cell builds biomass without paying its
+  ATP cost. Does the maintenance-ATP / respiratory correction that prior work scoped,
+  but never landed, bring biomass yield into the measured band (0.355-0.444 gDW/g
+  glucose) and RQ toward ~1 — WITHOUT breaking growth rate or carbon conservation?
+
+hypothesis: >-
+  Correcting non-growth-associated (NGAM) / growth-associated (GAM) maintenance ATP
+  and/or respiratory capacity forces the model to burn glucose for energy, dropping
+  biomass yield into the measured band and lifting RQ toward 1, while growth_rate and
+  carbon closure stay physiological.
+
+objective: >-
+  Take the diagnosed energetic defect (metabolism-biomass-yield-s1-diagnostic), apply
+  the smallest principled maintenance-ATP/respiration correction to ecoli_baseline's
+  metabolism, and measure biomass_yield, RQ, O2:glucose, and growth_rate before/after.
+
+# Multiscale role: a molecular energetic constraint (ATP maintenance) that sets a
+# whole-cell physiological quantity (biomass yield) — nonlinear FLUX REALLOCATION.
+
+seeded_from:
+  study: metabolism-biomass-yield-s1-diagnostic
+  finding: baseline-yield-violation-is-energetic-not-mass-creation
+  evidence:
+    observed_yield: 0.8313
+    units: gDW/g glucose
+    rq: 3.43
+    o2_glucose: 0.096
+    measured_band: [0.355, 0.444]
+    theoretical_max: 0.538
+
+conditions:
+  baseline:
+    composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+    params:
+      seed: 0
+    detail: "Current main, unmodified — reproduces Yxs 0.831, RQ 3.43."
+  variants:
+  - name: maintenance-atp-fix
+    detail: >-
+      Apply corrected NGAM/GAM maintenance-ATP and/or respiratory-capacity
+      parameterization (locus: metabolism / sim_data energetics). The exact
+      correction is chosen from cited E. coli maintenance values during the
+      gap-fix loop; the change is the smallest one that closes the energetic gap.
+  model_settings: []
+
+inputs:
+- artifact: sim_data
+  from: parca
+  into: cache_dir
+
+- artifact: mcs-01-ppgpp-replication-coupling
+  from: mcs-01-ppgpp-replication-coupling
+expected_behavior:
+- name: biomass-yield-in-measured-band
+  observable: biomass_yield
+  condition: "after fix"
+  rationale: >-
+    Corrected energetics must drop Yxs from 0.831 into the measured band 0.355-0.444
+    gDW/g glucose (below the 0.538 first-principles ceiling).
+- name: rq-approaches-one
+  observable: respiratory_quotient
+  condition: "after fix"
+  rationale: "Full glucose oxidation gives RQ ~1; the defect shows RQ 3.43."
+- name: growth-rate-preserved
+  observable: growth_rate
+  condition: "held-out: after fix"
+  rationale: >-
+    HELD-OUT check — the fix targets yield/RQ, so growth_rate must remain
+    physiological (not tuned to). A fix that tanks growth is not an improvement.
+
+tests:
+- name: biomass-yield-in-measured-band
+  classification: primary
+  question: "Does the corrected model produce Yxs within 0.355-0.444 gDW/g glucose?"
+  measure:
+    kind: derived
+    detail: >-
+      Yxs = dDW / integral(q_glc * DW) dt via the canonical estimator
+      (physiology_from_sweep / render_basal_vs_literature.py --from-sweep), graded on
+      the physiology.biomass_yield axis: band 0.355-0.444, theoretical_max 0.538.
+- name: rq-approaches-one
+  classification: primary
+  question: "Does RQ = CO2/O2 fall from 3.43 toward ~1 after the fix?"
+  measure:
+    kind: derived
+    detail: "RQ and O2:glucose from exchange fluxes via bake_model_metabolism.py."
+- name: growth-rate-preserved
+  classification: primary
+  kind: held_out
+  question: "Is growth_rate still physiological after a fix tuned to yield/RQ?"
+  measure:
+    kind: derived
+    detail: "Mean post-burn-in growth_rate within a physiological window; not tuned to."
+
+readouts:
+- "biomass_yield (Yxs, gDW/g glucose) by integrated mass balance"
+- "RQ = CO2/O2 and O2:glucose from live external_exchange_fluxes"
+- "growth_rate (held-out) across the GAM/NGAM sweep"
+
+visualizations:
+- {name: "Arc 2 energy balance", address: "html:viz/arc2_energy_balance.html"}
+
+report_cards:
+- viz/arc2_energy_balance.html
+
+runs:
+- name: arc2-baseline-invivo-probe
+  composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  kind: simulation
+  canonical: true
+  status: completed
+  result: FAIL
+  description: >-
+    In-process metabolism probe (reads external_exchange_fluxes live from the composite
+    store, basal, 25 min, burn-in 6). Reproduces the documented energetic defect.
+  computed_outcomes:
+    biomass-yield-in-measured-band:
+      measured_value: 0.816
+      result: FAIL
+      detail: "Yxs 0.816 gDW/g glucose — 1.84x the top of band 0.355-0.444, 1.52x the 0.538 ceiling. Reproduces the diagnostic's 0.831 to ~2%."
+    rq-approaches-one:
+      measured_value: 2.94
+      result: FAIL
+      detail: "RQ 2.94 (physically impossible for pure aerobic respiration, which is <=~1.3); O2:glucose 0.137 — the cell barely respires."
+  emitter: parquet
+- name: arc2-maintenance-atp-sweep
+  composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  kind: simulation
+  canonical: true
+  status: completed
+  result: FAIL
+  description: >-
+    GAM (dark_atp x1.5, x5) and NGAM (x3, x10) scaled via patched cache config. Override
+    VERIFIED to reach the FBA: model.ngam = 83.9 mmol/gDW/h at NGAM x10 (10x Feist).
+  computed_outcomes:
+    biomass-yield-in-measured-band:
+      result: FAIL
+      detail: >-
+        Yield stays 0.82-0.83 across the whole sweep (GAM x1->x5, NGAM x1->x10). Never
+        approaches the band. The FBA is INSENSITIVE to the maintenance-ATP bound.
+    growth-rate-preserved:
+      result: PASS
+      detail: >-
+        HELD-OUT: growth stays 0.95-0.97/h across the sweep — but only because the fix
+        has no effect at all, so 'preserved' here is not evidence the fix works.
+
+  outcomes:
+    biomass-yield-in-measured-band:
+      result: FAIL
+    rq-approaches-one:
+      result: FAIL
+    maintenance-atp-fix-moves-yield:
+      result: FAIL
+  emitter: parquet
+claim: >-
+  The biomass-yield energetic defect is real and reproduced (Yxs 0.816, RQ 2.94), but the
+  prior investigation's scoped maintenance-ATP fix is REFUTED: scaling GAM (to 5x) and NGAM
+  (to 10x = 83.9 mmol/gDW/h, verified at the FBA) leaves yield, O2:glucose and growth flat.
+  The defect is re-localized to ATP-generation stoichiometry (ETC/oxidative phosphorylation),
+  not maintenance demand — ATP is over-supplied, so demanding more of it changes nothing.
+
+findings:
+- id: maintenance-atp-fix-refuted-defect-is-atp-supply
+  kind: computational
+  status: contradicts
+  statement: >-
+    The v2ecoli baseline builds 0.816 gDW biomass per gram of glucose (1.84x the measured
+    band, 1.52x the first-principles ceiling) while barely respiring (O2:glucose 0.137,
+    RQ 2.94 — impossible for pure aerobic respiration). Prior work SCOPED the fix to
+    maintenance ATP (GAM/NGAM) and respiratory capacity. This study tests that directly and
+    REFUTES it: scaling GAM to 5x and NGAM to 10x (83.9 mmol/gDW/h, an order of magnitude
+    above the Feist iAF1260 literature value, and verified to reach the FBA via model.ngam)
+    moves biomass yield less than 2% and leaves O2 uptake and growth essentially unchanged.
+    The FBA is insensitive to the maintenance-ATP bound because ATP is already over-supplied:
+    the cell meets any maintenance demand from a surplus, so the defect cannot be in ATP
+    DEMAND. It is in ATP SUPPLY — the ATP-generation stoichiometry (a too-high effective P/O
+    ratio / an over-efficient or short-circuited electron-transport chain), which also
+    explains why the cell makes ATP with almost no O2 (RQ ~3). This advances the prior
+    investigation from 'energetic defect, fix scoped to maintenance' to 'energetic defect,
+    maintenance fix falsified, defect localized to oxidative-phosphorylation stoichiometry.'
+  evidence:
+    from_test: biomass-yield-in-measured-band
+    from_run: arc2-maintenance-atp-sweep
+    baseline: {biomass_yield: 0.816, RQ: 2.94, O2_glucose: 0.137, growth_per_h: 0.956}
+    sweep_yield_range: [0.816, 0.831]
+    ngam_x10_model_value_mmol_gDW_h: 83.9
+    feist_ngam_literature: 8.39
+    measured_band: [0.355, 0.444]
+    theoretical_max: 0.538
+  expected:
+    summary: >-
+      If the defect were insufficient maintenance ATP, raising GAM/NGAM would force glucose
+      oxidation, drop yield into the band, and lift RQ toward 1. None of that happens.
+  next_action: >-
+    Localize the ATP-generation defect: audit the ETC / oxidative-phosphorylation reaction
+    stoichiometry (effective P/O ratio) and any free-ATP loops in the FBA. This is a
+    reaction-stoichiometry fix, not a parameter tweak, so it is out of scope for a 'small
+    correction' and is flagged for a dedicated follow-up.
+  next_action_type: escalate_model
+  provenance:
+    run_ids: [arc2-baseline-invivo-probe, arc2-maintenance-atp-sweep]
+  caveats:
+  - "Single-cell in-process probe over a partial cell cycle; absolute yield validated against the multi-cell diagnostic (0.816 vs 0.831, ~2%)."
+  - "The sweep is a refutation, not an exhaustive search; a combined ETC-stoichiometry + maintenance change could still matter, but maintenance ALONE is falsified."
+
+pipeline_gate:
+  enables: [mcs-04-capstone-downshift]
+biological_summary: >-
+  The baseline builds ~1.8× more biomass per gram of glucose than carbon/energy balance permit,
+  because it barely respires (RQ 2.94, near-zero O2). This study tests the prior investigation's
+  scoped maintenance-ATP fix — and REFUTES it, re-localizing the defect to ATP supply.
+
+behavior_tests:
+- name: biomass-yield-in-measured-band
+  classification: primary
+  measure: "biomass yield Yxs (gDW/g glucose)"
+  pass_if: "0.355–0.444 (measured band; below the 0.538 ceiling)"
+  expected: "in band"
+  observed: "0.816 — 1.84× over the band"
+  verdict: fail
+- name: rq-approaches-one
+  classification: primary
+  measure: "RQ = CO2/O2"
+  pass_if: "≈ 1 (aerobic respiration)"
+  expected: "~1"
+  observed: "2.94 (physically impossible for pure respiration)"
+  verdict: fail
+- name: maintenance-atp-fix-moves-yield
+  classification: primary
+  measure: "yield across GAM ×1–5 and NGAM ×1–10 (verified at the FBA)"
+  pass_if: "yield drops into the band"
+  expected: "in band after fix"
+  observed: "flat 0.82–0.83 — FBA insensitive to maintenance ATP"
+  verdict: fail
+
+conclusion: >-
+  ## Result
+  The scoped maintenance-ATP fix is REFUTED — GAM/NGAM changes leave yield/O2/growth flat. The
+  defect is re-localized to ATP-supply stoichiometry, which its follow-up (mcs-05) then fixes.
+  An adversarial study that succeeds by rejecting the wrong hypothesis.
+simulation_set:
+- name: arc2-baseline-invivo-probe
+  kind: simulation
+  status: completed
+  base_model: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  result: FAIL
+  pass_fail_tests:
+  - biomass-yield-in-measured-band
+  - rq-approaches-one
+  - growth-rate-preserved
+- name: arc2-maintenance-atp-sweep
+  kind: simulation
+  status: completed
+  base_model: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+  result: FAIL
+  pass_fail_tests:
+  - biomass-yield-in-measured-band
+  - rq-approaches-one
+  - growth-rate-preserved

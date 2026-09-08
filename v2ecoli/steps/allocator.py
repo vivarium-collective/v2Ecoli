@@ -12,7 +12,7 @@ from v2ecoli.library.ecoli_step import EcoliStep as Step
 from typing import Any
 
 # topology_registry removed — topology defined as class attribute
-from v2ecoli.library.schema import counts, numpy_schema, bulk_name_to_idx, listener_schema
+from v2ecoli.library.schema import counts, bulk_name_to_idx
 
 # Register default topology for this process, associating it with process name
 NAME = "allocator"

@@ -50,16 +50,16 @@ subunits are released back to the bulk pool. A D-period timer is set
 on the new full chromosome for cell division scheduling.
 """
 
+import os
+
 import numpy as np
 
 from bigraph_schema.contract import ProcessContract
 
 from v2ecoli.library.schema import (
-    numpy_schema,
     counts,
     attrs,
     bulk_name_to_idx,
-    listener_schema,
 )
 
 from v2ecoli.types.quantity import ureg as units
@@ -304,6 +304,19 @@ class ChromosomeReplication(Step):
         # random state
         self.seed = self.parameters["seed"]
         self.random_state = np.random.RandomState(seed=self.seed)
+
+        # mcs-06 (multiscale-complexity-showcase): stochastic D-period.
+        # The active division trigger schedules division_time = global_time + D_period
+        # with a FIXED D_period, so interdivision timing inherits no D-period variance
+        # (the model is under-dispersed, CV ~7% vs the biological 10-30%). When
+        # d_period_cv > 0 the scheduled D_period is drawn per division event from
+        # Normal(1.0, d_period_cv) * D_period (seeded via self.random_state, so it is
+        # reproducible per seed), routing biologically-motivated noise into the ACTIVE
+        # trigger. Default 0.0 leaves baseline behaviour byte-identical; the env var
+        # V2E_D_PERIOD_CV overrides it for the controlled before/after experiment.
+        self.d_period_cv = float(
+            os.environ.get("V2E_D_PERIOD_CV", self.parameters.get("d_period_cv", 0.0))
+        )
 
         self.emit_unique = self.parameters.get("emit_unique", True)
 
@@ -686,10 +699,18 @@ class ChromosomeReplication(Step):
 
             # Generate new full chromosome molecules
             if n_new_chromosomes > 0:
+                # mcs-06: optionally jitter the scheduled D-period so interdivision
+                # timing carries biological variance (see __init__). d_period_cv == 0
+                # -> scheduled_d_period == self.D_period exactly (baseline unchanged).
+                scheduled_d_period = self.D_period
+                if self.d_period_cv > 0.0:
+                    factor = self.random_state.normal(1.0, self.d_period_cv)
+                    factor = max(0.5, factor)  # floor: never an unphysically short D-period
+                    scheduled_d_period = self.D_period * factor
                 chromosome_add_update = {
                     "add": {
                         "domain_index": domain_index_new_full_chroms,
-                        "division_time": states["global_time"] + self.D_period,
+                        "division_time": states["global_time"] + scheduled_d_period,
                         "has_triggered_division": False,
                     }
                 }

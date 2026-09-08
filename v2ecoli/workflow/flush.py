@@ -62,10 +62,19 @@ class RunExtract:
 
     def conn_ctx(self) -> tuple:
         if not self._ctx:
-            import duckdb
+            import tempfile
+
+            from viva_emitters import create_duckdb_conn
+
+            from v2ecoli.library.sweep_io import apply_analysis_duckdb_config
             from v2ecoli.workflow.analysis_runner import (
                 _history_from_clause, resolve_sim_data, resolve_validation_data)
-            self._ctx["conn"] = duckdb.connect()
+            # Match the analysis runner's connection: temp_directory spill +
+            # preserve_insertion_order (create_duckdb_conn) plus the explicit
+            # memory budget, so a local flush reading a large hive spills instead
+            # of OOMing the same way the dispatch path did.
+            self._ctx["conn"] = create_duckdb_conn(temp_dir=tempfile.gettempdir())
+            apply_analysis_duckdb_config(self._ctx["conn"])
             self._ctx["from_clause"] = _history_from_clause(self.out_dir)
             self._ctx["sim_data"] = resolve_sim_data(self.out_dir)
             self._ctx["validation_data"] = resolve_validation_data(self._ctx["sim_data"])

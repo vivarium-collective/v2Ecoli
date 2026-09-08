@@ -92,3 +92,44 @@ def test_analyses_package_imports_without_scripts_harness():
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert r.returncode == 0, f"stdout={r.stdout!r}\nstderr={r.stderr!r}"
     assert "IMPORTS_WITHOUT_SCRIPTS_OK" in r.stdout
+
+
+def test_plugin_analyses_imports_entry_point_modules(monkeypatch):
+    """An analysis package advertised under the ``v2ecoli.analyses`` entry-point
+    group is imported (its registration side effect fires) even though nothing in
+    v2ecoli imports it by name -- the mechanism sms_modules' ptools_metabolites
+    needs to reach the dispatch path."""
+    import importlib
+    import importlib.metadata as md
+    from v2ecoli.workflow.analysis_runner import _register_plugin_analyses
+
+    ep = md.EntryPoint(name="demo", value="os.path", group="v2ecoli.analyses")
+    monkeypatch.setattr(
+        md, "entry_points",
+        lambda **kw: [ep] if kw.get("group") == "v2ecoli.analyses" else [],
+    )
+    imported = []
+    real_import = importlib.import_module
+    monkeypatch.setattr(
+        importlib, "import_module",
+        lambda name, *a, **k: (imported.append(name), real_import(name, *a, **k))[1],
+    )
+    _register_plugin_analyses()
+    assert "os.path" in imported
+
+
+def test_plugin_analyses_broken_plugin_warns_not_fatal(monkeypatch):
+    """A plugin whose module cannot import warns and is skipped -- it must never
+    take down the built-in suite."""
+    import importlib.metadata as md
+    import pytest
+    from v2ecoli.workflow.analysis_runner import _register_plugin_analyses
+
+    ep = md.EntryPoint(name="broken", value="v2ecoli_no_such_module_zzz",
+                       group="v2ecoli.analyses")
+    monkeypatch.setattr(
+        md, "entry_points",
+        lambda **kw: [ep] if kw.get("group") == "v2ecoli.analyses" else [],
+    )
+    with pytest.warns(UserWarning, match="failed to import"):
+        _register_plugin_analyses()  # must not raise

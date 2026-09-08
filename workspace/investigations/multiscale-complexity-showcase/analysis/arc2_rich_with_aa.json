@@ -1,0 +1,28 @@
+{
+  "cache_dir": "out/cache-with_aa",
+  "minutes": 20.0,
+  "burn_in_min": 6.0,
+  "n_steps_post": 85,
+  "overrides": {
+    "dark_atp_scale": 1.0,
+    "ngam_scale": 1.0,
+    "applied": {}
+  },
+  "exchange_indices": {
+    "glucose": 36,
+    "o2": 65,
+    "co2": 10,
+    "acetate": 2
+  },
+  "exchange_mmol_gDW_h": {
+    "glucose": 9.862576795133467,
+    "o2": 0.006266899158586049,
+    "co2": 3.2610716235554498,
+    "acetate": 0.0
+  },
+  "RQ": 520.3644643120792,
+  "O2_glucose": 0.0006354220898617845,
+  "biomass_yield_gDW_g_glucose": 0.813619754391824,
+  "growth_rate_per_h": 1.4477322845988585,
+  "label": "rich_with_aa"
+}

@@ -134,6 +134,11 @@ v2e-compare = "scripts.compare_cli:main"
 # through the installed package. The large ParCa blob (models/parca/parca_state.pkl.gz)
 # is intentionally NOT shipped here — it is provided by ecoli-sources / the workspace.
 "v2ecoli" = ["configs/*.json", "models/sbml/*.xml"]
+# Ship the declarative composite specs so yaml-defined composites (millard_lqr,
+# millard_fba_bridge, millard2017_metabolism, …) are discoverable from a wheel/git
+# install, not only a source checkout — the workbench registry scans these files,
+# so without them those composites read as "not found in registry".
+"v2ecoli.composites" = ["*.composite.yaml", "*.composite.yml", "*.composite.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "v2ecoli/tests"]
@@ -180,7 +185,11 @@ packages = { find = { where = ["."], include = ["v2ecoli*", "pbg_v2ecoli*"] } }
 
 
 [tool.uv.sources]
-process-bigraph = { git = "https://github.com/vivarium-collective/process-bigraph.git", branch = "main" }
+# process-bigraph `main`. #205 merged (78d14883), so this is no longer a PR
+# branch head -- the renderer fixes workflow_nf requires (a `nextflow_script()`
+# override wrapped as Groovy, and `cache = 'lenient'` so `-resume` can match)
+# are on main now. Also picks up #206 (`analyses` on GeneratorEntry).
+process-bigraph = { git = "https://github.com/vivarium-collective/process-bigraph.git", rev = "78d14883e8bee2643b646f74f149b9b884442bad" }
 bigraph-schema = { git = "https://github.com/vivarium-collective/bigraph-schema.git", branch = "main" }
 viva-superpowers = { git = "https://github.com/vivarium-collective/viva-superpowers.git", branch = "main" }
 viva-workspace = { git = "https://github.com/vivarium-collective/viva-workspace.git", branch = "main" }

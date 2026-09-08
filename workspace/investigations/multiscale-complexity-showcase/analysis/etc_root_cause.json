@@ -1,0 +1,24 @@
+{
+  "root_cause_2026_09_04": {
+    "title": "The ATP-supply defect is caused by thermodynamically-infeasible proton futile cycles (missing FBA loop-law constraints).",
+    "trace": [
+      "mcs-02: biomass yield 1.8x over band; NOT maintenance ATP (refuted).",
+      "mcs-05: ATP synthase flux imbalance diagnosed (reverse-cap fix reported).",
+      "mcs-11: reverse-cap not robust (FBA degenerate, 0.395 vs 0.819).",
+      "reformulation: no flux bound forces respiration + hits yield + preserves growth.",
+      "H+/ATP stoichiometry (4->3->6): NO effect on yield/O2 (rules out the P/O ratio).",
+      "proton-source audit: ATP synthesis (flux ~7.5, O2 only ~0.9) is driven by a succinate/proton FUTILE CYCLE."
+    ],
+    "futile_cycle": {
+      "TRANS-RXN-300": "SUC[c] + 3 H+[c] -> SUC[p] + 3 H+[p] (export, 3 H+ out), flux ~18",
+      "TRANS-RXN0-517": "SUC[p] + 2 H+[p] -> SUC[c] + 2 H+[c] (import, 2 H+ in), flux ~18",
+      "net": "succinate unchanged; 1 net H+ pumped cytoplasm->periplasm per turn -> free proton-motive force -> drives ATP synthase synthesis without respiration (O2 stays 0.9, RQ 2.94, yield 0.82)."
+    },
+    "systemic": "Blocking TRANS-RXN-300 does NOT fix it (yield stays 0.817): the FBA reroutes to another free-proton pump (TRANS-RXN0-601 (reverse), a direct H+/H+ translocator, ~22 H+). Multiple thermodynamically-infeasible proton cycles exist.",
+    "conclusion": "The root cause is a KNOWN class of genome-scale-FBA artifact: the LP has no thermodynamic loop-law constraints, so internal free-energy-generating (proton-pumping) cycles are feasible. The cell exploits them to build proton-motive force for free and make ATP without respiration. This is why the yield is too high, RQ too high, and no acetate overflow appears. NO parameter, stoichiometry, or single-reaction flux bound fixes it (the FBA reroutes). The principled correction is LOOPLESS / THERMODYNAMIC FBA (add loop-law constraints that forbid internal free-energy-generating cycles) \u2014 a solver-level methodological change, not a model parameter.",
+    "artifacts": [
+      "etc_stoich_h*.json",
+      "etc_futile_cap0.json"
+    ]
+  }
+}

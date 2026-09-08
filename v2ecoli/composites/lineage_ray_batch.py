@@ -101,7 +101,19 @@ from v2ecoli.workflow.batch_lineage_ray import (
                 "XArrayEmitter view override (e.g. {'view': [...dotted paths...]}). Without it "
                 "every lineage falls back to LineageProcess.DEFAULT_XARRAY_VIEW (mass only) -- "
                 "a document that needs a specific KPI column (e.g. a product exchange flux) "
-                "cannot get it without this."
+                "cannot get it without this. Add 'required_leaves': [<dotted leaf paths>] to "
+                "make a declared-but-absent KPI leaf raise instead of silently emitting."
+            ),
+        },
+        "variant_grid": {
+            "type": "array",
+            "default": None,
+            "description": (
+                "One entry per variant to sweep, each a dict of LineageProcess config keys "
+                "(any of variant_index, variant_name, config_overrides). Crossed with every seed "
+                "-> real (variant, seed) ray:LineageProcess nodes. Empty/None = one implicit "
+                "variant (the seeds-only shape). The genuine multi-variant sweep the older "
+                "single-shared 'variants' override could not express."
             ),
         },
         "seed_overrides": {
@@ -118,6 +130,26 @@ from v2ecoli.workflow.batch_lineage_ray import (
                 "-- this is only for a caller that wants to explicitly resume a specific seed or "
                 "vary its cache. Omitted entirely: every lineage starts fresh against the shared "
                 "cache_dir, today's exact behavior, unchanged."
+            ),
+        },
+        "exchange_fluxes": {
+            "type": "object",
+            "default": None,
+            "description": (
+                "Item 106: exchange-species-to-flux-column map (e.g. {'violacein_exchange': "
+                "'VIOLACEIN', 'glucose_exchange': 'GLC'}), threaded verbatim into each lineage's "
+                "own LineageProcess config -- already-supported by ecoli_baseline.baseline()/"
+                "LineageProcess, only unexposed at this thin wrapper until now. Needed to get a "
+                "real product-exchange-flux column out of a batch run rather than only raw state."
+            ),
+        },
+        "exchange_flux_basis": {
+            "type": "string",
+            "default": None,
+            "description": (
+                "Item 106: units basis for exchange_fluxes columns (e.g. 'gdcw'). Required "
+                "alongside exchange_fluxes -- omitting it used to inherit 'counts', which is "
+                "lineage-cumulative and wrong for a per-generation flux reading."
             ),
         },
     },
@@ -143,6 +175,9 @@ def lineage_ray_batch(
     config_overrides: dict | None = None,
     emitter_arg: dict | None = None,
     seed_overrides: dict | None = None,
+    exchange_fluxes: dict | None = None,
+    exchange_flux_basis: str | None = None,
+    variant_grid: list[dict] | None = None,
 ) -> dict:
     """Build the lineage_ray_batch composite document.
 
@@ -181,5 +216,8 @@ def lineage_ray_batch(
         config_overrides=config_overrides,
         emitter_arg=emitter_arg,
         seed_overrides=seed_overrides,
+        exchange_fluxes=exchange_fluxes,
+        exchange_flux_basis=exchange_flux_basis,
+        variant_grid=variant_grid,
     )
     return doc

@@ -35,7 +35,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 from bigraph_schema.contract import ProcessContract
-from v2ecoli.library.schema import numpy_schema, bulk_name_to_idx, counts
+from v2ecoli.library.schema import bulk_name_to_idx, counts
 from v2ecoli.library.ecoli_step import EcoliStep as Step
 
 from v2ecoli.types.quantity import ureg as units

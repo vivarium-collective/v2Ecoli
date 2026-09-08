@@ -5,7 +5,7 @@ RnaSynthProb Listener
 """
 
 import numpy as np
-from v2ecoli.library.schema import numpy_schema, listener_schema, attrs
+from v2ecoli.library.schema import attrs
 from v2ecoli.library.schema_types import PROMOTER_ARRAY, GENE_ARRAY
 from v2ecoli.library.ecoli_step import EcoliStep as Step
 

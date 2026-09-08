@@ -61,7 +61,7 @@ from v2ecoli.library.data_predicates import (
     monotonically_decreasing,
     all_nonnegative,
 )
-from v2ecoli.library.schema import numpy_schema, counts, bulk_name_to_idx
+from v2ecoli.library.schema import counts, bulk_name_to_idx
 
 from v2ecoli.library.ecoli_step import EcoliStep as Step
 

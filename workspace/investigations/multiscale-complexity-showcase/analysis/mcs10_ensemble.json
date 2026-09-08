@@ -1,0 +1,115 @@
+{
+  "basal": {
+    "n_seeds": 6,
+    "seeds": [
+      "mcs10_basal_seed20",
+      "mcs10_basal_seed21",
+      "mcs10_basal_seed22",
+      "mcs10_basal_seed23",
+      "mcs10_basal_seed24",
+      "mcs10_basal_seed25"
+    ],
+    "stats": {
+      "origins_per_cell": {
+        "mean": 2.3822,
+        "ci95": 0.031,
+        "n": 6,
+        "lo": 2.3511,
+        "hi": 2.4132
+      },
+      "ppgpp_conc": {
+        "mean": 72.2465,
+        "ci95": 4.8103,
+        "n": 6,
+        "lo": 67.4362,
+        "hi": 77.0568
+      },
+      "growth_rate_per_h": {
+        "mean": 0.8547,
+        "ci95": 0.0289,
+        "n": 6,
+        "lo": 0.8258,
+        "hi": 0.8837
+      },
+      "ribosome_conc": {
+        "mean": 21.0549,
+        "ci95": 0.2146,
+        "n": 6,
+        "lo": 20.8403,
+        "hi": 21.2696
+      },
+      "initiation_mass_fg": {
+        "mean": 647.8902,
+        "ci95": 2.7074,
+        "n": 6,
+        "lo": 645.1829,
+        "hi": 650.5976
+      }
+    }
+  },
+  "with_aa": {
+    "n_seeds": 6,
+    "seeds": [
+      "mcs10_with_aa_seed20",
+      "mcs10_with_aa_seed21",
+      "mcs10_with_aa_seed22",
+      "mcs10_with_aa_seed23",
+      "mcs10_with_aa_seed24",
+      "mcs10_with_aa_seed25"
+    ],
+    "stats": {
+      "origins_per_cell": {
+        "mean": 3.5544,
+        "ci95": 0.0042,
+        "n": 6,
+        "lo": 3.5502,
+        "hi": 3.5587
+      },
+      "ppgpp_conc": {
+        "mean": 21.7101,
+        "ci95": 1.8482,
+        "n": 6,
+        "lo": 19.8619,
+        "hi": 23.5582
+      },
+      "growth_rate_per_h": {
+        "mean": 1.2708,
+        "ci95": 0.0351,
+        "n": 6,
+        "lo": 1.2358,
+        "hi": 1.3059
+      },
+      "ribosome_conc": {
+        "mean": 23.6619,
+        "ci95": 0.752,
+        "n": 6,
+        "lo": 22.9099,
+        "hi": 24.4138
+      },
+      "initiation_mass_fg": {
+        "mean": 737.1412,
+        "ci95": 6.3716,
+        "n": 6,
+        "lo": 730.7696,
+        "hi": 743.5129
+      }
+    }
+  },
+  "separation": {
+    "origins_per_cell": {
+      "basal": "2.3822\u00b10.031",
+      "with_aa": "3.5544\u00b10.0042",
+      "ci_overlap": false
+    },
+    "ppgpp_conc": {
+      "basal": "72.2465\u00b14.8103",
+      "with_aa": "21.7101\u00b11.8482",
+      "ci_overlap": false
+    },
+    "growth_rate_per_h": {
+      "basal": "0.8547\u00b10.0289",
+      "with_aa": "1.2708\u00b10.0351",
+      "ci_overlap": false
+    }
+  }
+}

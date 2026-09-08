@@ -1211,9 +1211,18 @@ class FluxBalanceAnalysis(object):
 
         for molecule_id, coeff in objective.items():
             if coeff < 0:
-                raise ValueError(
-                    f"Homeostatic target must be non-negative. It is {coeff} for {molecule_id}."
-                )
+                # Homeostatic targets are concentrations and cannot be negative.
+                # The ParCa fit can emit tiny-negative setpoints (e.g. ~-1.5e-6 for
+                # BIOTIN[c] under the acetate/succinate conditions) that are pure
+                # floating-point noise around zero; clamp those to 0 rather than
+                # crash the simulation. Only a materially-negative target (beyond a
+                # small numerical tolerance) signals a genuine error.
+                if coeff > -1e-4:
+                    coeff = 0.0
+                else:
+                    raise ValueError(
+                        f"Homeostatic target must be non-negative. It is {coeff} for {molecule_id}."
+                    )
 
             if molecule_id not in self._outputMoleculeIDs:
                 raise FBAError(

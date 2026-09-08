@@ -74,3 +74,36 @@ def test_no_tsvs_is_a_shaped_error(tmp_path: Path) -> None:
     sd.mkdir(parents=True)
     res = _launch(sd, tmp_path)
     assert res.get("available") == [] and "error" in res
+
+
+def test_ptools_targets_include_landed_runs(tmp_path: Path) -> None:
+    """The PTools run menu (`_ptools_targets`) must span local studies AND landed
+    runs — the latter is how a GovCloud compose analysis (whose ptools TSVs the
+    workbench land path copies into .pbg/runs/<id>/ptools/) shows up."""
+    from v2ecoli.workbench_viewers import _ptools_targets
+
+    _write_tsv(tmp_path / "studies" / "showcase" / "ptools" / "ptools_overview__v0.tsv")
+    run_pt = tmp_path / ".pbg" / "runs" / "gov-run-1" / "ptools"
+    _write_tsv(run_pt / "ptools_overview__v0_s0.tsv")
+    _write_tsv(run_pt / "ptools_rxns__v0_s0.tsv")
+
+    targets = _ptools_targets(tmp_path)
+    studies = [t for t in targets if t.get("study")]
+    runs = [t for t in targets if t.get("run")]
+    assert any(t["study"] == "showcase" for t in studies)
+    assert any(t["run"] == "gov-run-1" and "2 TSV" in t["detail"] for t in runs)
+
+
+def test_launch_resolves_a_run_dir(tmp_path: Path) -> None:
+    """`_launch` given a `run` (not a study) discovers TSVs under
+    .pbg/runs/<run>/ and needs no study to exist."""
+    from v2ecoli import workbench_viewers as wbv
+
+    run_pt = tmp_path / ".pbg" / "runs" / "gov-run-2" / "ptools"
+    _write_tsv(run_pt / "ptools_overview__v0_s0.tsv")
+    # ptools_server_url must be configured for _launch to proceed; stub _ui_config.
+    wbv._ui_config = lambda ws_root: {"ptools_server_url": "http://localhost:1555"}  # type: ignore[assignment]
+    out = wbv._launch(tmp_path, study=None, run="gov-run-2", ctx={})
+    assert "url" in out and "error" not in out, out
+    missing = wbv._launch(tmp_path, study=None, run="does-not-exist", ctx={})
+    assert missing.get("status") == 404

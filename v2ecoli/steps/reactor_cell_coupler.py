@@ -564,23 +564,6 @@ def _as_float(value: Any) -> float:
     return float(value)
 
 
-
-def _extract_exchange_fluxes(agent_state: dict | Any) -> dict[str, Any]:
-    """Return ``metabolism.external_exchange_fluxes`` map, or {} if absent.
-
-    Retained for reference/back-compat; v2ecoli's live state does NOT populate
-    this path (see ``_extract_environment_exchange``, the real source).
-    """
-    try:
-        metabolism = agent_state.get("metabolism", {}) if hasattr(agent_state, "get") else {}
-        fluxes = metabolism.get("external_exchange_fluxes")
-        if isinstance(fluxes, dict):
-            return fluxes
-        return {}
-    except (AttributeError, KeyError, TypeError):
-        return {}
-
-
 def _extract_environment_exchange(agent_state: dict | Any) -> dict[str, Any]:
     """Return ``environment.exchange`` (CUMULATIVE molecule COUNTS), or {} if absent.
 

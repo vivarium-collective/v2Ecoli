@@ -23,6 +23,10 @@ def _make(monkeypatch, generations, divide_after=2, **wave_kwargs):
         "initial_generation_index": wave_kwargs.get("initial_generation_index", 0),
         "daughter_state_out_path": wave_kwargs.get("daughter_state_out_path", ""),
         "checkpoint_dir": wave_kwargs.get("checkpoint_dir", ""),
+        # The biology is stubbed below, so no emitter is ever built: opt out of
+        # the end-of-generation emitted-output check (tests/test_emit_path_robustness.py
+        # covers it against a real emitter).
+        "require_output": False,
     }
     lp.initialize(lp.config)
     calls = {"built": 0}
@@ -71,6 +75,7 @@ def test_daughter_carry_forward_orchestration(monkeypatch):
         "variant_name": "baseline", "config_overrides": {}, "generations": 2,
         "single_daughters": True, "experiment_id": "t", "out_dir": "out/t",
         "max_duration_per_gen": 100.0,
+        "require_output": False,  # biology stubbed: no emitter is built
     }
     lp.initialize(lp.config)
 
