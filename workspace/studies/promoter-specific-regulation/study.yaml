@@ -1426,3 +1426,25 @@ intervention_is_subtractive:
     had put LexA on all three because all three contain dnaG, itself a direct LexA target. Removing
     the two unsupported assignments is exactly what replacing cistron-specific with promoter-specific
     regulation means here.'
+corrections:
+- date: '2026-09-08'
+  field: what "the shipped model" does
+  status: corrected
+  raised_by: user
+  summary: 'Statements that the shipped/unmodified model arrests at 4-9 generations are wrong as
+    written. Every arrest in this investigation — the original one in mechanistic-replisome-arrest
+    and all of ours this week — came from runs passing mechanistic_replisome=True explicitly. The
+    effective default in a built composite is FALSE: the process schema in chromosome_replication.py
+    declares _default True, but the composite overrides it, verified by building ecoli_baseline against
+    out/cache and reading the instantiated parameter. Under the default the model does not gate on
+    subunit availability and lineages complete.
+
+    Correct statement: under mechanistic_replisome=True, a non-default setting this investigation
+    deliberately studies, lineages arrest at 4-9 generations. Under the default they do not.
+
+    I asserted the wrong version repeatedly after reading the schema default and not checking what
+    a real build carries. out/cache — the actual shipped model — has never been simulated in this
+    session; its behaviour was inferred from 3279-TU arms that differ from it.'
+  verified_against:
+  - v2ecoli/processes/chromosome_replication.py:233
+  - built composite ecoli_baseline against out/cache

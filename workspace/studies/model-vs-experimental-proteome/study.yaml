@@ -43,10 +43,11 @@ datasets:
   role: PRIMARY validation
   independent: true
   path: ~/Documents/Proteomics data/schmidt et al 2016/41587_2016_BFnbt3418_MOESM18_ESM (1).xlsx
-  note: The anchor. v2ecoli's protein abundances are NOT seeded from it — they emerge from RNA-seq
+  note: 'The anchor. v2ecoli''s protein abundances are NOT seeded from it — they emerge from RNA-seq
     expression x Li 2014 translation efficiency / SILAC degradation, so agreement is prediction,
     not calibration. Multiple conditions available; use the one matching the simulated medium and
-    say which.
+    say which. Model side: shipped out/cache, default configuration, generations 2-12, median across
+    3 seeds.'
 - name: Mori 2021
   role: comparison
   independent: true
@@ -407,16 +408,14 @@ implementation_requirements:
   summary: Reuse the existing monomer-count reader.
   detail: listeners.monomer_counts via the distilled runs; do not re-derive counts from expression.
 - id: req-5
-  status: not_started
+  status: in-progress
   blocking: true
-  summary: Decide which arm represents 'the model', then re-distil that arm keeping monomer_counts.
-  detail: 'Only tu-expression-identifiability-distilled carries monomer_counts; promoter-specific-regulation-distilled
-    kept only the synthesis-probability vectors, so its protein counts are gone. The combined arm
-    (promspec-plus-minnorm, 3 runs x 12 gens) still has full parquet and can be distilled with monomer_counts
-    included.
+  summary: Simulate the SHIPPED model (out/cache, default config) and extract counts.
+  detail: 'Resolved by the correction above: the baseline arm is out/cache in its default configuration,
+    which has never been simulated in this session. 3 seeds x 12 generations, distilled keeping listeners__monomer_counts.
 
-    This is blocked on the scoping decision above: extracting counts from the wrong arm answers the
-    wrong question.'
+    Note the earlier framing of this requirement assumed a choice between a short window and a corrected
+    model. Both horns were artefacts of running mechanistic_replisome=True.'
 limitations:
 - 'The tuning inventory was built twice. A first pass used a narrow keyword list and found only the
   adjustments/ directory, missing fold_changes_removed.tsv and complexation_reactions_removed.tsv
@@ -512,10 +511,37 @@ count_extraction:
     between cohorts, which is a different quantity from a 1.3x per-generation drift in counts — but
     the two being the same order is a warning that the design is near its resolution limit, and should
     be stated when the axes are graded rather than discovered afterwards.'
-  open_decision: 'WHICH ARM represents ''the model'' is not yet settled and is a scoping decision,
-    not a technical one. The unmodified model ARRESTS at 4-9 generations, so it has no long steady
-    state — that is this investigation''s premise. Options: (a) compare all arms at generations 2-3,
-    where every arm is still dividing, accepting a short window; (b) compare the promoter-specific
-    arm, which reaches 12 generations, accepting that it is a corrected model rather than the shipped
-    one. (a) tests the shipped model; (b) tests the fix. They answer different questions and the
-    study should say which.'
+  open_decision: 'RESOLVED 2026-09-08. The dilemma rested on a wrong premise — that the unmodified
+    model has no long steady state. It does: mechanistic_replisome defaults to FALSE in a built composite,
+    so the shipped configuration does not gate on subunit availability and lineages complete.
+
+    DECISION: the baseline is out/cache — the shipped model, 3277 TUs, DEFAULT configuration — simulated
+    for 12 generations across 3 seeds, counts taken as generation means over dividing generations
+    from generation 2, median across seeds. That is what v2ecoli ships and what Schmidt measured:
+    balanced exponential growth.
+
+    The mechanistic_replisome=True arms become a SEPARATE question — does the accuracy picture change
+    under subunit gating — rather than the baseline. Framing them as the baseline would have compared
+    Schmidt''s steady-state proteome against a model in replication arrest.'
+corrections:
+- date: '2026-09-08'
+  field: what "the shipped model" does
+  status: corrected
+  raised_by: user
+  summary: 'Statements that the shipped/unmodified model arrests at 4-9 generations are wrong as
+    written. Every arrest in this investigation — the original one in mechanistic-replisome-arrest
+    and all of ours this week — came from runs passing mechanistic_replisome=True explicitly. The
+    effective default in a built composite is FALSE: the process schema in chromosome_replication.py
+    declares _default True, but the composite overrides it, verified by building ecoli_baseline against
+    out/cache and reading the instantiated parameter. Under the default the model does not gate on
+    subunit availability and lineages complete.
+
+    Correct statement: under mechanistic_replisome=True, a non-default setting this investigation
+    deliberately studies, lineages arrest at 4-9 generations. Under the default they do not.
+
+    I asserted the wrong version repeatedly after reading the schema default and not checking what
+    a real build carries. out/cache — the actual shipped model — has never been simulated in this
+    session; its behaviour was inferred from 3279-TU arms that differ from it.'
+  verified_against:
+  - v2ecoli/processes/chromosome_replication.py:233
+  - built composite ecoli_baseline against out/cache
