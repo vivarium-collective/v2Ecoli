@@ -78,17 +78,26 @@ cohorts:
     operon
   note: the misattribution cohort (promoter-specific-regulation)
 - name: hand-adjusted
-  n_expected: 65
-  definition: molecules tuned by hand in flat/adjustments/ — rna_expression_adjustments (10), translation_efficiencies_adjustments
-    (25), balanced_translation_efficiencies (28), rna_deg_rates_adjustments (3), protein_deg_rates_adjustments
-    (1) — plus the 26 targets whose regulatory edges were deleted in fold_changes_removed.tsv to
-    fix expression
-  note: EXCLUSION cohort, and the reason this study needed its premise checked before scoping. For
-    these the model was tuned toward the right answer, with comments saying so explicitly — 'Adjusted
-    to prevent severe underexpression of 30S ribosomal proteins', 'Remove to increase ribosome counts'.
-    Agreement with experiment is partly circular for them. They are scored SEPARATELY and excluded
-    from the headline comparison; including them would inflate baseline accuracy and understate the
-    affected cohorts by contrast.
+  n_expected: 65 molecules + 25 structural rows
+  definition: "EXCLUSION cohort. Compiled by analyses/tuning_inventory.py, which sweeps ALL 131 TSVs\
+    \ under flat/ including subdirectories.\nDIRECT parameter adjustments — 65 distinct molecules:\n\
+    \  balanced_translation_efficiencies 28, translation_efficiencies_adjustments 25,\n  rna_expression_adjustments\
+    \ 10, rna_deg_rates_adjustments 3, protein_deg_rates_adjustments 1\nSTRUCTURAL removals carrying\
+    \ tuning intent — 25 rows:\n  fold_changes_removed 20 of 36 ('Remove to increase ribosome counts…',\
+    \ 'Remove to get expression of arcA')\n  complexation_reactions_removed 4 of 36 ('Removed to\
+    \ prevent the reaction from depleting DNA helicase', '…depleting subunits of the full 30S ribosome')\n\
+    \  equilibrium_reactions_removed 1 of 77 ('…causes issues with simulations')"
+  note: 'For these the model was adjusted toward the right answer, with comments stating the intent.
+    Agreement with experiment is partly circular, so they are excluded from the headline comparison
+    and scored separately as a POSITIVE CONTROL.
+
+    The structural removals matter as much as the direct ones and are easy to miss: removing a complexation
+    reaction protects a free monomer pool, so it changes predicted protein counts just as surely
+    as editing an expression value. The DNA-helicase and 30S entries protect exactly the kind of
+    essential subunit this investigation cares about.
+
+    SCOPE WARNING: data-level only. Several _comments name fit_sim_data_1.py as the source, so code-level
+    tuning exists and is NOT enumerated (req-3). Treat 65 as a lower bound.'
 - name: baseline
   definition: every remaining gene with a measured abundance in the primary dataset
   note: the reference distribution the cohorts are compared against
@@ -350,16 +359,27 @@ implementation_requirements:
 - id: req-3
   status: not_started
   blocking: true
-  summary: Enumerate CODE-level parameter adjustments, not just data-level ones.
-  detail: Several _comments name fit_sim_data_1.py as the source, so the 65-molecule inventory from
+  summary: Enumerate CODE-level parameter adjustments; the data-level sweep is a lower bound.
+  detail: 'Several _comments name fit_sim_data_1.py as the source, so the 65-molecule inventory from
     flat/adjustments/ is a lower bound. Any molecule tuned in code must join the exclusion cohort
     before the headline comparison is graded.
+
+    The data-level inventory is now reproducible (analyses/tuning_inventory.py, all 131 TSVs). What
+    it cannot see is tuning applied in Python: fit_sim_data_1.py is named as the _source in rna_expression_adjustments,
+    translation_efficiencies_adjustments, rna_deg_rates_adjustments and protein_deg_rates_adjustments,
+    so that file is the place to look first.'
 - id: req-4
   status: not_started
   blocking: false
   summary: Reuse the existing monomer-count reader.
   detail: listeners.monomer_counts via the distilled runs; do not re-derive counts from expression.
 limitations:
+- 'The tuning inventory was built twice. A first pass used a narrow keyword list and found only the
+  adjustments/ directory, missing fold_changes_removed.tsv and complexation_reactions_removed.tsv
+  entirely — the second of which protects essential-subunit pools and is directly relevant here.
+  The committed inventory sweeps all 131 TSVs with a broad pattern and prints every hit for inspection,
+  but the episode is the reason req-3 is blocking: a keyword sweep cannot find tuning that lives
+  in code.'
 - Protein counts are compared at one condition. A cohort effect could be condition-specific and this
   design would miss it.
 - The hand-adjustment inventory covers DATA-level tuning only. Code-level adjustments in fit_sim_data_1.py
