@@ -127,7 +127,24 @@ behavior_tests:
       kind: theory
       note: Bounded above by 1.0; below 0.5 a cohort statistic reflects detection bias more than
         the model.
-  status: pending
+  status: failed
+  result: FAIL
+  measured_value: 0.4955
+  evaluated_by: agent
+  detail: "0.4955 against a band of [0.5, 1.0]. FAIL by 0.0045, recorded as pre-registered.\n  underdetermined-tu\
+    \   287 genes, 190 with Schmidt, coverage 0.6620\n  hand-adjusted         53 genes,  48 with\
+    \ Schmidt, coverage 0.9057\n  baseline            4022 genes, 1993 with Schmidt, coverage 0.4955\n\
+    The failure is on the BASELINE reference population, not on either comparison cohort. Both of\
+    \ those clear the floor comfortably. Schmidt 2016 measures 2352 genes against the model's 4309\
+    \ monomers, so roughly half the model's proteome is simply not in the dataset.\nAXIS MIS-SPECIFICATION,\
+    \ recorded rather than fixed after the fact. I wrote the measure as the minimum over ALL cohorts\
+    \ including baseline. The question it was meant to answer is whether each COMPARISON cohort has\
+    \ enough measured genes to be compared against a reference — for which 1993 baseline genes is\
+    \ ample. Taking the minimum over the reference population itself makes the gate fail on a property\
+    \ of the dataset rather than on comparability. Re-specifying it now would be post-hoc, so the\
+    \ FAIL stands and any successor should scope the measure to the comparison cohorts explicitly.\n\
+    The study remains feasible: 190 underdetermined genes against 1993 baseline genes is a workable\
+    \ comparison, and that is what the axis was for."
 - name: between-dataset-spread-sets-the-noise-floor
   classification: supporting
   gate_class: acceptance_criterion
@@ -390,6 +407,13 @@ limitations:
   errors, and dnaG itself is a case where the phenotype, not the count, was the observable that mattered.'
 - Schmidt 2016 measures a population average. The model is single-cell; heterogeneity is invisible
   to this comparison.
+- Schmidt 2016 covers 2352 genes against the model's 4309 monomers, so about half the model's proteome
+  has no measurement and every cohort claim is restricted to the measured half. Detection is biased
+  toward abundant proteins, so the comparison is systematically better-informed about abundant genes.
+- 'CONFOUND for the hand-adjusted positive control: that cohort has 0.9057 Schmidt coverage against
+  the baseline''s 0.4955. Tuned genes are disproportionately abundant and well-measured, so if they
+  show better agreement it may reflect abundance and measurement quality rather than the tuning.
+  The control should be compared against an abundance-matched baseline subset, not the whole baseline.'
 discovery_implications:
   resolved_uncertainties: []
   remaining_uncertainties:
