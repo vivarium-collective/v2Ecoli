@@ -244,10 +244,30 @@ class AnalysisTaskStep(Step):
         return [int(i) for i in (self.config.get("variant_indices") or [0])]
 
     def inputs(self) -> dict[str, Any]:
-        return {
+        ports: dict[str, Any] = {
             f"sweep_v{i}": {"_type": "string", "_is_file": True, "_cardinality": "many"}
             for i in self._variants()
         }
+        # The ParCa cache, staged into the gather exactly as it is staged into
+        # every lineage. `v2ecoli-analyze` resolves sim_data (analysis_runner.
+        # resolve_sim_data) by, in order: a sweep-local `**/simData*.cPickle`,
+        # $V2ECOLI_SIM_DATA, the sweep's run_identity.json pointer, out/kb. A
+        # Nextflow task has none of those unless the cache is in its work dir --
+        # the sweeps carry only configuration/ and history/, no pickle and no
+        # identity sidecar, and the env var is threaded only on the Ray path
+        # (viva-api#448). Measured: the first gather ever to stage cleanly
+        # (simulation 570, after blockers 5 and 6) died in resolve_sim_data on
+        # all four attempts. With the cache staged, branch 1 -- "the exact
+        # pairing, preferred" -- finds cache/simData.cPickle.
+        #
+        # NOTE a multi-variant campaign stages N caches that ParCa all emit
+        # under the task-local name `cache`, and resolve_sim_data takes the
+        # first glob hit. That is the same open question as "which variant's
+        # sim_data does a cross-variant analysis use" (viva-api#448), not a new
+        # one; single-variant is exact.
+        for i in self._variants():
+            ports[f"cache_v{i}"] = {"_type": "string", "_is_file": True}
+        return ports
 
     def outputs(self) -> dict[str, Any]:
         return {"report": {"_type": "string", "_is_file": True}}
@@ -510,8 +530,12 @@ def build_workflow_nf(
                 "analysis_options": analysis_options or {},
                 "variant_indices": indices,
             },
-            # one named port per variant, each fed by that variant's sub-workflow
-            "inputs": {f"sweep_v{i}": [f"results_v{i}"] for i in indices},
+            # one named port per variant, each fed by that variant's sub-workflow,
+            # plus that variant's ParCa cache (sim_data for the analyses)
+            "inputs": {
+                **{f"sweep_v{i}": [f"results_v{i}"] for i in indices},
+                **{f"cache_v{i}": [f"cache_v{i}"] for i in indices},
+            },
             "outputs": {"report": ["report"]},
         }
     return {"state": state}
