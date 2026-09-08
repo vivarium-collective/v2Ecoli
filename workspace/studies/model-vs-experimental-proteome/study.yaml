@@ -406,6 +406,17 @@ implementation_requirements:
   blocking: false
   summary: Reuse the existing monomer-count reader.
   detail: listeners.monomer_counts via the distilled runs; do not re-derive counts from expression.
+- id: req-5
+  status: not_started
+  blocking: true
+  summary: Decide which arm represents 'the model', then re-distil that arm keeping monomer_counts.
+  detail: 'Only tu-expression-identifiability-distilled carries monomer_counts; promoter-specific-regulation-distilled
+    kept only the synthesis-probability vectors, so its protein counts are gone. The combined arm
+    (promspec-plus-minnorm, 3 runs x 12 gens) still has full parquet and can be distilled with monomer_counts
+    included.
+
+    This is blocked on the scoping decision above: extracting counts from the wrong arm answers the
+    wrong question.'
 limitations:
 - 'The tuning inventory was built twice. A first pass used a narrow keyword list and found only the
   adjustments/ directory, missing fold_changes_removed.tsv and complexation_reactions_removed.tsv
@@ -476,3 +487,35 @@ claim: Pending. The study exists to decide whether the identifiability and misat
   cost measurable predictive accuracy against an independent proteome, and therefore whether the
   structural fix scoped as Option 3 in the May impact assessment is warranted on accuracy grounds.
 confidence: Planned
+count_extraction:
+  decided: '2026-09-08'
+  question: How should model protein counts be extracted for comparison?
+  method: 'Generation-MEAN monomer counts (listeners.monomer_counts), taken over DIVIDING generations
+    from generation 2 onward, median across seeds. Never an instantaneous timepoint: counts double
+    and halve within a cycle by construction, so a single tick is a phase measurement, not an abundance.
+
+    The arrest generation is EXCLUDED wherever a lineage arrests. It runs to the 200-minute cap with
+    dry mass at 3000-4500 fg against a normal ~700, so its counts describe a pathological state.
+    An earlier version of this analysis anchored convergence on the final generation and was measuring
+    exactly that artefact.'
+  evidence: "Consecutive-generation drift in median |log10(gen_n / gen_n-1)| over dividing generations:\n\
+    \  vertex   seed1  0.134, 0.116, 0.113, 0.110, 0.115, 0.117, 0.117  (gens 1-8)\n  vertex   seed0\
+    \  0.134, 0.122, 0.114\n  min-norm seed0  0.145, 0.139, 0.131, 0.126\nGeneration 1 sits slightly\
+    \ high; from generation 2 the drift PLATEAUS at 0.11-0.13 dex and does not shrink further. So\
+    \ the transient is short — one generation — but there is no asymptotic convergence either."
+  consequence: 'The plateau is a THIRD noise floor, alongside between-dataset disagreement and between-seed
+    spread: the model''s own generation-to-generation reproducibility is about 1.3x. Any cohort difference
+    smaller than that is not resolvable no matter how many genes are compared, and averaging over
+    generations and seeds is what buys it down.
+
+    It also bounds the pre-registered cohort bands. Those ask for a 1.3x ratio of MEDIAN |log10 error|
+    between cohorts, which is a different quantity from a 1.3x per-generation drift in counts — but
+    the two being the same order is a warning that the design is near its resolution limit, and should
+    be stated when the axes are graded rather than discovered afterwards.'
+  open_decision: 'WHICH ARM represents ''the model'' is not yet settled and is a scoping decision,
+    not a technical one. The unmodified model ARRESTS at 4-9 generations, so it has no long steady
+    state — that is this investigation''s premise. Options: (a) compare all arms at generations 2-3,
+    where every arm is still dividing, accepting a short window; (b) compare the promoter-specific
+    arm, which reaches 12 generations, accepting that it is a corrected model rather than the shipped
+    one. (a) tests the shipped model; (b) tests the fix. They answer different questions and the
+    study should say which.'
