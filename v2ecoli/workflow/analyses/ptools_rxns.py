@@ -16,7 +16,7 @@ import pandas as pd
 from duckdb import DuckDBPyConnection
 
 from v2ecoli.workflow.analysis import Analysis
-from v2ecoli.workflow.analyses._helpers import ptools_heatmap_view
+from v2ecoli.workflow.analyses._helpers import ptools_heatmap_view, available_columns
 from v2ecoli.workflow.analyses.ptools_rna import (
     consolidate_timepoints,
     _groupby_time_keep_generation,
@@ -27,10 +27,15 @@ from v2ecoli.workflow.analyses.ptools_rna import (
 # Module-level helpers
 # ---------------------------------------------------------------------------
 
-def build_query(columns, history_sql):
-    """Generate SQL query for user-specified parquet columns."""
+def build_query(columns, history_sql, include_generation=False):
+    """Generate SQL query for user-specified parquet columns.
+
+    ``include_generation`` carries the ``generation`` partition column for
+    per-generation consolidation; callers detect its presence first.
+    """
+    gen = ", generation" if include_generation else ""
     query_sql = f"""
-        SELECT {",".join(columns)}, global_time AS time, generation
+        SELECT {",".join(columns)}, global_time AS time{gen}
         FROM ({history_sql})
         ORDER BY time
     """
@@ -45,7 +50,8 @@ def read_outputs(
     """Retrieve specific columns from parquet outputs and return a DataFrame."""
     if columns is None:
         columns = ["listeners__fba_results__base_reaction_fluxes"]
-    query_sql = build_query(columns, history_sql)
+    incl_gen = "generation" in available_columns(conn, history_sql)
+    query_sql = build_query(columns, history_sql, incl_gen)
     outputs_df = conn.sql(query_sql).df()
     return _groupby_time_keep_generation(outputs_df)
 

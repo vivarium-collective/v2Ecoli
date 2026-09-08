@@ -19,7 +19,7 @@ import pandas as pd
 from duckdb import DuckDBPyConnection
 
 from v2ecoli.workflow.analysis import Analysis
-from v2ecoli.workflow.analyses._helpers import ptools_heatmap_view
+from v2ecoli.workflow.analyses._helpers import ptools_heatmap_view, available_columns
 from v2ecoli.workflow.analyses._shims import bulk_count_matrix, ACTIVE_RIBOSOME_SQL
 
 
@@ -35,14 +35,17 @@ def _flat_dir() -> str:
     return str((_ir.files(_flat_pkg) / "transcription_units.tsv").parent)
 
 
-def build_query(columns, history_sql):
+def build_query(columns, history_sql, include_generation=False):
     """Generate SQL query for user-specified parquet columns.
 
-    Also carries ``generation`` (a hive partition column) so per-generation
-    consolidation can align rows to generation boundaries.
+    When ``include_generation`` is set, also carries ``generation`` (a hive
+    partition column) so per-generation consolidation can align rows to
+    generation boundaries. Callers detect the column's presence first — synthetic
+    or narrowed histories (e.g. some tests) may not have it.
     """
+    gen = ", generation" if include_generation else ""
     query_sql = f"""
-        SELECT {",".join(columns)}, global_time AS time, generation
+        SELECT {",".join(columns)}, global_time AS time{gen}
         FROM ({history_sql})
         ORDER BY time
     """
@@ -80,7 +83,8 @@ def read_outputs(
             "bulk__count",
             "listeners__rna_counts__full_mRNA_counts",
         ]
-    query_sql = build_query(columns, history_sql)
+    incl_gen = "generation" in available_columns(conn, history_sql)
+    query_sql = build_query(columns, history_sql, incl_gen)
     outputs_df = conn.sql(query_sql).df()
     # For list/array columns, groupby sum works via element-wise numpy addition.
     # With a single-cell (single scale) query there is typically one row per
