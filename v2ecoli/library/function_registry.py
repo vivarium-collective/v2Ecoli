@@ -413,15 +413,6 @@ def equilibrium_ode_solver_factory(stoich_matrix, rates_fwd, rates_rev,
 
         y = sol.y.T
         if np.any(y[-1, :] * (cellVolume * nAvogadro) <= -1):
-            # TEMPORARY DIAGNOSTIC (2026-08-28, division-crash investigation,
-            # re-added). Remove after diagnosis.
-            import sys
-            final_counts = y[-1, :] * (cellVolume * nAvogadro)
-            bad = np.where(final_counts <= -1)[0]
-            print(f"\n=== 'Negative values' failure: indices {bad.tolist()}, "
-                  f"values {final_counts[bad].tolist()} "
-                  f"(init counts at those idx: {(y_init * (cellVolume * nAvogadro))[bad].tolist()}) ===",
-                  file=sys.stderr)
             raise ValueError("Negative values at equilibrium steady state.")
         if np.linalg.norm(deriv_ss(0, y[-1, :]), np.inf) * (cellVolume * nAvogadro) > 1:
             raise RuntimeError("Did not reach steady state for equilibrium.")
@@ -438,17 +429,6 @@ def equilibrium_ode_solver_factory(stoich_matrix, rates_fwd, rates_rev,
             if np.all(moleculeCounts + _stoichMatrix.dot(rxnFluxes) >= 0):
                 break
         else:
-            # TEMPORARY DIAGNOSTIC (2026-08-28, division-crash investigation,
-            # re-added). Remove after diagnosis.
-            import sys
-            resulting = moleculeCounts + _stoichMatrix.dot(rxnFluxes)
-            bad = np.where(resulting < 0)[0]
-            print(f"\n=== 'Negative counts' failure: indices {bad.tolist()}, "
-                  f"resulting counts {resulting[bad].tolist()}, "
-                  f"starting counts {moleculeCounts[bad].tolist()}, "
-                  f"dYMolecules at those idx {dYMolecules[bad].tolist()}, "
-                  f"last rxnFluxes {rxnFluxes.tolist()} ===",
-                  file=sys.stderr)
             raise ValueError("Negative counts in equilibrium steady state.")
 
         rxnFluxesN = -1.0 * (rxnFluxes < 0) * rxnFluxes

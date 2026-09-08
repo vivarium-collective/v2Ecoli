@@ -1,5 +1,5 @@
 """Population-based (unpruned, real-division) multi-generation test for the
-NFsim-wired flagella complexation pipeline.
+NFsim-wired flagella complexation pipeline (both daughters kept - population level)
 
 Added 2026-08-19. Companion to run_nfsim_lineage_multigen.py -- that script
 prunes to ONE followed daughter at every division (mother-machine-style),
@@ -89,10 +89,7 @@ def _agent_stats(cell, idx):
         "export_apparatus_subunit_internal": float(
             internal.get("flagellar_export_apparatus_subunit", 0.0)),
         # Rod and rod+P-ring (added 2026-09-01): both real reaction stages
-        # since the 2026-08-27/28 hook/rod/ring hierarchy fix, both already
-        # tracked by _INTERNAL_ONLY_OBSERVABLES in
-        # flagella_nfsim_complexation.py, but never previously surfaced in
-        # any chart -- see MASTER_DOCUMENT.md for the full reaction list.
+        # since the 2026-08-27/28 hook/rod/ring hierarchy fix
         "rod_internal": float(internal.get("flagellar_rod", 0.0)),
         "rod_p_ring_internal": float(
             internal.get("flagellar_rod_with_p_ring", 0.0)),

@@ -432,26 +432,9 @@ class Equilibrium(Step):
             reaction_fluxes, _ = self._solve_ode_to_steady_state(
                 molecule_counts, cell_volume, dt)
         else:
-            try:
-                reaction_fluxes, _ = self.fluxesAndMoleculesToSS(
-                    molecule_counts, cell_volume, self.n_avogadro,
-                    self.random_state, jit=self.jit, timestep=dt)
-            except ValueError:
-                # TEMPORARY DIAGNOSTIC (2026-08-28, division-crash
-                # investigation, re-added after the hook/rod/p-ring/l-ring
-                # complexation fix + flgm_secretion trigger fix). Remove
-                # after diagnosis.
-                import sys
-                print("\n=== EQUILIBRIUM SOLVER FAILURE DIAGNOSTIC ===",
-                      file=sys.stderr)
-                print(f"cell_mass_g={cell_mass_g}  cell_volume={cell_volume}  "
-                      f"n_avogadro={self.n_avogadro}  dt={dt}  "
-                      f"agent_mass_listener_ran={cell_mass_g > 0}",
-                      file=sys.stderr)
-                for name, count in zip(self.moleculeNames, molecule_counts):
-                    print(f"  {name:>25} = {count}", file=sys.stderr)
-                print("=== END DIAGNOSTIC ===\n", file=sys.stderr)
-                raise
+            reaction_fluxes, _ = self.fluxesAndMoleculesToSS(
+                molecule_counts, cell_volume, self.n_avogadro,
+                self.random_state, jit=self.jit, timestep=dt)
 
         # dnaa-3 Phase 2b: inject extra DNAA-INTRINSIC-HYDROLYSIS-RXN flux to
         # cover the bound-pool hydrolysis events. Without this, the bound

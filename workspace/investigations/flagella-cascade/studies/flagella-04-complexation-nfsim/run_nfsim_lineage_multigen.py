@@ -179,75 +179,114 @@ def _gen_bounds(rows):
     return bounds
 
 
-def _shade(ax, rows):
-    gens = sorted({r["gen"] for r in rows})
-    colors = ["#eef4ff", "#fff4ee", "#eefff2", "#f7eeff"]
-    for gi in gens:
-        xs = [r["t_cum"] / 60.0 for r in rows if r["gen"] == gi]
-        if xs:
-            ax.axvspan(min(xs), max(xs), color=colors[(gi - 1) % len(colors)], alpha=0.5, zorder=0)
-    for b in _gen_bounds(rows):
-        ax.axvline(b, color="#c0392b", ls="--", lw=1, alpha=0.7)
+# _shade() drew shaded generation backgrounds + a dashed division line, one
+# axis at a time. Replaced 2026-09-04 (Maya's request) with a single dotted
+# division-line pass over every axis, matching run_nfsim_population_multigen.py's
+# convention -- kept per standing preserve-old-code rule:
+# def _shade(ax, rows):
+#     gens = sorted({r["gen"] for r in rows})
+#     colors = ["#eef4ff", "#fff4ee", "#eefff2", "#f7eeff"]
+#     for gi in gens:
+#         xs = [r["t_cum"] / 60.0 for r in rows if r["gen"] == gi]
+#         if xs:
+#             ax.axvspan(min(xs), max(xs), color=colors[(gi - 1) % len(colors)], alpha=0.5, zorder=0)
+#     for b in _gen_bounds(rows):
+#         ax.axvline(b, color="#c0392b", ls="--", lw=1, alpha=0.7)
+
+
+# Same convention as run_nfsim_population_multigen.py's COLORS dict.
+COLORS = {
+    "flag": "#9467bd",
+    "completed_ever": "#d62728",
+    "n_nascent": "#8c564b",
+    "mean_len": "#17becf",
+    "max_len": "#17becf",
+    "flic": "#bcbd22",
+    "dry_mass": "#1f77b4",
+    "n_scaffold_entries": "#e377c2",
+    "scaffold_total": "#e377c2",
+    "hook_internal": "#ff7f0e",
+    "flagella_internal_cumulative": "#9467bd",
+}
 
 
 def figure(rows, n_gens):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.3, "font.size": 10})
+    plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": 0.3, "font.size": 9})
 
     t = _cols(rows, "t_cum") / 60.0
-    fig, axs = plt.subplots(2, 4, figsize=(22.0, 9.0))
-    (a, b, c, d), (e, f, g, h) = axs
+    division_times = _gen_bounds(rows)
 
-    a.plot(t, _cols(rows, "flag"), "-o", ms=2, color="#9467bd", label="complete flagella (this lineage)")
-    a.plot(t, _cols(rows, "completed_ever"), "-s", ms=2, color="#d62728", label="cumulative completions")
-    _shade(a, rows)
-    a.set_title("Complete flagella, followed lineage")
-    a.set_xlabel("time (min)"); a.set_ylabel("count"); a.legend(fontsize=8)
+    # Panels, in the same generic (title, key) form as the population
+    # script's `panels` list -- rendered through one shared loop below
+    # instead of one hand-written block per axis.
+    panels = [
+        ("Complete flagella, followed lineage", "__flag_overlay__"),
+        ("Flagella under construction (n_nascent)", "n_nascent"),
+        ("Filament construction progress", "__filament_progress__"),
+        ("Free FliC monomer (supply pool)", "flic"),
+        ("Dry mass (sanity check: should NOT drift down across generations)", "dry_mass"),
+        ("nfsim_scaffold_species (survives division?)", "__scaffold_overlay__"),
+        ("Hook (internal, survives division?)", "hook_internal"),
+        ("Hook-basal-body complete, cumulative (survives division?)", "flagella_internal_cumulative"),
+    ]
 
-    b.plot(t, _cols(rows, "n_nascent"), "-o", ms=2, color="#8c564b")
-    _shade(b, rows)
-    b.set_title("flagella under construction (n_nascent)")
-    b.set_xlabel("time (min)"); b.set_ylabel("count")
+    n_cols = 4
+    n_rows = -(-len(panels) // n_cols)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4.2 * n_cols, 3.0 * n_rows), sharex=True)
+    axes_flat = np.atleast_1d(axes).flat
+    used_axes = list(axes_flat)[:len(panels)]
 
-    c.plot(t, _cols(rows, "mean_len"), "-o", ms=2, color="#17becf", label="mean filament_length")
-    c.plot(t, _cols(rows, "max_len"), "-s", ms=2, color="#17becf", alpha=0.5, label="max filament_length")
-    c.axhline(5000, color="gray", ls=":", lw=1, label="target (5,000)")
-    _shade(c, rows)
-    c.set_title("filament construction progress")
-    c.set_xlabel("time (min)"); c.set_ylabel("subunits"); c.legend(fontsize=7)
+    for ax, (panel_title, key) in zip(used_axes, panels):
+        if key == "__flag_overlay__":
+            ax.plot(t, _cols(rows, "flag"), "-o", ms=2, color=COLORS["flag"],
+                    label="complete flagella (this lineage)")
+            ax.plot(t, _cols(rows, "completed_ever"), "-s", ms=2, color=COLORS["completed_ever"],
+                    label="cumulative completions")
+            ax.set_ylabel("count"); ax.legend(fontsize=7)
+        elif key == "__filament_progress__":
+            ax.plot(t, _cols(rows, "mean_len"), "-o", ms=2, color=COLORS["mean_len"],
+                    label="mean filament_length")
+            ax.plot(t, _cols(rows, "max_len"), "-s", ms=2, color=COLORS["max_len"], alpha=0.5,
+                    label="max filament_length")
+            ax.axhline(5000, color="gray", ls=":", lw=1, label="target (5,000)")
+            ax.set_ylabel("subunits"); ax.legend(fontsize=7)
+        elif key == "__scaffold_overlay__":
+            ax.plot(t, _cols(rows, "n_scaffold_entries"), "-o", ms=2, color=COLORS["n_scaffold_entries"],
+                    label="distinct entries")
+            ax.plot(t, _cols(rows, "scaffold_total"), "-s", ms=2, color=COLORS["scaffold_total"], alpha=0.5,
+                    label="total count")
+            ax.set_ylabel("count"); ax.legend(fontsize=7)
+        elif key == "dry_mass":
+            ax.plot(t, _cols(rows, key), "-o", ms=2, color=COLORS.get(key, "#333333"))
+            ax.set_ylabel("fg")
+        else:
+            ax.plot(t, _cols(rows, key), "-o", ms=2, color=COLORS.get(key, "#333333"))
+            ax.set_ylabel("count")
+        ax.set_title(panel_title, fontsize=9)
 
-    d.plot(t, _cols(rows, "flic"), "-o", ms=2, color="#bcbd22")
-    _shade(d, rows)
-    d.set_title("free FliC monomer (supply pool)")
-    d.set_xlabel("time (min)"); d.set_ylabel("count")
+    # Division markers: a dotted vertical line on every panel at each real
+    # division event, same convention as run_nfsim_population_multigen.py
+    # (added there 2026-09-01) -- replaces the old shaded-background-per-axis
+    # approach above.
+    for ax in used_axes:
+        for dt_div in division_times:
+            ax.axvline(dt_div, color="#555555", ls=":", lw=1, alpha=0.6, zorder=0)
 
-    e.plot(t, _cols(rows, "dry_mass"), "-o", ms=2, color="#1f77b4")
-    _shade(e, rows)
-    e.set_title("dry mass (sanity check: should NOT drift down across generations)")
-    e.set_xlabel("time (min)"); e.set_ylabel("fg")
-
-    f.plot(t, _cols(rows, "n_scaffold_entries"), "-o", ms=2, color="#e377c2", label="distinct entries")
-    f.plot(t, _cols(rows, "scaffold_total"), "-s", ms=2, color="#e377c2", alpha=0.5, label="total count")
-    _shade(f, rows)
-    f.set_title("nfsim_scaffold_species (survives division?)")
-    f.set_xlabel("time (min)"); f.set_ylabel("count"); f.legend(fontsize=7)
-
-    g.plot(t, _cols(rows, "hook_internal"), "-o", ms=2, color="#ff7f0e")
-    _shade(g, rows)
-    g.set_title("hook (internal, survives division?)")
-    g.set_xlabel("time (min)"); g.set_ylabel("count")
-
-    h.plot(t, _cols(rows, "flagella_internal_cumulative"), "-o", ms=2, color="#9467bd")
-    _shade(h, rows)
-    h.set_title("hook-basal-body complete, cumulative (survives division?)")
-    h.set_xlabel("time (min)"); h.set_ylabel("count")
+    for ax in list(np.atleast_1d(axes).flat)[len(panels):]:
+        fig.delaxes(ax)
+    last_row = (len(panels) - 1) // n_cols
+    axes_2d = np.atleast_2d(axes)
+    for col in range(n_cols):
+        if last_row * n_cols + col < len(panels):
+            axes_2d[last_row, col].set_xlabel("time (min)")
 
     fig.suptitle(f"NFsim-driven single-lineage, {n_gens}-generation test (real Division "
                  f"machinery, pruned to 1 followed agent) — does scaffold/internal state "
-                 f"survive real division? (shaded=generation, dashed=division)")
-    fig.tight_layout()
+                 f"survive real division? (dotted=division)")
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
     out = f"{STUDY_DIR}/charts/25_nfsim_lineage_multigen_{n_gens}gen.svg"
     os.makedirs(os.path.dirname(out), exist_ok=True)
     fig.savefig(out, format="svg", bbox_inches="tight")
