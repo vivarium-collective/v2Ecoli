@@ -708,7 +708,7 @@ def test_the_output_declaration_is_a_pattern_not_a_fixed_name(core) -> None:
     per-lineage `out_dir` expressible at all."""
     rendered = _render(core, build_workflow_nf(n_seeds=2, n_generations=1))
     block = rendered.split("process lineage_v0_s0 {", 1)[1].split("\n}", 1)[0]
-    assert 'path "sweep_*"' in block
+    assert 'path "sweep_*", type: "dir"' in block
     assert 'path "sweep"' not in block, "a fixed name collides across tasks"
 
 
@@ -856,3 +856,30 @@ def test_the_known_gaps_have_not_silently_grown() -> None:
         "a key left _FORWARDED entirely; the gap list is stale: "
         f"{sorted(_KNOWN_UNREACHABLE - set(_FORWARDED))}"
     )
+
+
+def test_no_output_glob_can_match_its_own_port_manifest(core) -> None:
+    """Blocker 6, found by the first campaign to clear blocker 5. `run_step` writes
+    each output port's value as `<port>.json` into the task work dir; an output
+    glob that matches that file makes every task emit an identically named
+    manifest next to its real output, and an N-to-1 gather collides on it. The
+    guard is structural: for every Step that declares Nextflow output ports, the
+    declared glob must not match `<port>.json` -- or must be typed `dir`, which
+    excludes files outright."""
+    import fnmatch
+    import re
+
+    from v2ecoli.composites.workflow_nf import AnalysisTaskStep, ParcaTaskStep
+    from v2ecoli.workflow.lineage_step import LineageStep
+
+    for step in (LineageStep, ParcaTaskStep, AnalysisTaskStep):
+        for port, decl in step.nextflow_port_decls.items():
+            m = re.match(r'path\s+"([^"]+)"(.*)', decl)
+            if not m:
+                continue  # an unquoted `path name` is an input wire, not an output glob
+            glob, rest = m.group(1), m.group(2)
+            manifest = f"{port}.json"
+            assert not fnmatch.fnmatch(manifest, glob) or 'type: "dir"' in rest, (
+                f"{step.__name__}.{port}: output glob {glob!r} also matches the run_step "
+                f"manifest {manifest!r}; every task would emit it and the gather collides"
+            )
