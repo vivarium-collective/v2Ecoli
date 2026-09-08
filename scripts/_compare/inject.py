@@ -104,6 +104,15 @@ def _should_inject_as_step(cls) -> bool:
     """
     if bool(getattr(cls, "_force_step", False)):
         return True
+    # A pbg-NATIVE deriver — inputs()/outputs() + update_condition-gated.
+    # A native ecoli-metabolism-redux is pbg-native, NOT a vivarium.Step
+    # subclass, so issubclass(cls, Step) returned False and it was injected as an
+    # interval process → tick-2 non-advancing global_clock collapse. Requiring
+    # inputs()+outputs() excludes a plain vivarium Process (ports_schema, with an
+    # inherited base update_condition); needs no vivarium import.
+    if (hasattr(cls, "update_condition")
+            and hasattr(cls, "inputs") and hasattr(cls, "outputs")):
+        return True
     try:
         from vivarium.core.process import Step
     except Exception:  # noqa: BLE001 — fixture fork has no vivarium
