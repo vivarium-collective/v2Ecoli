@@ -46,7 +46,16 @@ from __future__ import annotations
 # `partial_cell_detection`. Content AND keys change, so the bump is required
 # twice over. A v3 envelope was written WITHOUT the exclusion and its numbers
 # are plausible, so nothing but the key distinguishes them.
-EXTRACTOR_VERSION = 4
+#
+# v4 -> v5: exchange fluxes are DERIVED from per-species dmdt counts on sweeps
+# that do not write the classic array, so a whole GROUP appears that a v4
+# envelope for the same sweep does not contain. ⛔ Without the bump,
+# `load_or_extract` serves the v4 file and the `fluxes` group is silently
+# absent — which is exactly the indistinguishability this doctrine exists to
+# prevent: "this run exchanged nothing we can read" and "this envelope predates
+# the derivation" would look identical, and the first is a fact about the run
+# while the second is a fact about the tooling.
+EXTRACTOR_VERSION = 5
 
 #: A cell whose row count sits below the split is not a complete cell cycle.
 #:
@@ -93,6 +102,41 @@ _VECTOR_COLS = {
 }
 
 
+#: Prefix of the per-species exchange columns ``metabolism_redux`` writes, one
+#: scalar column per species, in molecule COUNTS per timestep.
+#:
+#: ⭐ **Discovered by PREFIX, never enumerated.** Which species a run exchanges is
+#: a property of the model under study, not of this module; listing them here
+#: would make the extractor wrong for every model that exchanges anything else,
+#: and would put study-specific identifiers into a general-purpose library.
+#: The species token is read from the column name and used verbatim as the node
+#: name, so the identity travels with the data.
+#:
+#: ⇒ This is what makes a redux sweep gradeable for exchange at all. The classic
+#: ``external_exchange_fluxes`` above is a POSITIONAL array whose element
+#: identity this module does not record; these columns carry identity in the
+#: name, which is strictly more information.
+_DMDT_PREFIX = "listeners__fba_results__estimated_exchange_dmdt__"
+
+#: Dry-mass column the counts->flux conversion divides by, and the group the
+#: derived nodes land in.
+_DRY_MASS_COL = "listeners__mass__dry_mass"
+_DMDT_GROUP = "fluxes"
+_DMDT_UNITS = "mmol/gDCW/h"
+
+#: counts -> mmol/gDCW/h, per femtogram of dry mass, per second of timestep.
+#:
+#: ``counts / N_A`` is mol; ``x1000`` is mmol; ``/ dry_mass`` makes it specific;
+#: ``x 3600/dt`` makes it hourly. Dry mass is emitted in fg, hence the ``1e-15``.
+#:
+#: `[m@2026-09-09]` This is not a fitted constant. On runs
+#: that ALSO carry the bespoke ``listeners__exchange_flux__*`` columns, deriving
+#: the flux from the dmdt column with this factor reproduces the bespoke value
+#: to a worst-case relative error of **0.000000%** over >130k rows, and the
+#: ratio ``dmdt / bespoke`` divided by dry mass is constant to **CV 0.0000%**.
+_COUNTS_TO_MMOL_PER_GDCW_H = 6.02214076e23 / 1e3 * 1e-15 / 3600.0
+
+
 #: ``(group, name) -> units``. The lookup a resolver uses when it holds a card
 #: path rather than a parquet column — see ``operands.run_operand``, which stamps
 #: units from HERE rather than from the cached node, so that a hand-built or
@@ -130,6 +174,56 @@ def _complete_cells(cell_order: list, per_cell_rows: dict) -> tuple[list, int, s
     included = [c for c in cell_order if per_cell_rows[c] >= split_at]
     return included, len(cell_order) - len(included), "clean"
 
+def _timestep_seconds(con, rel: str) -> float | None:
+    """Median ``global_time`` delta within a cell, or None if undecidable.
+
+    ⛔ MEASURED, NEVER ASSUMED. The counts->flux conversion is inversely
+    proportional to the timestep, so hardcoding 1 s would silently mis-scale
+    every derived flux on any run that does not use it, by exactly the ratio.
+    """
+    try:
+        row = con.sql(
+            "SELECT median(d) FROM (SELECT global_time - lag(global_time) OVER "
+            "(PARTITION BY lineage_seed, generation, agent_id ORDER BY global_time) d "
+            f"FROM {rel}) WHERE d IS NOT NULL AND d > 0"
+        ).fetchone()
+    except Exception:
+        return None
+    return float(row[0]) if row and row[0] else None
+
+
+def _derived_exchange(raw_cols: list, con, rel: str) -> list:
+    """``[(select_expr, (group, name, units)), ...]`` for redux exchange columns.
+
+    Converts each per-species dmdt column (molecule counts per timestep) to
+    mmol/gDCW/h in SQL, so the streaming accumulator downstream never sees the
+    raw counts and needs no new code path.
+
+    ⚠ **Sign is flipped deliberately.** The dmdt listener reports the change
+    from the environment's side, so a secreted species is negative there and
+    positive in the flux convention this module declares. Measured on two
+    species on two independent runs; see ``_COUNTS_TO_MMOL_PER_GDCW_H``.
+
+    Returns [] — not an error — when the run writes no dmdt columns, or when
+    dry mass is absent and the conversion therefore cannot be made. **Absent
+    means absent**; an unconvertible column is omitted rather than emitted in
+    the wrong units.
+    """
+    cols = sorted(c for c in raw_cols if c.startswith(_DMDT_PREFIX))
+    if not cols or _DRY_MASS_COL not in {c.lower() for c in raw_cols}:
+        return []
+    dt = _timestep_seconds(con, rel)
+    if not dt:
+        return []
+    k = _COUNTS_TO_MMOL_PER_GDCW_H * dt
+    out = []
+    for c in cols:
+        species = c[len(_DMDT_PREFIX):]
+        expr = f'-"{c}" / NULLIF("{_DRY_MASS_COL}" * {k!r}, 0)'
+        out.append((expr, (_DMDT_GROUP, species, _DMDT_UNITS)))
+    return out
+
+
 def extract_vectors(sweep_dir: str, generation_lower_bound: int = 0) -> dict:
     """Return ``{group: {name: {...}}}`` of cell-first aggregated vectors
     (time-mean within cell, then mean across cells).
@@ -145,18 +239,19 @@ def extract_vectors(sweep_dir: str, generation_lower_bound: int = 0) -> dict:
     different exchange leaves, and that was previously fatal to the whole
     extraction rather than to the one group.
 
-    ⛔ **KNOWN GAP, deliberately not addressed here — cells are NOT filtered.**
-    Depending on how the producing runner emits daughters at division, grouping
-    by ``(lineage_seed, generation, agent_id)`` can yield short birth stubs, and
-    a run that stops mid-cycle leaves a truncated final generation. Both are
-    averaged in as if they were complete cells, which biases every ensemble
-    statistic toward the newborn state. A row-count heuristic was tried and
-    withdrawn: whether a stub falls under any given fraction is a function of the
-    producing run's emit cadence, so the heuristic silently did nothing on
-    coarse-emit sweeps while asserting that it had. The real signal is a
-    per-cell ``divided`` flag (``workflow/analysis_runner.py``), which is not
-    currently an emitted parquet column. ⇒ **Callers must not treat ``n_cells``
-    as a count of complete cell cycles.**
+    ⚠ **Partial cells ARE filtered, but only when they SEPARATE.** ``_complete_cells``
+    looks for a ratio gap in the per-cell row counts: a sweep whose cells split
+    into "ran a cycle" and "was born and abandoned" has a gap of orders of
+    magnitude, and one that does not, does not. When no gap reaches
+    ``_MIN_SEPARATION_RATIO`` the split is undecidable, ``partial_cell_detection``
+    is ``"ambiguous"``, and **nothing is excluded**.
+    ⇒ **Read ``partial_cell_detection`` before reading ``n_cells``.** It is a
+    count of complete cycles only when that field says ``"clean"``; under
+    ``"ambiguous"`` every cell is included and some may be partial.
+    ⊕ A fixed-FRACTION heuristic was tried and withdrawn — whether a stub falls
+    under any given fraction is a function of the producing run's emit cadence,
+    so it silently did nothing on coarse-emit sweeps while asserting that it had.
+    The ratio-gap test replaced it precisely because it can DECLINE.
 
     ⚠ **A second, PRE-EXISTING inconsistency, stated because it is easy to
     assume this function prevents it and it does not:** the ragged-row rule
@@ -205,10 +300,26 @@ def extract_vectors(sweep_dir: str, generation_lower_bound: int = 0) -> dict:
     # nothing, which is the failure mode the engine's own guard exists to
     # refuse. A consumer that requires a group it cannot find must say so
     # itself; silently handing it zeros moves an error into a result.
-    available = {c.lower() for c in con.sql(f"SELECT * FROM {rel} LIMIT 0").columns}
+    # ⚠ BOTH forms are needed and they are not interchangeable. The membership
+    # test for `_VECTOR_COLS` is case-insensitive; the DERIVED columns must be
+    # quoted back with their ORIGINAL case, because the species token is part of
+    # the identifier (`...__SOME-SPECIES[c]`) and DuckDB matches quoted
+    # identifiers exactly. Lower-casing there would produce a column that does
+    # not exist.
+    raw_cols = list(con.sql(f"SELECT * FROM {rel} LIMIT 0").columns)
+    available = {c.lower() for c in raw_cols}
+    # ⊕ Quoting is safe across casing: DuckDB resolves QUOTED identifiers
+    # case-insensitively (verified directly — unlike Postgres, where quoting
+    # makes them case-sensitive). Membership is tested case-insensitively for
+    # the same reason, since one key is mixed-case (`...__mRNA_cistron_counts`).
     present = [
-        (col, meta) for col, meta in _VECTOR_COLS.items() if col.lower() in available
+        (f'"{col}"', meta) for col, meta in _VECTOR_COLS.items()
+        if col.lower() in available
     ]
+    # Derived per-species exchange fluxes, for sweeps whose metabolism writes
+    # counts rather than the classic array. Additive: a sweep carrying BOTH gets
+    # both, and neither shadows the other.
+    present += _derived_exchange(raw_cols, con, rel)
     if not present:
         raise ValueError(
             f"no observable columns found in {sweep_dir!r}. Looked for: "
@@ -217,7 +328,7 @@ def extract_vectors(sweep_dir: str, generation_lower_bound: int = 0) -> dict:
             "run emitted its listeners, and note that the metabolism in use "
             "determines which exchange leaf (if any) is written."
         )
-    cols = ", ".join(col for col, _ in present)
+    cols = ", ".join(expr for expr, _ in present)
     result = con.sql(
         f"SELECT lineage_seed, generation, agent_id, {cols} FROM {rel} "
         f"WHERE generation >= {int(generation_lower_bound)}"
@@ -275,6 +386,13 @@ def extract_vectors(sweep_dir: str, generation_lower_bound: int = 0) -> dict:
             for i, val in enumerate(r[3:]):
                 if val is None:
                     continue
+                # A SCALAR observable is a one-feature vector. Wrapping it here
+                # rather than branching below means the derived exchange fluxes
+                # reuse the whole accumulator unchanged — same per-cell means,
+                # same ensemble mean, same partial-cell membership, same
+                # `per_cell` matrix shape (n_cells x 1).
+                if not isinstance(val, (list, tuple, np.ndarray)):
+                    val = (val,)
                 length = len(val)
                 if length > col_len[i]:
                     col_len[i] = length
