@@ -109,3 +109,29 @@ def test_absent_dry_mass_omits_the_group_rather_than_guessing(tmp_path):
     out = card_vectors.extract_vectors(sweep)
     assert "fluxes" not in out
     assert "proteome" in out["omics"], "the other groups must still extract"
+
+
+def test_a_differently_cased_column_still_resolves(tmp_path):
+    """Pins an ASSUMPTION this module now relies on: DuckDB resolves QUOTED
+    identifiers case-insensitively.
+
+    The SELECT quotes each column so a derived expression can sit beside a bare
+    one. That is only safe because quoting does NOT make the identifier
+    case-sensitive here — the opposite of Postgres. If that ever changed, or the
+    engine were swapped, every sweep whose emitter cased a column differently
+    from `_VECTOR_COLS` would silently lose that group. One key is already
+    mixed-case (`...__mRNA_cistron_counts`), so the assumption is load-bearing.
+    """
+    pytest.importorskip("pyarrow")
+    import pyarrow as pa, pyarrow.parquet
+    d = tmp_path / "exp" / "history" / "experiment_id=e" / "part"
+    d.mkdir(parents=True)
+    # emit the proteome column in a case the dict key does NOT use
+    odd = "LISTENERS__MONOMER_COUNTS"
+    pa.parquet.write_table(pa.table({
+        "lineage_seed": [0] * 4, "generation": [2] * 4, "agent_id": ["0"] * 4,
+        "global_time": [0.0, 1.0, 2.0, 3.0],
+        odd: [[1.0, 3.0]] * 4,
+    }), d / "0.pq")
+    out = card_vectors.extract_vectors(str(tmp_path / "exp"))
+    assert out["omics"]["proteome"]["vector"] == pytest.approx([1.0, 3.0])

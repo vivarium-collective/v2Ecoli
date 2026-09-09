@@ -308,6 +308,10 @@ def extract_vectors(sweep_dir: str, generation_lower_bound: int = 0) -> dict:
     # not exist.
     raw_cols = list(con.sql(f"SELECT * FROM {rel} LIMIT 0").columns)
     available = {c.lower() for c in raw_cols}
+    # ⊕ Quoting is safe across casing: DuckDB resolves QUOTED identifiers
+    # case-insensitively (verified directly — unlike Postgres, where quoting
+    # makes them case-sensitive). Membership is tested case-insensitively for
+    # the same reason, since one key is mixed-case (`...__mRNA_cistron_counts`).
     present = [
         (f'"{col}"', meta) for col, meta in _VECTOR_COLS.items()
         if col.lower() in available
