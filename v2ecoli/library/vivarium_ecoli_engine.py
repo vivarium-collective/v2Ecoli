@@ -1120,6 +1120,7 @@ def run_vivarium_ecoli_pbg_multigen(
     gens_done = 0
     final_cell_mass = None
     build_config = None
+    em = None  # ONE lineage-scoped emitter, opened at gen 0, advanced per division
 
     for gen in range(max_generations):
         # gen 0 is a fresh founder (overlay=None); later generations seed the inner
@@ -1143,12 +1144,23 @@ def run_vivarium_ecoli_pbg_multigen(
             except Exception as _cfgerr:  # noqa: BLE001 — never block the run
                 print(f"[vecoli-config] summary skipped: "
                       f"{type(_cfgerr).__name__} {_cfgerr}")
-        em = _build_emitter(
-            core=core, store_path=store_path, view=view, metadata_base=metadata_base,
-            generation=gen + 1,  # 1-indexed to match run_multigen_xarray (v2ecoli side)
-            # Inherit build_emitter_config's buffer_size default (600): flush a
-            # handful of times per generation, not every few steps.
-            agent_id=partition_agent_id, output_metadata={})
+        if em is None:
+            # ONE emitter drives the whole lineage: generation 1 is opened here,
+            # and each division advances it in place via advance_generation()
+            # below. This replaces the old build-a-fresh-emitter-per-generation
+            # flow, whose per-generation close() was wrapped in
+            # `except AssertionError: pass` — a swallow that, when a
+            # (sub-buffer_size) generation failed to persist, left the zarr store
+            # as bare group skeletons and crashed the next generation's
+            # _check_group. advance_generation() guarantees each generation is
+            # flushed + consolidated on disk before the next one opens.
+            em = _build_emitter(
+                core=core, store_path=store_path, view=view,
+                metadata_base=metadata_base,
+                generation=1,
+                # Inherit build_emitter_config's buffer_size default (600): flush
+                # a handful of times per generation, not every few steps.
+                agent_id=partition_agent_id, output_metadata={})
 
         steps = 1
         divided = False
@@ -1181,10 +1193,6 @@ def run_vivarium_ecoli_pbg_multigen(
                 divided = True
                 break
 
-        try:
-            em.close(success=True)
-        except AssertionError:
-            pass  # F5: trailing-buffer include_static assert; generation already on disk
         gens_done += 1
         if not divided:
             break
@@ -1196,7 +1204,18 @@ def run_vivarium_ecoli_pbg_multigen(
         partition_agent_id = daughter_id
         composite_agent_id = daughter_id
         divisions += 1
+        if gen < max_generations - 1:
+            # Finalize this generation (flush trailing buffer + mark the division
+            # event + consolidate) and open the daughter's partition in the same
+            # store — guaranteed, never swallowed. The last generation is
+            # finalized by the terminal close() after the loop.
+            em.advance_generation(agent_id=partition_agent_id, success=True)
 
+    if em is not None:
+        # Terminal finalize of the final generation (flush + mark division +
+        # consolidate). Not swallowed: a real persistence failure must surface
+        # rather than silently leave a skeleton store.
+        em.close(success=True)
     set_ecolisim_config_file(None)  # reset for the next run (deterministic isolation)
     return {"generations": gens_done, "divisions": divisions,
             "store": store_path, "final_cell_mass": final_cell_mass,

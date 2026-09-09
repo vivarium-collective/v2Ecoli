@@ -872,11 +872,11 @@ def run_multigen_xarray(
             # ⇒ A chain's first stage is PRECISELY this shape — run generation 1,
             # stop at its division, hand the daughter on — so without this the
             # next stage fails on a parent generation that was never written.
-            try:
-                em.close(success=True)
-            except AssertionError:
-                print(f"[multigen_xarray] gen-{gen} cap close hit pbg-emitters "
-                      "final-flush assert; flushed data retained.")
+            # Terminal finalize of this (generation-cap) generation via the
+            # lineage-scoped emitter — flush + mark division + consolidate. NOT
+            # swallowed: a real persistence failure must surface loudly rather
+            # than silently leave a skeleton store.
+            em.close(success=True)
             _closed_at_cap = True
             break
 
@@ -904,18 +904,6 @@ def run_multigen_xarray(
             warnings.warn(_msg, RuntimeWarning, stacklevel=2)
             break
 
-        # Same pbg-emitters quirk as the final close below: flush(final=True)
-        # asserts when the buffer is exactly full at close. This PER-GENERATION
-        # close lands on a buffer multiple for some conditions (alt-media gens
-        # have different step counts), and an unguarded assert here propagates
-        # out of the Ray task → the whole run FAILS (the 4/5 alt-media failures).
-        # The completed generation's buffers are already on disk; swallow the
-        # trailing-buffer assert and keep going, exactly as the final close does.
-        try:
-            em.close(success=True)
-        except AssertionError:
-            print(f"[multigen_xarray] gen-{gen} close hit pbg-emitters final-flush "
-                  "assert (buffer full at division); flushed data retained.")
         followed = inner_next
         # Prune the non-followed daughters so ONLY the followed lineage survives
         # in the inner composite. Kept siblings keep growing and dividing, each
@@ -936,28 +924,26 @@ def run_multigen_xarray(
         partition_agent_id = daughter_phylogeny_id(partition_agent_id)[0]
         gen += 1
         gens_seen.append(gen)
-        em = _build_emitter(
-            core=core, store_path=store_path, view=view,
-            metadata_base=metadata_base, generation=gen,
-            agent_id=partition_agent_id, output_metadata=output_metadata,
-            buffer_size=buffer_size,
-        )
-        # Emit the daughter's birth row into the NEW generation's store.
+        # Finalize this generation (flush trailing buffer + mark the division
+        # event + consolidate) and open the daughter's partition in the SAME
+        # store, all through the one lineage-scoped emitter. This replaces the
+        # old close()+rebuild flow whose per-generation close() was wrapped in
+        # `except AssertionError: pass`; when a (sub-buffer_size) generation
+        # failed to persist, that swallow left the zarr store as bare group
+        # skeletons and crashed the next generation's _check_group.
+        # advance_generation() guarantees the finished generation is on disk
+        # before the daughter's partition opens.
+        em.advance_generation(agent_id=partition_agent_id, success=True)
+        # Emit the daughter's birth row into the NEW generation's partition.
         _emit_followed(em, (composite.state or {}).get("agents") or {}, followed)
         prev_ids = set(((composite.state or {}).get("agents") or {}).keys())
 
-    try:
-        if not _closed_at_cap:
-            em.close(success=True)
-    except AssertionError:
-        # Known pbg-emitters quirk: flush(final=True) asserts when the buffer
-        # is exactly full at close. Buffers flushed mid-run are already on
-        # disk; only the (full, just-flushed) trailing buffer is at risk — and
-        # with buffer_size=3 the full-buffer flush already wrote it. Log + keep
-        # the run rather than losing every generation's data to the assert.
-        print("[multigen_xarray] close hit pbg-emitters final-flush assert "
-              "(buffer full at close); flushed data retained.")
-    except Exception as e:  # noqa: BLE001
-        print(f"[multigen_xarray] close failed: {type(e).__name__}: {str(e)[:80]}")
+    if not _closed_at_cap:
+        # Terminal finalize of the final generation (flush trailing buffer +
+        # mark division + consolidate) via the one lineage-scoped emitter. NOT
+        # swallowed: a real persistence failure must surface as a loud failure
+        # (this driver's fail-loud philosophy) rather than silently leave a
+        # skeleton store — the exact silent-success mode this fix removes.
+        em.close(success=True)
 
     return {"steps": done, "generations": gens_seen, "store": str(store_path)}
