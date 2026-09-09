@@ -32,6 +32,76 @@ class MoleculeNotFoundError(ComplexationError):
 
 
 class Complexation(object):
+    # Reactions present in raw_data.complexation_reactions (and so used for
+    # mass/compartment auto-derivation elsewhere -- getter_functions.py's
+    # _build_protein_complex_masses and molecule_groups.py's
+    # _build_molecule_groups both read raw_data directly, independent of
+    # this class) but excluded from THIS class's own reaction set, and so
+    # from every downstream consumer of sim_data.process.complexation
+    # (both the runtime Gillespie config AND ParCa's own internal fitting,
+    # e.g. step_05_fit_condition.py's calculateBulkDistributions -- both
+    # read sim_data.process.complexation directly).
+    #
+    # CPLX0-7452_RXN (flagella-cascade investigation, 2026-08-06): its real
+    # FliC coefficient (-20000, complexation_reactions_modified.tsv) makes
+    # Gillespie SSA's combinatorial propensity calculation blow up
+    # numerically -- confirmed directly via macOS `sample` on a hung ParCa
+    # run (astronomically large values, ~1e19-1e35, computed inside
+    # stochastic_arrow/arrowhead's propensity code) and reproduced twice: an
+    # earlier fix that only filtered sim_data.py's get_complexation_config
+    # (the runtime cache) was insufficient because step_05_fit_condition.py
+    # reads this class's reaction set directly too, hitting the identical
+    # blowup during ParCa's OWN fitting. Excluding it HERE is the actual
+    # root-cause fix -- every downstream consumer of
+    # sim_data.process.complexation is automatically protected. The real,
+    # incremental version of flagellum completion is handled instead by
+    # ecoli-flagella-filament-nucleation + ecoli-flagella-filament-elongation
+    # (ordinary Step-level array arithmetic, no combinatorics) -- see
+    # flagella_filament_elongation.py for the full writeup.
+    # UPDATE (2026-08-06, same investigation): CPLX0-7452_RXN's exclusion
+    # alone was NOT sufficient -- step_05_fit_condition.py's
+    # calculateBulkDistributions runs the WHOLE complexation network through
+    # the Gillespie engine with an enormous time step (2**31 s) starting from
+    # raw expression-derived counts, to reach steady state. "failed
+    # simulation: total propensity is NaN" reproduced within ~1 min even
+    # with CPLX0-7452_RXN excluded, AND STILL reproduced with CPLX0-7450_RXN
+    # also excluded. Root-caused by directly comparing coefficient
+    # magnitudes network-wide: the pre-existing, unmodified LUMAZINESYN-
+    # CPLX_RXN already has a coefficient of 60 and has never caused this, so
+    # a single large coefficient isn't inherently fatal -- but
+    # FLAGELLAR-MOTOR-COMPLEX_RXN has FIVE simultaneous double-digit
+    # coefficients (FlgH:26, MotA:55, MotB:22, FlgG:24, FliF:34). Propensity
+    # for a multi-reactant reaction is a PRODUCT of per-reactant
+    # combinatorial terms -- several large-but-individually-survivable
+    # coefficients multiplied together overflow even when none does alone.
+    # All three flagella-assembly reactions are excluded here and replaced
+    # by ordinary Step-level array arithmetic instead: see
+    # flagella_motor_switch_assembly.py, flagella_motor_complex_assembly.py,
+    # and flagella_filament_elongation.py.
+    #
+    # CPLX0-7451_RXN (flagella-cascade investigation, 2026-08-11): excluded
+    # for a DIFFERENT reason than the three above -- its own stoichiometry
+    # (max coefficient FlhA=9) was never numerically dangerous for SSA, and
+    # it ran here safely for the whole session up to this point. It's
+    # excluded now because complexation_reactions_modified.tsv's HIERARCHY
+    # FIX made it consume CPLX0-7450 -- a molecule that only ever exists
+    # transiently inside flagella_motor_switch_assembly.py's single
+    # deterministic tick, produced and (previously) available to nothing
+    # else. Leaving CPLX0-7451_RXN in ordinary SSA meant a
+    # deterministically-produced molecule had to be consumed by a
+    # stochastic-propensity mechanism with its own independent timing --
+    # confirmed by direct testing to stall ongoing motor-complex
+    # replenishment (pool drained 6->3 over 2400s instead of oscillating
+    # 4-6 as before the hierarchy fix). Moved to
+    # flagella_export_apparatus_assembly.py, matching the same deterministic
+    # Step pattern as the other three, so the whole
+    # C-ring -> export-apparatus -> motor-complex chain runs through one
+    # consistent mechanism.
+    RUNTIME_EXCLUDED_REACTIONS = {
+        "CPLX0-7452_RXN", "CPLX0-7450_RXN", "FLAGELLAR-MOTOR-COMPLEX_RXN",
+        "CPLX0-7451_RXN",
+    }
+
     def __init__(self, raw_data, sim_data):
         # Build the abstractions needed for complexation
         molecules = []  # List of all molecules involved in complexation
@@ -49,6 +119,8 @@ class Complexation(object):
 
         # Build stoichiometric matrix from given complexation reactions
         for reaction in raw_data.complexation_reactions:
+            if reaction["id"] in self.RUNTIME_EXCLUDED_REACTIONS:
+                continue
             self.ids_reactions.append(reaction["id"])
             stoichiometry_unknown = False
 
@@ -124,12 +196,42 @@ class Complexation(object):
         self._stoichMatrixMonomersShape = shape
 
         # Mass balance matrix
-        # All reaction mass balances should balance out to numerical zero
+        # All reaction mass balances should balance out to numerical zero.
+        #
+        # FIX (2026-08-06, flagella-cascade investigation): a fixed absolute
+        # tolerance breaks down once a reaction has large stoichiometric
+        # coefficients. CPLX0-7452_RXN's corrected, real stoichiometry
+        # (complexation_reactions_modified.tsv) now consumes ~20,000 copies of
+        # FliC per flagellum -- the real, literature-cited filament subunit
+        # count (a previous "-1" placeholder was off by four to five orders of
+        # magnitude). That makes the mass terms in this reaction's balance
+        # column ~1e9 in magnitude, at which point double-precision summation
+        # alone produces an absolute residual (~1.9e-8) that is a RELATIVE
+        # error of only ~1.9e-17 -- at the floor of what a double can even
+        # represent (machine epsilon ~2.2e-16) -- yet it tripped the old fixed
+        # 1e-8 absolute threshold. (The comment this replaced already shows
+        # this exact failure mode recurring once before: "had to bump this up
+        # to 1e-8 because of flagella supercomplex".) Rather than bump the
+        # same brittle absolute threshold a third time (it will just fail
+        # again the next time an even larger complex is added), the tolerance
+        # is now scaled to the magnitude of each reaction's own terms: a small
+        # absolute floor (atol) for ordinary small reactions, plus a tiny
+        # relative allowance (rtol) proportional to that reaction's largest
+        # mass term. rtol=1e-13 is ~1000x looser than the ~1e-17 relative
+        # noise actually observed (comfortable safety margin for floating-
+        # point roundoff) but still ~13 orders of magnitude tighter than any
+        # real stoichiometry bug would produce (a genuinely wrong/missing
+        # reactant leaves an imbalance comparable in magnitude to that
+        # reactant's own mass contribution, i.e. a relative error of order 1,
+        # not 1e-13) -- so this remains a strict correctness check, not a
+        # loosened one.
         balanceMatrix = self.stoich_matrix() * self.mass_matrix()
         massBalanceArray = np.sum(balanceMatrix, axis=0)
-        assert (
-            np.max(np.absolute(massBalanceArray)) < 1e-8
-        )  # had to bump this up to 1e-8 because of flagella supercomplex
+        atol = 1e-8
+        rtol = 1e-13
+        max_term_magnitude = np.max(np.absolute(balanceMatrix), axis=0)
+        tolerance = atol + rtol * max_term_magnitude
+        assert np.all(np.absolute(massBalanceArray) < tolerance)
 
         stoichMatrix = self.stoich_matrix().astype(np.int64, order="F")
         if mccBuildMatrices is None:

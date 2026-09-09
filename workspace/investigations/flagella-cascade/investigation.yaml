@@ -1,0 +1,48 @@
+schema_version: 2
+name: flagella-cascade
+title: "Flagella transcriptional cascade — Maya's Aim 2 (Kalir & Alon SUM-gate) in v2ecoli"
+created: '2026-06-20'
+status: active
+
+question: |
+  Can a mechanistic transcriptional regulatory cascade — rather than manual
+  multipliers / stoichiometry tweaks / overrides — give the E. coli whole-cell
+  model temporally ordered flagellar gene expression and biologically feasible
+  flagella counts? Concretely: does a Kalir & Alon (Cell 2004) bilinear SUM-gate
+  driving promoter initiation, coupled to FlgM/sigma-28 sequestration relieved by
+  type-III secretion through assembled flagella, reproduce the Class II -> Class III
+  ordering (FlhDC/FliA genes first, then fliC/motAB/cheAW after hook-basal-body
+  completion)?
+
+hypothesis: |
+  Maya Abdalla's prelim (Specific Aim 2): the WCM currently OVERPRODUCES flagella
+  (~48 vs a biological handful) because the regulatory machinery is synthesized but
+  never used to gate flagellar production. Embedding the Kalir & Alon SUM-gate,
+  Class II weighted toward FlhD4C2 and Class III toward free FliA, with FlgM
+  holding FliA below threshold until basal-body completion, should produce
+  temporally ordered expression and feasible counts without manual overrides.
+
+lead: |
+  Ports Maya Abdalla's flagella transcription-regulation work (Specific Aim 2 of
+  her prelim proposal) from the vEcoli `biofilm` branch onto v2ecoli's
+  process-bigraph stack. This is a living integration branch, not a merge target.
+
+status_note: |
+  2026-08-28: this file is now a short pointer, not the working record. Full
+  current state, cited parameters, and the complete history of what was tried,
+  kept, dropped, or parked (including everything from this file's older,
+  now-removed `lead`/`biological_story`/`open_decisions`/`acceptance_criteria`/
+  `scientific_argument` sections) has been consolidated into
+  MASTER_DOCUMENT.md in this same directory. That file, not this one, is the
+  real, living record going forward — update it, not this file, as work
+  continues. The per-study `study.yaml` files, the dated `CHANGES_*.md` log,
+  the NFsim wiring-plan notes, and the review-feedback files that used to live
+  alongside this one have been removed from the working tree (all fully
+  preserved in git history) now that their content lives in MASTER_DOCUMENT.md.
+
+studies:
+- flagella-01-overexpression-baseline
+- flagella-02-transcription-regulation
+- flagella-03-voronoi-compartments
+- flagella-04-complexation-nfsim
+- flagella-05-spatial-transport

@@ -218,6 +218,12 @@ def initialize_unique_molecules(
         bulk_state, unique_molecules, sim_data, random_state, unique_id_rng
     )
 
+    # flagella-cascade investigation (2026-08-06): starts empty -- nascent
+    # flagella are created at runtime by ecoli-flagella-nucleation, not here.
+    unique_molecules["nascent_flagellum"] = create_new_unique_molecules(
+        "nascent_flagellum", 0, sim_data, unique_id_rng
+    )
+
     return unique_molecules
 
 

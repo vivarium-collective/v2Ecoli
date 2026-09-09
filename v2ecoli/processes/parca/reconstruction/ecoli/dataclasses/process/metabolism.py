@@ -3369,11 +3369,20 @@ class ConcentrationUpdates(object):
             if len(reaction["stoichiometry"]) != 3:
                 continue
 
-            moleculeName = [
+            # flagella-cascade investigation (ported from Maya Abdalla's vEcoli
+            # `biofilm` branch): guard against equilibrium reactions whose three
+            # species are all proteins/complexes (e.g. FLGM-FLIA-CPLX_RXN: FlgM +
+            # FliA -> complex). Those have no metabolite ligand, so the Michaelis-
+            # Menten amount-setting below doesn't apply — skip them instead of
+            # indexing an empty list.
+            metabolite_ids = [
                 mol_id
                 for mol_id in reaction["stoichiometry"].keys()
                 if mol_id in self._all_metabolite_ids
-            ][0]
+            ]
+            if not metabolite_ids:
+                continue
+            moleculeName = metabolite_ids[0]
             amountToSet = 1e-4
             moleculeSetAmounts[moleculeName + "[p]"] = amountToSet * self.units
             moleculeSetAmounts[moleculeName + "[c]"] = amountToSet * self.units

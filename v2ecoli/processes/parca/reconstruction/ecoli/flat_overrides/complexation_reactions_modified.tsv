@@ -1,0 +1,192 @@
+"id"	"stoichiometry"	"common_name"	"_comments"
+"CPLX0-3953_RXN"	{"CPLX0-3953":1,"RRSA-RRNA":null,"EG10900-MONOMER":null,"EG10901-MONOMER":null,"EG10902-MONOMER":null,"EG10903-MONOMER":null,"EG10904-MONOMER":null,"EG10905-MONOMER":null,"EG10906-MONOMER":null,"EG10907-MONOMER":null,"EG10908-MONOMER":null,"EG10909-MONOMER":null,"EG10910-MONOMER":null,"EG10911-MONOMER":null,"EG10912-MONOMER":null,"EG10913-MONOMER":null,"EG10914-MONOMER":null,"EG10915-MONOMER":null,"EG10916-MONOMER":null,"EG10917-MONOMER":null,"EG10918-MONOMER":null,"EG10919-MONOMER":null,"EG10920-MONOMER":null}	"30S ribosomal subunit"	"Removed EG11508-MONOMER[c] (sra) because it is not essential and should have very low counts in rich media"
+# CPLX0-7452_RXN consumes raw FliD (EG10841-MONOMER) directly, unmodified from
+# the vendored stoichiometry. A FliT:FliD-complex-consuming variant was tried
+# and reverted in 2026-08-05 (blocked by molecule_groups.py's one-product
+# constraint on complexation reactions); the FliT:FlhD4C2 checkpoint that
+# variant fed was itself removed 2026-08-10 -- see
+# archive/flit-flhdc-regulation-2026-08/ for the full history.
+#
+# STOICHIOMETRY FIX (2026-08-06, flagella-cascade investigation): the vendored
+# reaction treated FliC, FlgK, and FlgL as -1 (single copy) each via ParCa's
+# null-stoichiometry default -- a severe undercount. Real literature values:
+#   FliC (filament): ~20,000 subunits ("The bacterial flagellar filament consists
+#     of approximately 20,000 flagellins and can be several micrometers long,"
+#     PMC7696725; corroborated by multiple sources citing 20,000-40,000 for
+#     5-20 um filaments). This is the single largest correction in the whole
+#     flagellar reaction network by several orders of magnitude.
+#   FlgK, FlgL (hook-filament junction, HAP1/HAP3): 11 copies each (recent
+#     cryo-EM structural consensus: 11 FlgK form the proximal HFJ layer above
+#     the hook, 11 FlgL form the distal layer beneath the filament).
+#   FliD (cap): -6 -> -5 (pentamer; recent structural consensus describes FliD
+#     as a pentamer in 5:5 stoichiometry with FlgL/FliC, e.g. Nature Comms
+#     s41467-020-16981-4).
+# FlgE (hook) was already correct at -120 (matches the real ~120-subunit hook)
+# and FLAGELLAR-MOTOR-COMPLEX is unchanged, still consumed at -1 (one motor
+# complex per flagellum).
+# Original (unmodified) stoichiometry, kept per standing preserve-old-code rule:
+# {"CPLX0-7452": 1, "FLAGELLAR-MOTOR-COMPLEX": null, "G361-MONOMER": -120, "EG11967-MONOMER": null, "EG11545-MONOMER": null, "EG10321-MONOMER": null, "EG10841-MONOMER": -6}
+# FliC TARGET LENGTH CHANGE (2026-08-10, flagella-cascade investigation): -20000
+# changed to -10000. Both are real, cited values -- literature range for
+# filament length is ~20,000-40,000 subunits (5-20 um at ~2,000-2,130
+# subunits/um); 10,000 (~5 um) is the short end of that real range, not an
+# arbitrary diagnostic override. Chosen because completion time scales
+# roughly with L^2 (dL/dt=a/(b+L) growth law, flagella_filament_elongation.py),
+# so this cuts minimum completion time from ~133 min to ~35 min -- making
+# single-generation completion achievable within practical simulation
+# windows. Kept in sync with flagella_filament_elongation.py's TARGET_LENGTH
+# and sim_data.py's get_flagella_filament_elongation_config, both also
+# changed to 10000, so ParCa's own recorded molecular weight for a complete
+# flagellum matches what elongation actually builds. Previous value kept
+# per standing preserve-old-code rule:
+# {"CPLX0-7452": 1, "FLAGELLAR-MOTOR-COMPLEX": -1, "G361-MONOMER": -120, "EG11967-MONOMER": -11, "EG11545-MONOMER": -11, "EG10321-MONOMER": -20000, "EG10841-MONOMER": -5}
+#
+# FliC TARGET LENGTH CHANGE v2 (2026-08-11, flagella-cascade investigation):
+# -10000 changed to -5000 (~2.5 um). Still a real, cited value on the short
+# end of the 20,000-40,000 literature range (PMC7696725) -- not an arbitrary
+# diagnostic override. Motivated by direct evidence from the single-gen panel
+# run at -10000: free FliC pool dropped 51,967 -> 14 over 2400s with only 4
+# concurrent nascent flagella, and the longest filament had only reached
+# 8,540/10,000 subunits (85%) -- the pool was on the verge of exhausting
+# itself before even one flagellum finished, an even tighter margin at
+# higher flagella counts or longer runs. Halving the target again roughly
+# quarters completion time (L^2 scaling) and gives much more FliC headroom.
+# Kept in sync with flagella_filament_elongation.py's TARGET_LENGTH and
+# sim_data.py's get_flagella_filament_elongation_config, both also changed
+# to 5000. Previous (-10000) value kept per standing preserve-old-code rule
+# immediately above.
+"CPLX0-7452_RXN"	{"CPLX0-7452": 1, "FLAGELLAR-MOTOR-COMPLEX": -1, "G361-MONOMER": -120, "EG11967-MONOMER": -11, "EG11545-MONOMER": -11, "EG10321-MONOMER": -5000, "EG10841-MONOMER": -5}	"flagellum"	"Real subunit stoichiometry: FliC (filament) ~5,000 (short end of the real 20,000-40,000 range, PMC7696725; reduced 2026-08-11 from 10,000 after observing near-total FliC depletion within a single generation), FlgK/FlgL (hook-filament junction) 11 each (cryo-EM), FliD (cap) pentamer=5. FlgE (hook, -120) and FLAGELLAR-MOTOR-COMPLEX (-1) unchanged, already correct."
+# FLAGELLAR-MOTOR-COMPLEX_RXN (flagella-cascade investigation, 2026-08-06): two real,
+# structural gaps fixed together, per Maya's "Master Flagella Info" spreadsheet
+# (Eran Flagella Assembly sheet) plus additional literature research this session:
+#
+# (1) STRUCTURAL GAP -- orphaned export apparatus: CPLX0-7451 (the flagellar export
+# apparatus -- FliH/FliI/FliJ/FliO/FliP/FliQ/FliR/FlhA/FlhB, formed by its own
+# existing CPLX0-7451_RXN) was never consumed by ANY downstream reaction in the
+# vendored network -- built, then orphaned. Real flagellar biogenesis requires the
+# export apparatus as part of the assembled base; wired in here as a genuine -1
+# reactant (one export apparatus consumed per motor complex, since each flagellum
+# has its own, not a reusable catalytic machine).
+#
+# (2) STRUCTURAL GAP -- missing motor-switch-complex stage: FliG/FliM/FliN were
+# previously consumed directly (1 copy each) straight into this reaction, with no
+# staged intermediate. CPLX0-7450 (see complexation_reactions_added.tsv) now forms
+# first from FliG(-34)/FliM(-34)/FliN(-111), and THIS reaction consumes CPLX0-7450
+# (-1) instead of the three raw monomers directly.
+#
+# (3) STOICHIOMETRY FIX -- every other component here was also -1 (ParCa's
+# null-stoichiometry default), a severe undercount for multi-copy ring/rod/stator
+# structures. Real literature values used:
+#   FliF (MS-ring): 34 (C34 symmetry, cryo-EM; Chang/Sung/Hong 2025 Biochem Biophys
+#     Reports 42:102051 confirms this same 34-mer ring independently)
+#   FlgH (L-ring), FlgI (P-ring): 26 each (C26 symmetry, cryo-EM intact basal body)
+#   FliE, FlgB, FlgC, FlgF (proximal rod): 6, 5, 6, 5 respectively (cryo-EM,
+#     packed sequentially proximal-to-distal)
+#   FlgG (distal rod): 24 (cryo-EM; older biochemical estimate was ~26)
+#   MotA, MotB (stator): ~55, ~22 -- DERIVED estimate, medium confidence: per-unit
+#     ratio 5 MotA:2 MotB is solid (multiple species, cryo-EM), multiplied by an
+#     assumed ~11 stator units/motor (E. coli/Salmonella estimate; some species
+#     report up to 13-18) -- flag and revisit if a direct per-motor total is found
+#   FliL: -2, per Maya's spreadsheet (an alternate source suggests ~11, 1:1 with
+#     stator units, but that was specifically an H. pylori study -- kept Maya's -2
+#     as the value from her own vetted working document)
+# Original (unmodified) stoichiometry, kept per standing preserve-old-code rule:
+# {"FLAGELLAR-MOTOR-COMPLEX": 1, "FLGH-FLAGELLAR-L-RING": null, "MOTA-FLAGELLAR-MOTOR-STATOR-PROTEIN": null, "MOTB-FLAGELLAR-MOTOR-STATOR-PROTEIN": null, "FLGB-FLAGELLAR-MOTOR-ROD-PROTEIN": null, "FLGC-FLAGELLAR-MOTOR-ROD-PROTEIN": null, "FLGF-FLAGELLAR-MOTOR-ROD-PROTEIN": null, "FLGG-FLAGELLAR-MOTOR-ROD-PROTEIN": null, "FLGI-FLAGELLAR-P-RING": null, "FLIF-FLAGELLAR-MS-RING": null, "FLIG-FLAGELLAR-SWITCH-PROTEIN": null, "FLIM-FLAGELLAR-C-RING-SWITCH": null, "FLIN-FLAGELLAR-C-RING-SWITCH": null, "EG10322-MONOMER": null, "EG11346-MONOMER": null}
+# Intermediate (CPLX0-7450 and CPLX0-7451 both consumed directly, in parallel),
+# kept per standing preserve-old-code rule:
+# {"FLAGELLAR-MOTOR-COMPLEX": 1, "FLGH-FLAGELLAR-L-RING": -26, "MOTA-FLAGELLAR-MOTOR-STATOR-PROTEIN": -55, "MOTB-FLAGELLAR-MOTOR-STATOR-PROTEIN": -22, "FLGB-FLAGELLAR-MOTOR-ROD-PROTEIN": -5, "FLGC-FLAGELLAR-MOTOR-ROD-PROTEIN": -6, "FLGF-FLAGELLAR-MOTOR-ROD-PROTEIN": -5, "FLGG-FLAGELLAR-MOTOR-ROD-PROTEIN": -24, "FLGI-FLAGELLAR-P-RING": -26, "FLIF-FLAGELLAR-MS-RING": -34, "EG10322-MONOMER": -2, "EG11346-MONOMER": -6, "CPLX0-7450": -1, "CPLX0-7451": -1}
+#
+# HIERARCHY FIX (2026-08-11, flagella-cascade investigation): CPLX0-7450 (C-ring)
+# removed as a direct reactant here. Real assembly order (Minamino & Namba 2008
+# Nature; Chevance & Hughes 2008 Nat Rev Microbiol) is MS-ring (FliF) -> C-ring
+# (FliG/FliM/FliN) assembles on its cytoplasmic face -> export apparatus
+# (FlhA/FlhB/FliP/FliQ/FliR + FliH/FliI/FliJ) THEN INSERTS INTO the pre-formed
+# C-ring's central pore -- the export apparatus does not assemble independently
+# and merge here later, it depends on the C-ring already existing. CPLX0-7450
+# is now consumed by CPLX0-7451_RXN itself (see complexation_reactions_modified
+# CPLX0-7451_RXN entry below) instead of being pulled in separately at this
+# step, so CPLX0-7451 now represents "export apparatus inserted into ring,"
+# not a free-floating export apparatus. Removing the duplicate -1 CPLX0-7450
+# here avoids consuming the C-ring twice for one motor complex.
+#
+# Intermediate (FliF still consumed directly here), kept per standing
+# preserve-old-code rule:
+# {"FLAGELLAR-MOTOR-COMPLEX": 1, "FLGH-FLAGELLAR-L-RING": -26, "MOTA-FLAGELLAR-MOTOR-STATOR-PROTEIN": -55, "MOTB-FLAGELLAR-MOTOR-STATOR-PROTEIN": -22, "FLGB-FLAGELLAR-MOTOR-ROD-PROTEIN": -5, "FLGC-FLAGELLAR-MOTOR-ROD-PROTEIN": -6, "FLGF-FLAGELLAR-MOTOR-ROD-PROTEIN": -5, "FLGG-FLAGELLAR-MOTOR-ROD-PROTEIN": -24, "FLGI-FLAGELLAR-P-RING": -26, "FLIF-FLAGELLAR-MS-RING": -34, "EG10322-MONOMER": -2, "EG11346-MONOMER": -6, "CPLX0-7451": -1}
+#
+# MS-RING ORDERING FIX (2026-08-11, flagella-cascade investigation): FliF
+# (MS-ring) removed as a direct reactant here. Real assembly order
+# (Minamino & Namba 2008 Nature; Chevance & Hughes 2008 Nat Rev
+# Microbiol) has the MS-ring form FIRST, before the C-ring assembles onto
+# it -- so FliF is now consumed one stage further upstream, folded into
+# CPLX0-7450_RXN itself (see complexation_reactions_added.tsv), instead of
+# being pulled in here alongside unrelated stator/rod/ring parts.
+"FLAGELLAR-MOTOR-COMPLEX_RXN"	{"FLAGELLAR-MOTOR-COMPLEX": 1, "FLGH-FLAGELLAR-L-RING": -26, "MOTA-FLAGELLAR-MOTOR-STATOR-PROTEIN": -55, "MOTB-FLAGELLAR-MOTOR-STATOR-PROTEIN": -22, "FLGB-FLAGELLAR-MOTOR-ROD-PROTEIN": -5, "FLGC-FLAGELLAR-MOTOR-ROD-PROTEIN": -6, "FLGF-FLAGELLAR-MOTOR-ROD-PROTEIN": -5, "FLGG-FLAGELLAR-MOTOR-ROD-PROTEIN": -24, "FLGI-FLAGELLAR-P-RING": -26, "EG10322-MONOMER": -2, "EG11346-MONOMER": -6, "CPLX0-7451": -1}	"flagellar basal body"
+# CPLX0-7451_RXN (flagellar export apparatus, 2026-08-11, flagella-cascade
+# investigation): checked against Maya's "Master Flagella Info" spreadsheet
+# (Eran Flagella Assembly sheet) AND the second "Flagellar assembly
+# stoichiometry" spreadsheet she provided, THEN against real structural
+# literature component-by-component (both spreadsheets, it turned out,
+# were themselves unsourced defaults for several components, not
+# independently verified -- worth checking outside literature even when
+# a spreadsheet value exists, per this investigation's own standing rule
+# about not trusting unsourced defaults).
+#
+# FIX 1: FliP(EG11975):FliQ(EG11976):FliR(EG11977) corrected from 1:1:1
+# (both spreadsheets' unsourced default, matching the vendored null
+# default) to the real cryo-EM-determined 5:4:1 (Kuhlen et al. 2018 Nat
+# Struct Mol Biol; Fukumura et al. 2017 PLOS Biol 15:e2002281, PMC5542437,
+# 4.2A cryo-EM of the Salmonella FliPQR core export-gate complex).
+#
+# FIX 2 (same session, follow-up literature check): FlhA (G370-MONOMER)
+# corrected from -1 (both spreadsheets' unsourced default) to -9 --
+# FlhA is well-established as a homo-nonameric ring in the export gate
+# (multiple independent sources, e.g. PLOS One 10.1371/journal.pone.0252800
+# on the FlhA cytoplasmic domain nonamer; also independently corroborated
+# by a single comprehensive export-gate stoichiometry statement -- "nine
+# FlhA subunits, one FlhB subunit, five FliP subunits, four FliQ subunits,
+# and one FliR subunit" -- which simultaneously confirms FlhB=1, FliP=5,
+# FliQ=4, FliR=1 all match what's already here).
+#
+# CONFIRMED CORRECT AS-IS (independently verified, not just spreadsheet-
+# matched): FliH(EG11656)=-12, FliI(G377)=-6, FliJ(G378)=-1 -- a real
+# literature source states this exact "FliH12-FliI6-FliJ1" stoichiometry
+# by name, a striking three-way match (spreadsheets, existing code, and
+# independent literature all agree). FlhB(G7028)=-1 also confirmed (see
+# FIX 2's comprehensive stoichiometry citation above).
+#
+# OPEN QUESTION, NOT APPLIED (Maya's explicit call, 2026-08-11): FliO
+# (EG11224-MONOMER) is currently -1, but the literature describes it as a
+# TRANSIENT ASSEMBLY SCAFFOLD, not a component of the final, mature export
+# apparatus -- it helps the FliP ring assemble correctly, then is not
+# retained in the finished structure (e.g. overexpressing FliP alone
+# rescues a Delta-fliO mutant's motility to wild-type levels, showing the
+# final complex functions without FliO once assembled). This raises a
+# real structural-modeling question (does FliO belong as a CONSUMED
+# reactant in the reaction that forms the final CPLX0-7451 at all, or
+# does its catalytic/scaffolding role call for a different representation
+# entirely?) that a simple copy-number fix doesn't resolve -- left as-is
+# (-1) for now, logged as an open question in flagella-02's study.yaml,
+# not resolved this session.
+#
+# Original (unmodified, matches Maya's spreadsheets for 7/9 components),
+# kept per standing preserve-old-code rule:
+# {"CPLX0-7451": 1, "G370-MONOMER": null, "G7028-MONOMER": null, "EG11224-MONOMER": null, "EG11975-MONOMER": null, "EG11976-MONOMER": null, "EG11977-MONOMER": null, "EG11656-MONOMER": -12, "G377-MONOMER": -6, "G378-MONOMER": null}
+# Intermediate (FliP/FliQ/FliR fixed, FlhA not yet), kept per standing
+# preserve-old-code rule:
+# {"CPLX0-7451": 1, "G370-MONOMER": -1, "G7028-MONOMER": -1, "EG11224-MONOMER": -1, "EG11975-MONOMER": -5, "EG11976-MONOMER": -4, "EG11977-MONOMER": -1, "EG11656-MONOMER": -12, "G377-MONOMER": -6, "G378-MONOMER": -1}
+# Intermediate (FlhA fixed -1->-9, still independent of CPLX0-7450), kept per
+# standing preserve-old-code rule:
+# {"CPLX0-7451": 1, "G370-MONOMER": -9, "G7028-MONOMER": -1, "EG11224-MONOMER": -1, "EG11975-MONOMER": -5, "EG11976-MONOMER": -4, "EG11977-MONOMER": -1, "EG11656-MONOMER": -12, "G377-MONOMER": -6, "G378-MONOMER": -1}
+#
+# HIERARCHY FIX (2026-08-11, flagella-cascade investigation): added CPLX0-7450
+# (C-ring, -1) as a reactant here. Real assembly order (Minamino & Namba 2008
+# Nature; Chevance & Hughes 2008 Nat Rev Microbiol) has the export apparatus
+# insert into the central pore of a PRE-FORMED MS-C-ring, not assemble
+# independently and merge with it downstream -- so this reaction now depends
+# on CPLX0-7450 already existing, matching that real dependency. CPLX0-7451
+# is therefore reinterpreted as "export apparatus inserted into ring" rather
+# than a free-floating export apparatus (a small stretch past its literal
+# EcoCyc identity, flagged deliberately). FLAGELLAR-MOTOR-COMPLEX_RXN's
+# separate direct CPLX0-7450 consumption was removed in the same change (see
+# that entry above) so the C-ring is consumed exactly once, here.
+"CPLX0-7451_RXN"	{"CPLX0-7451": 1, "CPLX0-7450": -1, "G370-MONOMER": -9, "G7028-MONOMER": -1, "EG11224-MONOMER": -1, "EG11975-MONOMER": -5, "EG11976-MONOMER": -4, "EG11977-MONOMER": -1, "EG11656-MONOMER": -12, "G377-MONOMER": -6, "G378-MONOMER": -1}	"flagellar export apparatus"	"FlhA(G370) corrected -1->-9 (homo-nonamer, cryo-EM/multiple sources). FliP(EG11975):FliQ(EG11976):FliR(EG11977) = 5:4:1 (cryo-EM, Kuhlen 2018/PMC5542437). FliH(EG11656)=-12, FliI(G377)=-6, FliJ(G378)=-1, FlhB(G7028)=-1: independently confirmed correct. FliO(EG11224)=-1 left as-is -- OPEN QUESTION, real biology suggests transient scaffold not part of final complex, see comment above. CPLX0-7450(-1) added 2026-08-11: export apparatus inserts into pre-formed C-ring, real dependency not previously wired in."

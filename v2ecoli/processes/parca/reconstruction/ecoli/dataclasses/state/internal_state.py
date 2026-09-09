@@ -179,6 +179,44 @@ class InternalState(object):
             "active_ribosome"
         )
 
+        # Add nascent flagella (flagella-cascade investigation, 2026-08-06).
+        # A real ~20,000-subunit FliC filament stoichiometry makes Gillespie
+        # SSA's combinatorial propensity calculation blow up if modeled as a
+        # single complexation-reaction coefficient (see
+        # flagella_filament_elongation.py for the full writeup) -- so, exactly
+        # like active_ribosome/peptide_length above, the filament is tracked
+        # as a per-instance unique molecule that grows incrementally.
+        # - filament_length (64-bit int): number of FliC subunits
+        # incorporated into this filament so far. FliC's own mass is added
+        # incrementally via massDiff_protein as elongation proceeds (mirrors
+        # how peptide mass is added to active_ribosome above), NOT included
+        # in the base mass here.
+        # Base mass at creation (filament_length=0) is the real mass of
+        # everything ecoli-flagella-nucleation consumes to create one:
+        # FLAGELLAR-MOTOR-COMPLEX + 120x FlgE (hook) + 11x FlgK + 11x FlgL
+        # (hook-filament junction) -- see complexation_reactions_modified.tsv
+        # for the same real stoichiometry used in CPLX0-7452_RXN.
+        motor_complex_mass = bulk_molecule_id_to_mass["FLAGELLAR-MOTOR-COMPLEX[j]"]
+        flgE_mass = bulk_molecule_id_to_mass["G361-MONOMER[c]"]
+        flgK_mass = bulk_molecule_id_to_mass["EG11967-MONOMER[e]"]
+        flgL_mass = bulk_molecule_id_to_mass["EG11545-MONOMER[e]"]
+        nascent_flagellum_mass = (
+            motor_complex_mass + 120 * flgE_mass + 11 * flgK_mass + 11 * flgL_mass
+        )
+        nascent_flagellum_attributes = {
+            "filament_length": "i8",
+        }
+        self.unique_molecule.add_to_unique_state(
+            "nascent_flagellum", nascent_flagellum_attributes, nascent_flagellum_mass
+        )
+        # NOTE: not yet registered in any unique_molecules_*_division list --
+        # inherits the same pre-existing, already-disclosed division-boundary
+        # gap as the rest of flagella_regulation (see the standing note on
+        # flagella_transcription_regulation.py crashing past ~44 min basal
+        # doubling time). Cross-division behavior for nascent flagella is
+        # unresolved, consistent with that same deferred limitation, not a
+        # new, hidden one.
+
         # Add full chromosomes
         # One full chromosome molecule is added when chromosome replication is
         # complete, and sets cell division to happen after a length of time
@@ -291,6 +329,13 @@ class InternalState(object):
             "coordinates": "i8",
             "domain_index": "i4",
             "bound_TF": ("?", n_tf),
+            # init_prob_override (flagella-cascade investigation, ported from Maya
+            # Abdalla's vEcoli `biofilm` branch): per-promoter transcription-initiation
+            # probability written by the Kalir & Alon SUM-gate
+            # (ecoli-flagella-transcription-regulation). Defaults to 0.0;
+            # transcript_initiation only substitutes it where > 0, so it is a no-op
+            # for every promoter unless the flagella feature writes to it.
+            "init_prob_override": "f8",
         }
 
         self.unique_molecule.add_to_unique_state(

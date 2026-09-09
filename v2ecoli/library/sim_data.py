@@ -669,6 +669,18 @@ class LoadSimData:
     def get_config_by_name(self, name, time_step=1):
         name_config_mapping = {
             "ecoli-tf-binding": self.get_tf_config,
+            "ecoli-flagella-transcription-regulation": self.get_flagella_transcription_regulation_config,
+            "ecoli-flagella-flgm-secretion": self.get_flagella_flgm_secretion_config,
+            "ecoli-flagella-flis-flic-equilibrium": self.get_flagella_flis_flic_equilibrium_config,
+            # ecoli-flhdc-degradation / ecoli-flit-flhdc-checkpoint removed
+            # 2026-08-10 -- see archive/flit-flhdc-regulation-2026-08/.
+            # ecoli-flagella-motor-switch-assembly / export-apparatus-assembly /
+            # motor-complex-assembly / filament-nucleation removed 2026-08-21
+            # -- see archive/deterministic-flagella-assembly-2026-08/ and
+            # ecoli_baseline.py's flagella_nfsim_complexation feature comment.
+            # Their get_*_config methods are left in place below, now inert.
+            "ecoli-flagella-filament-elongation": self.get_flagella_filament_elongation_config,
+            "ecoli-flagella-nfsim-complexation": self.get_flagella_nfsim_complexation_config,
             "ecoli-transcript-initiation": self.get_transcript_initiation_config,
             "ecoli-transcript-elongation": self.get_transcript_elongation_config,
             "ecoli-rna-degradation": self.get_rna_degradation_config,
@@ -819,6 +831,262 @@ class LoadSimData:
         }
 
         return tf_binding_config
+
+    def get_flagella_transcription_regulation_config(self, time_step=1):
+        """Config for the Kalir & Alon flagella SUM-gate Step.
+
+        Ported from Maya Abdalla's vEcoli `biofilm` branch
+        (sim_data.get_flagella_transcription_regulation_config). Resolves the
+        Class II / Class III flagella cistron IDs to their TU-level RNA IDs (as
+        they appear in rna_data["id"]) so the Step can index promoters by TU.
+        """
+        t = self.sim_data.process.transcription
+        rna_ids = t.rna_data["id"]
+
+        # Class II (FlhDC + FliA driven) — the 7 K&A genes.
+        classII_cistron_ids = [
+            "EG10322_RNA", "EG11346_RNA", "EG11347_RNA",
+            "G358_RNA", "G357_RNA", "G7028_RNA", "EG11355_RNA",
+        ]
+        flg_classII_tu_rna_ids = [
+            rna_ids[t.cistron_id_to_rna_indexes(cid)[0]] for cid in classII_cistron_ids
+        ]
+
+        # Class III (FliA/sigma-28 driven). G369_RNA (flgM) is included here as a
+        # Class III gene to close the negative-feedback loop: as free FliA rises,
+        # flgM transcription rises (override = Y), making more FlgM to re-sequester
+        # FliA — preventing runaway FliA accumulation (Stefan et al. 2015, PLoS
+        # Comput Biol 11:e1004028: the Class II flgM promoter is near background).
+        #
+        # BUG FOUND AND FIXED 2026-08-06 (flagella-cascade deep-dive investigation):
+        # this list previously had "EG10317_RNA" in fliD's slot (right after fliC) --
+        # EG10317 is *fis*, a global nucleoid-associated regulator with no connection
+        # to flagella at all, not fliD. This meant fliD's own transcription was never
+        # actually gated by FliA/Class III -- it ran at whatever unregulated basal
+        # rate ParCa fit, disconnected from the whole FliT-checkpoint cascade this
+        # gene is central to (FliT:FliD binding depends on free fliD SUPPLY, which
+        # this bug left unlinked to FliA). Confirmed via genes.tsv: EG10841="fliD",
+        # EG10317="fis". Old (buggy) list kept per standing preserve-old-code rule:
+        # classIII_cistron_ids = [
+        #     "EG10321_RNA", "EG10317_RNA", "EG11967_RNA", "EG11545_RNA",
+        #     "EG10601_RNA", "EG10602_RNA", "EG10146_RNA", "EG10149_RNA",
+        #     "G369_RNA",
+        # ]
+        # INVESTIGATED, NOT ADDED 2026-08-21: considered adding EG11388_RNA
+        # (fliS) here, reasoning that it's co-transcribed with fliD in the
+        # real fliDST operon (fliD-fliS-fliT, one shared transcript), whose
+        # Class 3 promoter provides the large majority of expression (Class
+        # 3 knockout: -71% transcript; Class 2 knockout: +22%, Saini et al.
+        # 2010, PMC2937404). Checked directly against this cache's own
+        # ParCa data before committing to the change:
+        # t.cistron_id_to_rna_indexes('EG10841_RNA') and
+        # t.cistron_id_to_rna_indexes('EG11388_RNA') BOTH resolve to rna
+        # index 1348 (TU0-14278[c]) -- fliD and fliS already share the exact
+        # same transcription unit/promoter in this reconstruction's own
+        # data model, and EG10841_RNA (fliD) has been in this list since
+        # the 2026-08-06 bug fix (see the comment above). So the shared
+        # promoter has ALREADY been getting the Class III Y*basal_prob
+        # treatment this whole time -- adding EG11388_RNA here would be a
+        # functional no-op (same tu_idx, same basal_prob, identical
+        # override value written to the identical promoter rows twice).
+        # fliS's mRNA was never actually unregulated; the free-FliS crash
+        # observed in the 3-generation population chart (2000->~0 within
+        # minutes, staying near-zero) is NOT a transcription-regulation gap.
+        # Real explanation, checked next: translation_efficiencies_by_monomer
+        # is IDENTICAL for fliD and fliS (1.1125, both median-percentile,
+        # likely a shared fallback value -- ruling out a translation-level
+        # disparity too). Most likely real explanation: the FliS:FliC
+        # equilibrium (Kd=5.26e-8 M, tight binding) continuously consumes
+        # any free FliS the instant it's synthesized, as long as free FliC
+        # remains in large excess of FliS's much smaller ambient supply
+        # (~2,000 FliS vs. tens of thousands of FliC even after FliC's own
+        # crash) -- consistent with real chaperones typically being
+        # sub-stoichiometric relative to their client proteins, not a bug.
+        classIII_cistron_ids = [
+            "EG10321_RNA", "EG10841_RNA", "EG11967_RNA", "EG11545_RNA",
+            "EG10601_RNA", "EG10602_RNA", "EG10146_RNA", "EG10149_RNA",
+            "G369_RNA",
+        ]
+        flg_classIII_tu_rna_ids = [
+            rna_ids[t.cistron_id_to_rna_indexes(cid)[0]] for cid in classIII_cistron_ids
+        ]
+
+        return {
+            "time_step": time_step,
+            "rna_ids": rna_ids,
+            "bulk_molecule_ids": self.sim_data.internal_state.bulk_molecules.bulk_data["id"],
+            "flg_classII_rnaids": flg_classII_tu_rna_ids,
+            "flg_classIII_rnaids": flg_classIII_tu_rna_ids,
+            "basal_prob": self.sim_data.process.transcription_regulation.basal_prob,
+            "K_flhDC": 50.0,
+            "K_fliA": 600.0,
+            "seed": self._seedFromName("FlagellaTranscriptionRegulation"),
+        }
+
+    def get_flagella_flgm_secretion_config(self, time_step=1):
+        """Config for the FlgM type-III secretion Step (Class II -> III timing gate).
+
+        Ported from Maya Abdalla's vEcoli `biofilm` branch.
+        """
+        return {
+            "bulk_molecule_ids": self.sim_data.internal_state.bulk_molecules.bulk_data["id"],
+            "flgM_id": "G369-MONOMER[c]",
+            "hbb_id": "CPLX0-7452[j]",
+            # "secretion_rate": 0.1,  # old zero-order placeholder, superseded 2026-09-02
+            # First-order FlgM turnover, k = ln(2)/7.3min (Karlinsey et al.
+            # 1998) -- see flagella_flgm_secretion.py config_schema.
+            "turnover_rate_per_s": 0.0015823,
+        }
+
+    def get_flagella_flis_flic_equilibrium_config(self, time_step=1):
+        """Config for the FliS:FliC exact-equilibrium Step (added 2026-08-28).
+
+        Real registration added 2026-09-02: this Step's config_schema is
+        fully self-contained (kd_molar, bulk-species ids, etc. all have real,
+        cited defaults -- see flagella_flis_flic_equilibrium.py), so it never
+        needed ParCa-derived values. Before this method existed, the Step's
+        entry in the cache bundle was added by hand-patching
+        sim_data_cache.dill directly after the fact (see core.py's
+        _CACHE_CONFIG_NAMES comment) rather than through a real getter --
+        discovered when a routine save_cache() re-run (for the unrelated
+        flgm_secretion turnover-rate fix) silently dropped this Step's
+        config, since LoadSimData.get_config_by_name had no entry for it.
+        Returning {} here lets the Step's own schema defaults apply, exactly
+        matching the old hand-patched behavior, but through a real,
+        reproducible path instead of a manual one-off cache edit.
+        """
+        return {}
+
+    def get_flagella_nfsim_complexation_config(self, time_step=1):
+        """Config for the NFsim-based flagellar complexation Step.
+
+        Added 2026-08-16 -- see
+        v2ecoli/processes/flagella_nfsim_complexation.py and
+        workspace/investigations/flagella-cascade/studies/
+        flagella-04-complexation-nfsim/NFSIM_WCM_WIRING_PLAN.md step 3.
+        Replaces flagella-motor-switch/export-apparatus/motor-complex/
+        filament-nucleation assembly with the NFsim rule-based reaction
+        network, behind the flagella_nfsim_complexation feature flag
+        (mutually exclusive with flagella_regulation's own deterministic
+        Steps -- see ecoli_baseline.py's FEATURE_MODULES comment). No
+        ParCa-derived values needed here -- interval/n_steps use the
+        Step's own class defaults (config_schema).
+
+        "seed" placeholder added 2026-09-01: NFsim's own subprocess used
+        to self-seed on every call regardless of the outer v2ecoli
+        --seed, a real confirmed source of run-to-run variation. This key
+        just needs to be PRESENT for ecoli_baseline.py's generic
+        per-process seed derivation (_derive_process_seed(master_seed,
+        base_name)) to pick it up and overwrite it -- the same mechanism
+        every other stochastic process's config already uses. The actual
+        value here is never used.
+        """
+        return {"seed": 0}
+
+    # get_flhdc_degradation_config / get_flit_flhdc_checkpoint_config removed
+    # 2026-08-10 (Maya's explicit instruction) -- the FliT:FlhD4C2 checkpoint
+    # is real, literature-grounded biology (Yamamoto & Kutsukake 2006,
+    # J Bacteriol 188:5124) but in Salmonella; Albanna et al. (2018, Sci Rep
+    # 8:16705) directly tested a Delta-fliT mutant in E. coli MG1655 (this
+    # WCM's exact K-12 strain) and found no significant phenotypic effect,
+    # unlike in Salmonella. Removed in favor of a planned NFsim rule-based
+    # representation of FliT's role (see flagella-04-complexation-nfsim).
+    # Full code, config, and reaction-network entries archived at
+    # archive/flit-flhdc-regulation-2026-08/ for reference.
+
+    def get_flagella_motor_switch_assembly_config(self, time_step=1):
+        """Config for the flagellar motor switch complex (C-ring) assembly Step.
+
+        Added 2026-08-06 -- see
+        v2ecoli/processes/flagella_motor_switch_assembly.py for full
+        provenance (moved out of Gillespie SSA for numerical reasons, not
+        biological ones; real cryo-EM stoichiometry FliG=34/FliM=34/FliN=111).
+
+        MS-RING ORDERING FIX (2026-08-11): fliF_id added -- CPLX0-7450 now
+        represents the merged MS-ring + C-ring (real assembly order has the
+        MS-ring form first), not C-ring alone. See the Step module's
+        docstring for full provenance.
+        """
+        return {
+            "bulk_molecule_ids": self.sim_data.internal_state.bulk_molecules.bulk_data["id"],
+            "fliF_id": "FLIF-FLAGELLAR-MS-RING[i]",
+            "fliG_id": "FLIG-FLAGELLAR-SWITCH-PROTEIN[i]",
+            "fliM_id": "FLIM-FLAGELLAR-C-RING-SWITCH[i]",
+            "fliN_id": "FLIN-FLAGELLAR-C-RING-SWITCH[m]",
+            "product_id": "CPLX0-7450[i]",
+        }
+
+    def get_flagella_export_apparatus_assembly_config(self, time_step=1):
+        """Config for the flagellar export apparatus (CPLX0-7451) assembly Step.
+
+        Added 2026-08-11 -- see
+        v2ecoli/processes/flagella_export_apparatus_assembly.py for full
+        provenance. Moved out of ecoli-complexation for architectural
+        consistency (removes a cross-mechanism race against the
+        deterministic C-ring Step it now depends on), not because its own
+        stoichiometry (max coefficient FlhA=9) was numerically dangerous.
+        """
+        return {
+            "bulk_molecule_ids": self.sim_data.internal_state.bulk_molecules.bulk_data["id"],
+            "product_id": "CPLX0-7451[j]",
+        }
+
+    def get_flagella_motor_complex_assembly_config(self, time_step=1):
+        """Config for the flagellar motor complex (basal body) assembly Step.
+
+        Added 2026-08-06 -- see
+        v2ecoli/processes/flagella_motor_complex_assembly.py for full
+        provenance (moved out of Gillespie SSA for numerical reasons, not
+        biological ones; wires in the previously-orphaned export apparatus).
+        """
+        return {
+            "bulk_molecule_ids": self.sim_data.internal_state.bulk_molecules.bulk_data["id"],
+            "product_id": "FLAGELLAR-MOTOR-COMPLEX[j]",
+        }
+
+    def get_flagella_filament_nucleation_config(self, time_step=1):
+        """Config for the flagellar filament nucleation Step.
+
+        Added 2026-08-06 -- see
+        v2ecoli/processes/flagella_filament_nucleation.py for full
+        provenance (rate-limited by design, per Chang/Sung/Hong 2025's
+        basal-body clustering finding; nucleation_rate is a derived
+        estimate, not a direct citation).
+        """
+        return {
+            "bulk_molecule_ids": self.sim_data.internal_state.bulk_molecules.bulk_data["id"],
+            "flhdc_motor_complex_id": "FLAGELLAR-MOTOR-COMPLEX[j]",
+            "flgE_id": "G361-MONOMER[c]",
+            "flgK_id": "EG11967-MONOMER[e]",
+            "flgL_id": "EG11545-MONOMER[e]",
+            "nucleation_rate": 0.00167,
+        }
+
+    def get_flagella_filament_elongation_config(self, time_step=1):
+        """Config for the flagellar filament elongation Step.
+
+        Added 2026-08-06 -- see
+        v2ecoli/processes/flagella_filament_elongation.py for full
+        provenance (Renault et al. 2017, eLife 6:e23136, injection-diffusion
+        model, Fig 3 dataset, converted to subunit-count units).
+
+        target_length=5000 subunits: real range is ~20,000-40,000, cut for
+        practical single-generation simulation windows (completion time
+        scales ~L^2/a). rate_a=15,556 corrected 2026-09-01 from 26,450 to
+        match Renault's own fitted k_on (27.09/s, Fig 3) -- see that Step's
+        module docstring for the full derivation.
+        """
+        return {
+            "bulk_molecule_ids": self.sim_data.internal_state.bulk_molecules.bulk_data["id"],
+            "fliC_id": "EG10321-MONOMER[e]",
+            "fliD_id": "EG10841-MONOMER[e]",
+            "flagellum_id": "CPLX0-7452[j]",
+            "fliD_per_completion": 5,
+            "target_length": 5000,
+            # "rate_a": 26450.0,  # kept per standing preserve-old-code rule
+            "rate_a": 15556.0,
+            "rate_b": 575.0,
+        }
 
     def get_transcript_initiation_config(self, time_step=1):
         transcript_initiation_config = {
@@ -1266,6 +1534,11 @@ class LoadSimData:
         return polypeptide_elongation_config
 
     def get_complexation_config(self, time_step=1):
+        # NOTE (flagella-cascade investigation, 2026-08-06): CPLX0-7452_RXN
+        # is deliberately absent from sim_data.process.complexation's own
+        # reaction set (excluded in Complexation.__init__ via
+        # RUNTIME_EXCLUDED_REACTIONS -- see complexation.py for why), so no
+        # filtering is needed here; this config is automatically clean.
         complexation_config = {
             "time_step": time_step,
             "stoichiometry": self.sim_data.process.complexation.stoich_matrix()

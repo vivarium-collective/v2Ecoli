@@ -36,12 +36,21 @@ EXPECTED_SHA256 = {
     # they were unpinned. They also drive the genotype-card condition count
     # (len(condition_defs) + 2*len(tf_condition)); pin them so a data change is
     # caught here rather than silently shifting graded references downstream.
-    "condition__condition_defs": "5d71324e95ef9794f130667e2d033539a3ffc7c747c5b5f7d10d5476640149cd",
-    "condition__media_recipes": "6501ea7880a2906f8cd04e5d3010e12d042efe0da653f88e08d182c3cb46b7cb",
+    # Re-pinned 2026-09-08 merging origin/main (71 commits): main changed
+    # these two upstream ecoli-sources files (not a v2ecoli-local override,
+    # not flagella-cascade-related) between the previous pin and this merge.
+    "condition__condition_defs": "d28d181e2e7674101b47ccfaca21d7e119571ab902f9370723e671656e7f8844",
+    "condition__media_recipes": "d49b9872946a0f7462e068d359337c41720dafb3ea8f5110567cf4c7feca5d67",
     "condition__tf_condition": "fbcfbefdcffde74a380b13c1cf0b4c7d2cab28b312a7cb7b841459bc18460099",
-    # v2ecoli local overrides (diverged biology, must win):
-    "equilibrium_reactions": "836a0acb5bb347c474e7cfc63ee3599a91baa35d7bb7e9b4da45b0f09933080a",
-    "equilibrium_reaction_rates": "554add4a8e94ab2bdda0d878d0998fa62974c056e9cbbd1e99154c90bea7b7f9",
+    # v2ecoli local overrides (diverged biology, must win). Re-pinned 2026-09-04
+    # merging origin/main: both branches had independently changed these two
+    # files (this branch: flagella-cascade's FLGM-FLIA-CPLX_RXN row, FlgM
+    # anti-sigma sequestration of FliA/sigma28; main: an unrelated upstream
+    # change) -- neither side's pinned hash reflected the merged content, so
+    # these are freshly computed directly against the post-merge working tree
+    # files, not copied from either side of the conflict.
+    "equilibrium_reactions": "d10247d4dfc31da7d0293aa3bd2d16bbf2493891693b83435718384f0404febb",
+    "equilibrium_reaction_rates": "74c7216898625b1d616d814aeb254489c7ede6ced6cc6529aecfab573a225fb1",
     "metabolic_reactions_added": "97765aafda3c76445caedb887f96ec874a0defa7004d94e1083e89dcf68b0271",
 }
 

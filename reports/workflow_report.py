@@ -1629,6 +1629,8 @@ if __name__ == '__main__':
     elif 'cache_dir' in study_params:
         CACHE_DIR = study_params['cache_dir']
 
+
+
     _OPTIONS['open_reports'] = args.open_reports
 
     if args.clean:

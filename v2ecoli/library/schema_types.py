@@ -35,7 +35,11 @@ BULK_ARRAY = (
 # ---------------------------------------------------------------------------
 # Unique molecule arrays
 # ---------------------------------------------------------------------------
-_PROMOTER_STRUCT = f'unique_array[TU_index:integer|coordinates:integer|domain_index:integer|bound_TF:array[23,boolean]|{_UNIQUE_TAIL}]'
+# init_prob_override (flagella-cascade investigation): per-promoter transcription
+# initiation probability written by ecoli-flagella-transcription-regulation (the
+# Kalir & Alon SUM-gate). Defaults to 0.0; transcript_initiation only substitutes
+# it where > 0, so it is a no-op for every promoter when the flagella feature is off.
+_PROMOTER_STRUCT = f'unique_array[TU_index:integer|coordinates:integer|domain_index:integer|bound_TF:array[23,boolean]|init_prob_override:float|{_UNIQUE_TAIL}]'
 
 _RNA_STRUCT = f'unique_array[TU_index:integer|transcript_length:integer|is_mRNA:boolean|is_full_transcript:boolean|can_translate:boolean|RNAP_index:integer|{_UNIQUE_TAIL}]'
 
@@ -57,6 +61,14 @@ _GENE_STRUCT = f'unique_array[cistron_index:integer|coordinates:integer|domain_i
 
 _DNAA_BOX_STRUCT = f'unique_array[coordinates:integer|domain_index:integer|DnaA_bound:boolean|pool_label:integer|DnaA_bound_form:integer|{_UNIQUE_TAIL}]'
 
+# flagella-cascade investigation (2026-08-06): a growing flagellar filament,
+# tracked per-instance like active_ribosome's peptide_length, rather than as
+# a single bulk complexation-reaction coefficient (a real ~20,000-subunit
+# FliC stoichiometry makes Gillespie SSA's combinatorial propensity
+# calculation blow up -- see flagella_filament_elongation.py). filament_length
+# is the number of FliC subunits incorporated so far.
+_NASCENT_FLAGELLUM_STRUCT = f'unique_array[filament_length:integer|{_UNIQUE_TAIL}]'
+
 # ---------------------------------------------------------------------------
 # Biological named types
 # ---------------------------------------------------------------------------
@@ -76,6 +88,7 @@ BIOLOGICAL_UNIQUE_TYPES = {
     'chromosomal_segment': _CHROMOSOMAL_SEGMENT_STRUCT,
     'gene': _GENE_STRUCT,
     'DnaA_box': _DNAA_BOX_STRUCT,
+    'nascent_flagellum': _NASCENT_FLAGELLUM_STRUCT,
 }
 PROMOTER_ARRAY = 'promoter'
 RNA_ARRAY = 'rna'
@@ -88,6 +101,7 @@ CHROMOSOME_DOMAIN_ARRAY = 'chromosome_domain'
 CHROMOSOMAL_SEGMENT_ARRAY = 'chromosomal_segment'
 GENE_ARRAY = 'gene'
 DNAA_BOX_ARRAY = 'DnaA_box'
+NASCENT_FLAGELLUM_ARRAY = 'nascent_flagellum'
 
 # ---------------------------------------------------------------------------
 # Convenience mapping: port name → type expression
@@ -115,4 +129,6 @@ UNIQUE_TYPES = {
     'gene': GENE_ARRAY,
     'DnaA_boxes': DNAA_BOX_ARRAY,
     'DnaA_box': DNAA_BOX_ARRAY,
+    'nascent_flagella': NASCENT_FLAGELLUM_ARRAY,
+    'nascent_flagellum': NASCENT_FLAGELLUM_ARRAY,
 }

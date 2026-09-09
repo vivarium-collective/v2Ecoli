@@ -260,6 +260,47 @@ def load_cache_bundle(cache_dir: str) -> dict[str, Any]:
 _CACHE_CONFIG_NAMES = [
     'post-division-mass-listener', 'ecoli-mass-listener', 'media_update',
     'exchange_data', 'ecoli-tf-unbinding', 'ecoli-tf-binding',
+    # flagella-cascade investigation: configs for the opt-in
+    # flagella_nfsim_complexation feature (the only flagellar-assembly
+    # pipeline in the repo as of 2026-08-21 -- see ecoli_baseline.py's
+    # FEATURE_MODULES). Dumped unconditionally so the cache can serve them
+    # when the feature is enabled (the runtime mock loader cannot
+    # regenerate them).
+    'ecoli-flagella-transcription-regulation', 'ecoli-flagella-flgm-secretion',
+    'ecoli-flagella-filament-elongation',
+    # FliS:FliC exact-equilibrium Step (added 2026-08-28, replaces
+    # FLIS-FLIC-CPLX_RXN's role in the shared ecoli-equilibrium Step — see
+    # flagella_flis_flic_equilibrium.py module docstring). Config is always
+    # {} (no ParCa-derived values needed, same as nfsim-complexation below)
+    # -- dumped unconditionally for the same reason as the other flagella
+    # configs here. Hit the exact same "missing from an existing cache's
+    # sim_data_cache.dill silently skips the Step" gap nfsim-complexation
+    # hit when it was first added; fixed the same way, both here and by
+    # directly patching the affected existing cache bundle(s).
+    'ecoli-flagella-flis-flic-equilibrium',
+    # FlgM:FliA exact-equilibrium Step (added 2026-09-01, replaces
+    # FLGM-FLIA-CPLX_RXN's role in the shared ecoli-equilibrium Step, same
+    # pattern and same reason as the FliS:FliC Step above -- see
+    # flagella_flgm_flia_equilibrium.py module docstring). Same gap, same
+    # fix: dumped unconditionally here, and the affected cache's
+    # sim_data_cache.dill patched directly.
+    # REVERTED 2026-09-01: user reviewed the resulting population dynamics
+    # and judged them not correct. Reverting the wiring (not deleting the
+    # Step file) back to the shared ecoli-equilibrium Step's relaxed-Kd
+    # (2e-7 M) treatment of FLGM-FLIA-CPLX_RXN pending further biology
+    # review. Cache rates_fwd/rates_rev for FLGM-FLIA-CPLX_RXN restored to
+    # their original [1.0]/[2e-07] in both simData.cPickle and the baked
+    # sim_data_cache.dill config copy.
+    # 'ecoli-flagella-flgm-flia-equilibrium',
+    # ecoli-flhdc-degradation / ecoli-flit-flhdc-checkpoint removed
+    # 2026-08-10 (archive/flit-flhdc-regulation-2026-08/); motor-switch/
+    # export-apparatus/motor-complex/filament-nucleation removed 2026-08-21
+    # (archive/deterministic-flagella-assembly-2026-08/).
+    #
+    # NFsim-based complexation (added 2026-08-16). Config is always {} (no
+    # ParCa-derived values needed), dumped unconditionally for the same
+    # reason as the other flagella configs above.
+    'ecoli-flagella-nfsim-complexation',
     'ecoli-equilibrium', 'ecoli-two-component-system', 'ecoli-rna-maturation',
     'ecoli-transcript-initiation', 'ecoli-polypeptide-initiation',
     'ecoli-chromosome-replication', 'ecoli-protein-degradation',

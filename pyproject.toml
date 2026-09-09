@@ -112,6 +112,11 @@ ray = ["ray>=2.10"]
 #   uv sync --extra relax
 # Without it, relaxed structural runs degrade gracefully to raw AlphaFold structures.
 relax = ["pbg-openmm"]
+# Opt-in: NFsim rule-based flagellar assembly (flagella-cascade investigation,
+# Aim 2B). Pulls in pbg-nfsim + bionetgen. NOTE: bionetgen 0.8.6 imports the
+# removed `pkg_resources.packaging` on Python 3.12 — the study driver shims it
+# from the standalone `packaging` package before importing pbg_nfsim.
+nfsim = ["pbg-nfsim @ git+https://github.com/vivarium-collective/pbg-nfsim.git"]
 
 [project.scripts]
 v2ecoli-parca = "v2ecoli.cli.parca:main"

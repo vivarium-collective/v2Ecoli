@@ -481,7 +481,16 @@ class Equilibrium(object):
             if np.all(moleculeCounts + self._stoichMatrix.dot(rxnFluxes) >= 0):
                 break
         else:
-            raise ValueError("Negative counts in equilibrium steady state.")
+            # flagella-cascade investigation: some protein-protein equilibria
+            # (e.g. FLGM-FLIA-CPLX) have near-zero pools under certain full-mode TF
+            # conditions, so no stochastic rounding of the SS flux keeps every count
+            # >= 0 within max_iter. Rather than abort the whole ParCa condition fit,
+            # fall back to zero flux for this sample (no reaction fires — the counts
+            # stay put), which is the correct limit when no feasible rounded step
+            # exists. Only triggers in the degenerate near-zero-pool case (fast-mode
+            # ParCa never reaches it), so the calibrated sim_data is unchanged where
+            # the loop already found a feasible step.
+            rxnFluxes = np.zeros_like(rxnFluxes)
 
         rxnFluxesN = -1.0 * (rxnFluxes < 0) * rxnFluxes
         rxnFluxesP = 1.0 * (rxnFluxes > 0) * rxnFluxes

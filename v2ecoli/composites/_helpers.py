@@ -1763,6 +1763,14 @@ def _get_special_step(loader, step_name, core):
         _injected = getattr(loader, '_injected_processes', None)
         if _injected:
             div_config['injected_processes'] = _injected
+        # Thread the resolved opt-in FEATURE list (flagella-cascade
+        # investigation, 2026-08-06) the same way -- see the matching note in
+        # ecoli_baseline.py's baseline() where loader._features is set, for
+        # why omitting this crashed flagella_transcription_regulation.py at
+        # division rather than just silently dropping the feature.
+        _features = getattr(loader, '_features', None)
+        if _features:
+            div_config['features'] = _features
         # Same reasoning, for a config_overrides / knockouts PERTURBATION. Without
         # this, a variant applied as config_overrides is correct in generation 1
         # and silently reverts to the unperturbed cached configs at division
@@ -1803,6 +1811,24 @@ def _get_special_step(loader, step_name, core):
             # D-period flag raised by MarkDPeriod (same store), so the Division
             # step can divide on the D-period instead of the mass threshold.
             'divide': ('divide',),
+            # BUG FIX 2026-08-21: these two ports were declared in
+            # Division.inputs() (v2ecoli/steps/division.py) and used by
+            # divide_cell()/divide_internal_observables()/divide_scaffold_species
+            # (v2ecoli/library/division.py), but never actually wired to real
+            # state here -- meaning Division always read the schema default
+            # ({}), never the real accumulated nfsim_scaffold_species/
+            # nfsim_internal_observables values, regardless of what the parent
+            # agent had actually built up. divide_internal_observables({})
+            # returns ({}, {}) via its own fast path (`if not state: return
+            # {}, {}`), so BOTH daughters silently lost this state at every
+            # division -- not a division-time reset, a wiring gap that made
+            # Division blind to this data from the start. Confirmed directly:
+            # flagella_internal_cumulative (hook-basal-body-complete count)
+            # dropped from 1 to 0 in the population total exactly at a
+            # division boundary, which a correct binomial split of 1 could
+            # never produce (0+1 or 1+0, never 0+0).
+            'nfsim_scaffold_species': ('nfsim_scaffold_species',),
+            'nfsim_internal_observables': ('nfsim_internal_observables',),
             'agents': ('..',),
         }
         return instance, topo, 'step'

@@ -251,6 +251,143 @@ def divide_ribosomes_by_RNA(values, unique_state):
     return ribosomes[d1_bool], ribosomes[d2_bool]
 
 
+def divide_nascent_flagellum(values, unique_state):
+    """Divide in-progress flagella binomially between daughters.
+
+    Added 2026-08-06, flagella-cascade investigation. Before this, any
+    unique molecule type without an entry in UNIQUE_DIVIDERS fell through to
+    divide_cell's catch-all "unknown type -> copy whole array to BOTH
+    daughters" -- physically impossible (a single anchored structure can't
+    become two) and not mass-conserving (every nascent flagellum would be
+    duplicated at every division, inflating the count exponentially across
+    generations and directly undermining any multi-generation test of
+    whether flagella count self-limits).
+
+    Real flagella are physically anchored to a fixed point on the cell
+    envelope; division splits that envelope roughly in half, so each
+    existing structure (complete or in-progress) ends up in whichever
+    daughter inherits that patch of membrane -- for a peritrichous,
+    ~randomly-distributed set of flagella, a binomial p=0.5 assignment per
+    flagellum (each independently, entirely, to one daughter or the other --
+    not split fractionally) is the natural approximation, mirroring how
+    complete flagella (CPLX0-7452, an ordinary bulk molecule) already divide
+    via divide_bulk's binomial split.
+    """
+    active = values[values['_entryState'].view(np.bool_)]
+    n_molecules = len(active)
+    if n_molecules == 0:
+        return active, active
+    seed = int(active['filament_length'].sum() + n_molecules) % RAND_MAX
+    rng = np.random.RandomState(seed=seed)
+    d1_bool = rng.random(n_molecules) < 0.5
+    return active[d1_bool], active[~d1_bool]
+
+
+def divide_internal_observables(state):
+    """Binomial(n, 0.5) split of the NFsim complexation Step's
+    internal-only observable tallies -- 'flagellar_hook' (completed-but-
+    unconsumed hook count) and 'flagella' (cumulative hook-basal-body
+    completions, the trigger for nascent_flagellum creation). See
+    flagella_nfsim_complexation.py's docstring for why these have no real
+    bulk molecule ID.
+
+    Added 2026-08-19, flagella-cascade investigation. Before this, these
+    two top-level agent-state ports had NO entry anywhere in the division
+    machinery (divide_cell only ever produced 'bulk'/'unique'/'environment'/
+    'boundary'), so daughters were silently rebuilt with baseline()'s
+    schema default ({}) -- discarding all accumulated progress at every
+    division, not a physically-motivated reset.
+
+    Real flagellar assembly timing (revised 2026-08-24, see CORRECTION
+    below): no direct E. coli measurement of total flagellum assembly time
+    exists in the literature (checked directly, dedicated search). The
+    closest real data is in Salmonella typhimurium -- a close relative with
+    a near-identical peritrichous flagellar apparatus, routinely used
+    interchangeably with E. coli in this exact research area (e.g. Renault
+    et al. 2017, cited below, is already this codebase's own source for
+    flagella_filament_elongation.py's elongation rate law): hook-basal-body
+    completion takes ~30 min (Karlinsey et al. 2000, Mol Microbiol 37:1220),
+    while full filament growth to ~10 um (~21,300 subunits) takes over 180
+    minutes / 3+ hours (Renault et al. 2017, eLife 6:e23136). Since a
+    fast-growing E. coli's own division cycle is ~40-44 min, if E. coli's
+    kinetics are broadly similar to Salmonella's, full filament completion
+    would typically NOT finish within a single division -- real, if
+    cross-species, grounds for this port's design (carry state across
+    divisions rather than discard it).
+
+    CORRECTION (2026-08-24): a previous version of this docstring instead
+    claimed "basal bodies assemble in <5 min but motility-capable filaments
+    take >40 min," citing Sim et al. 2017 (PMC5259725, real E. coli) and
+    Zhuang et al. 2020 (Mol Microbiol 114:279-291, Vibrio alginolyticus) for
+    those specific numbers. Checked directly (Maya's request): Sim et al.
+    2017 measures flagella COUNT vs. growth rate, not assembly timing, and
+    Zhuang et al. 2020 is cited correctly elsewhere in this docstring for a
+    DIFFERENT claim (old-pole inheritance) -- neither paper actually
+    supports the timing numbers they were attached to. Replaced with the
+    Salmonella data above, which is real and honestly cross-species rather
+    than misattributed to the wrong E. coli papers.
+
+    True biology has a documented old-pole inheritance bias for flagellar
+    structures. Zhuang et al. 2020 (Mol Microbiol 114:279-291) is the
+    clearest mechanistic account, but it's in Vibrio alginolyticus, not E.
+    coli -- cross-species conceptual support, not a validated E. coli
+    mechanism. There IS direct E. coli evidence too, just a different,
+    weaker kind: Ping (2010) J Mol Biol, PMID 20156455, found ~75% of cells
+    carry more flagella on their old-pole half than their new-pole half --
+    a steady-state population snapshot, not a single flagellum tracked
+    live across an actual division event. Reproducing either would require
+    sub-cellular position tracking this (currently well-mixed) whole-cell
+    model doesn't have, and a broader review
+    (academic.oup.com/femsre/article/39/6/812/550689) calls the precise
+    mechanism "largely unresolved" even for E. coli specifically, so
+    there's no citable split ratio to implement against. Binomial p=0.5 is
+    the same well-mixed-model approximation already used for every other
+    discrete structural count in this file (divide_bulk,
+    divide_nascent_flagellum) -- not a claim of spatial accuracy, just
+    conservation of the real count instead of silent loss.
+    """
+    if not state:
+        return {}, {}
+    total = int(round(sum(state.values())))
+    seed = total % RAND_MAX
+    rng = np.random.RandomState(seed=seed)
+    d1, d2 = {}, {}
+    for key, val in state.items():
+        n = int(round(val))
+        d1_n = int(rng.binomial(n, 0.5)) if n > 0 else 0
+        d1[key] = float(d1_n)
+        d2[key] = float(n - d1_n)
+    return d1, d2
+
+
+def divide_scaffold_species(state):
+    """Binomial(n, 0.5) split of each distinct NFsim scaffold occupancy-
+    state count (e.g. 'Growing_CPLX0_7450_i(FLIF~17,...)': 2 -> one
+    daughter might get 1, the other 1) -- same rationale and same
+    well-mixed-model caveat as divide_internal_observables. Each entry's
+    count is independently binomial-split; entries that round to 0 for a
+    daughter are omitted rather than kept as an explicit zero, matching
+    pbg_nfsim's own convention of only listing seed species with count>0.
+    """
+    if not state:
+        return {}, {}
+    total = int(round(sum(state.values())))
+    seed = total % RAND_MAX
+    rng = np.random.RandomState(seed=seed)
+    d1, d2 = {}, {}
+    for pattern, count in state.items():
+        n = int(round(count))
+        if n <= 0:
+            continue
+        d1_n = int(rng.binomial(n, 0.5))
+        d2_n = n - d1_n
+        if d1_n > 0:
+            d1[pattern] = float(d1_n)
+        if d2_n > 0:
+            d2[pattern] = float(d2_n)
+    return d1, d2
+
+
 # ---------------------------------------------------------------------------
 # Dispatch table: unique molecule name → divider function
 # ---------------------------------------------------------------------------
@@ -267,6 +404,7 @@ UNIQUE_DIVIDERS = {
     'chromosomal_segment': divide_by_domain,
     'RNA': divide_RNAs_by_domain,
     'active_ribosome': divide_ribosomes_by_RNA,
+    'nascent_flagellum': divide_nascent_flagellum,
 }
 
 
@@ -283,7 +421,9 @@ def divide_cell(cell_state):
     """Divide a cell's data stores into two daughter initial states.
 
     Args:
-        cell_state: Dict with 'bulk', 'unique', 'environment', 'listeners', etc.
+        cell_state: Dict with 'bulk', 'unique', 'environment', 'listeners',
+            and (when flagella_nfsim_complexation is active)
+            'nfsim_scaffold_species'/'nfsim_internal_observables', etc.
 
     Returns:
         (daughter_1_state, daughter_2_state) — data stores only, no step instances.
@@ -323,6 +463,8 @@ def divide_cell(cell_state):
             d1_unique[name], d2_unique[name] = divide_RNAs_by_domain(arr, unique_state)
         elif divider == divide_ribosomes_by_RNA:
             d1_unique[name], d2_unique[name] = divide_ribosomes_by_RNA(arr, unique_state)
+        elif divider == divide_nascent_flagellum:
+            d1_unique[name], d2_unique[name] = divide_nascent_flagellum(arr, unique_state)
 
     # 3. Build daughter initial states
     d1_state = {
@@ -333,6 +475,17 @@ def divide_cell(cell_state):
         'bulk': d2_bulk,
         'unique': d2_unique,
     }
+
+    # NFsim complexation Step's own state ports (2026-08-19, see
+    # divide_internal_observables/divide_scaffold_species docstrings) --
+    # only present when flagella_nfsim_complexation is wired in, so guard
+    # on key presence rather than assuming every composite has them.
+    if 'nfsim_scaffold_species' in cell_state:
+        d1_state['nfsim_scaffold_species'], d2_state['nfsim_scaffold_species'] = (
+            divide_scaffold_species(cell_state['nfsim_scaffold_species']))
+    if 'nfsim_internal_observables' in cell_state:
+        d1_state['nfsim_internal_observables'], d2_state['nfsim_internal_observables'] = (
+            divide_internal_observables(cell_state['nfsim_internal_observables']))
 
     # Copy environment (both daughters inherit the same environment)
     if 'environment' in cell_state:

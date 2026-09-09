@@ -1,0 +1,49 @@
+"id"	"stoichiometry"	"common_name"	"cofactors"	"_comments"
+"CPLX0-7796APO_RXN"	{"CPLX0-7796APO": 1, "PD04032": -2}	null	{}	"Reaction required along with equilibrium reaction CPLX0-7796_EQUILIBRIUM_RXN to produce 1CS TF CPLX0-7796"
+"ARCB-CPLX_RXN"	{"ARCB-CPLX": 1, "ARCB-MONOMER": -2}	null	{}	"Reaction required to produce 2CS TF ARCB-CPLX"
+# FLIT-DIMER_RXN (flagella-cascade investigation, 2026-08-05): FliT (EG11389-MONOMER)
+# exists as a homodimer in solution (Yamamoto & Kutsukake 2006, J Bacteriol 188:5124:
+# "FliT exists as a homodimer and binds to FliD at a 2:1 stoichiometry") -- real,
+# independent biology kept regardless of any regulatory mechanism built on top of it.
+# Originally also fed FLIT-FLID-CPLX_RXN (equilibrium_reactions.tsv), the input signal
+# for the FliT:FlhD4C2 checkpoint -- that checkpoint and its equilibrium reaction were
+# removed 2026-08-10 (see archive/flit-flhdc-regulation-2026-08/); this dimer-formation
+# reaction is unconsumed by anything currently, kept as a building block for the
+# planned NFsim-based FliT representation.
+"FLIT-DIMER_RXN"	{"FLIT-DIMER": 1, "EG11389-MONOMER": -2}	null	{}	"FliT homodimer (Yamamoto & Kutsukake 2006)"
+# CPLX0-7450_RXN (flagella-cascade investigation, 2026-08-06): the flagellar motor
+# SWITCH complex (C-ring), a real staged intermediate that was entirely MISSING from
+# the model -- FliG/FliM/FliN were previously consumed directly (1 copy each) straight
+# into FLAGELLAR-MOTOR-COMPLEX_RXN with no intermediate stage at all. Real
+# stoichiometry per cryo-EM structural studies (Salmonella, direct homolog of E. coli):
+# FliG=34 (C-ring 34-fold rotational symmetry, used as the reference count for other
+# switch-complex measurements), FliM~34 (varies 34-58 depending on CW/CCW rotational
+# bias; 34 used as a representative baseline, matching the CCW-biased estimate),
+# FliN=111+/-13 (major structural component, "Precise Measurement of the Stoichiometry
+# of the Adaptive Bacterial Flagellar Switch," PMC10128058). NOTE: an earlier working
+# spreadsheet (Maya's "Master Flagella Info") had FliG=26 instead of 34 -- two
+# independent literature searches this session both gave 34 as the C-ring's defining
+# symmetry number, so 34 is used here, but this is a real, unresolved discrepancy
+# flagged for Maya to double check against her own source for 26 if she has one.
+# Original (FliG/FliM/FliN only), kept per standing preserve-old-code rule:
+# {"CPLX0-7450": 1, "FLIG-FLAGELLAR-SWITCH-PROTEIN": -34, "FLIM-FLAGELLAR-C-RING-SWITCH": -34, "FLIN-FLAGELLAR-C-RING-SWITCH": -111}
+#
+# MS-RING ORDERING FIX (2026-08-11, flagella-cascade investigation): added
+# FliF (MS-ring, -34) as a reactant here. Real assembly order (Minamino &
+# Namba 2008 Nature; Chevance & Hughes 2008 Nat Rev Microbiol -- the SAME
+# citation already used for the C-ring -> export-apparatus hierarchy fix
+# this session) is: MS-ring (FliF) forms FIRST, THEN the C-ring
+# (FliG/FliM/FliN) assembles onto its cytoplasmic face -- export apparatus
+# insertion comes only after that. Before this fix, FliF was consumed
+# separately, much later, lumped directly into FLAGELLAR-MOTOR-COMPLEX_RXN
+# alongside unrelated stator/rod/ring parts -- the same category of
+# ordering gap already found and fixed once for CPLX0-7451, just one stage
+# further upstream and left unaddressed until now. CPLX0-7450 now
+# represents the merged "MS-ring + C-ring" structure (many structural
+# papers do describe these as forming one continuous ring assembly, not
+# always as two independently-isolable intermediates, so this is a
+# reasonable single-stage merge rather than inventing a third complex ID).
+# FLAGELLAR-MOTOR-COMPLEX_RXN's separate direct FliF consumption was
+# removed in the same change (see complexation_reactions_modified.tsv) so
+# FliF is consumed exactly once, here.
+"CPLX0-7450_RXN"	{"CPLX0-7450": 1, "FLIF-FLAGELLAR-MS-RING": -34, "FLIG-FLAGELLAR-SWITCH-PROTEIN": -34, "FLIM-FLAGELLAR-C-RING-SWITCH": -34, "FLIN-FLAGELLAR-C-RING-SWITCH": -111}	"flagellar motor switch complex (C-ring)"	{}	"MS-ring (FliF x34) + C-ring (FliG/FliM/FliN) merged -- real assembly order has MS-ring form first, C-ring assemble onto it (Minamino & Namba 2008 Nature). Previously FliF was consumed separately at the final motor-complex stage; moved here 2026-08-11."

@@ -577,6 +577,24 @@ class TranscriptInitiation(Step):
                 self.delta_prob_matrix[TU_index, :], bound_TF
             ).sum(axis=1)
 
+            # init_prob_override (flagella-cascade investigation, ported from Maya
+            # Abdalla's vEcoli `biofilm` branch): the Kalir & Alon SUM-gate
+            # (ecoli-flagella-transcription-regulation) writes a per-promoter
+            # initiation probability directly onto the promoters unique molecule.
+            # Where it is > 0 we substitute it for the basal_prob + delta_prob*bound_TF
+            # value, bypassing the TF-binding pathway for flagella genes (this avoids
+            # the double-counting that otherwise drives FliA overproduction). The field
+            # defaults to 0.0, so this is a no-op for every promoter when the flagella
+            # feature is off. Guarded on dtype presence for backward compatibility with
+            # caches built before the field was added.
+            if "init_prob_override" in states["promoters"].dtype.names:
+                (init_prob_override,) = attrs(
+                    states["promoters"], ["init_prob_override"]
+                )
+                ka_mask = init_prob_override > 0
+                if ka_mask.any():
+                    self.promoter_init_probs[ka_mask] = init_prob_override[ka_mask]
+
             if len(self.genetic_perturbations) > 0:
                 self._rescale_initiation_probs(
                     self.genetic_perturbations["fixedRnaIdxs"],
