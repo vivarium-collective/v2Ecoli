@@ -73,7 +73,11 @@ dependencies = [
     # git source, no `pbg-emitters` name-check trap (the renamed repo builds as
     # viva-emitters). [parquet] pulls duckdb/polars/pyarrow/fsspec/tqdm; [xarray]
     # pulls xarray/zarr/zarrs.
-    "viva-emitters[parquet,xarray]>=0.3.0",
+    # >=0.4.0 for the lineage-scoped XArrayEmitter.advance_generation() the
+    # multigen drivers below now use (viva-emitters PR #38). Until 0.4.0 is
+    # released this pin does not resolve — this v2ecoli change is blocked on
+    # that release.
+    "viva-emitters[parquet,xarray]>=0.4.0",
     # S3 backend for fsspec (a viva-emitters[parquet] dep). Both ParquetEmitter
     # (url_to_fs) and the XArray/zarr store (zarr.open_group) already accept an
     # s3:// out_uri/store natively — s3fs is the one missing piece that lets an
