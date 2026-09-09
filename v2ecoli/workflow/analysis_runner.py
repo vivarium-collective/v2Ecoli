@@ -610,7 +610,8 @@ def _register_plugin_analyses() -> None:
 def run_analyses(sweep_dir: str, analysis_options: dict,
                  sim_data_path: str | None = None,
                  out_dir: str | None = None,
-                 max_workers: int | None = None) -> dict:
+                 max_workers: int | None = None,
+                 duckdb: dict | None = None) -> dict:
     """Run the analyses named in ``analysis_options`` over the sweep's cells,
     write ``analysis.json``, and return the nested results.
 
@@ -740,8 +741,14 @@ def run_analyses(sweep_dir: str, analysis_options: dict,
                 import tempfile
 
                 from viva_emitters import create_duckdb_conn
-                _ctx["conn"] = create_duckdb_conn(temp_dir=tempfile.gettempdir())
-                apply_analysis_duckdb_config(_ctx["conn"])
+                from v2ecoli.library.sweep_io import analysis_temp_dir
+                _dk = duckdb or {}
+                _ctx["conn"] = create_duckdb_conn(
+                    temp_dir=analysis_temp_dir(_dk.get("temp_dir")),
+                    cpus=_dk.get("threads"))
+                apply_analysis_duckdb_config(
+                    _ctx["conn"], threads=_dk.get("threads"),
+                    max_temp_directory_size=_dk.get("max_temp_directory_size"))
                 _ctx["from_clause"] = _history_from_clause(sweep_dir)
                 if sim_data_path is not None:
                     from v2ecoli.library.sim_data import LoadSimData
@@ -989,6 +996,7 @@ def main() -> None:
 
     analysis_options: dict = {}
     out_dir: str | None = None
+    runner: dict = {}
     if args.config:
         from v2ecoli.workflow.config import load_config_with_inheritance
         cfg = load_config_with_inheritance(args.config)
@@ -997,10 +1005,19 @@ def main() -> None:
         # `<sweep_dir> [--config]`; a Nextflow task sets it to a task-local name
         # ("analysis") that matches its declared `path` output.
         out_dir = cfg.get("out_dir") or None
+        # Optional resource knobs, in the config rather than argv so the CLI
+        # contract (sweep_dir + --config) does not move:
+        #   runner.max_workers                      concurrent named analyses (1 = serial)
+        #   runner.duckdb.threads                   SET threads
+        #   runner.duckdb.temp_dir                  DuckDB spill dir (relative -> cwd)
+        #   runner.duckdb.max_temp_directory_size   e.g. "200GB"
+        runner = cfg.get("runner") or {}
     if not analysis_options:
         print("no analysis_options found; nothing to run")
         return
-    run_analyses(args.sweep_dir, analysis_options, out_dir=out_dir)
+    run_analyses(args.sweep_dir, analysis_options, out_dir=out_dir,
+                 max_workers=runner.get("max_workers"),
+                 duckdb=runner.get("duckdb"))
     print(f"Wrote {os.path.join(out_dir or args.sweep_dir, 'analysis.json')}")
 
 
