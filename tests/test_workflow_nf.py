@@ -153,10 +153,12 @@ def test_analysis_takes_one_port_per_variant(core) -> None:
         build_workflow_nf(
             n_seeds=2,
             include_analysis=True,
+            analysis_options={"multivariant": {"x": {}}},
             variants=[{"variant_name": "a"}, {"variant_name": "b"}],
         ),
     )
-    assert "analysis(ch_results_v0, ch_results_v1" in nf
+    assert "analysis(ch_results_v0, ch_results_v1" in nf  # the multivariant node
+    assert "analysis_v0(ch_results_v0, ch_cache_v0" in nf and "analysis_v1(ch_results_v1, ch_cache_v1" in nf
 
 
 def test_analysis_task_argv_parses_against_the_real_cli(core) -> None:
@@ -928,8 +930,9 @@ def test_multi_variant_gather_stages_every_variants_cache(core) -> None:
         include_analysis=True,
         variants=[{"variant_name": "a"}, {"variant_name": "b"}],
     )
-    inputs = doc["state"]["analysis"]["inputs"]
-    assert inputs["cache_v0"] == ["cache_v0"] and inputs["cache_v1"] == ["cache_v1"]
+    st = doc["state"]
+    assert st["analysis_v0"]["inputs"]["cache_v0"] == ["cache_v0"] and st["analysis_v1"]["inputs"]["cache_v1"] == ["cache_v1"]
+    assert "cache_v1" not in st["analysis_v0"]["inputs"]  # a variant gather stages only its own cache
 
 
 def test_parca_caches_have_DISTINCT_output_names_across_variants(core) -> None:
@@ -954,3 +957,53 @@ def test_parca_caches_have_DISTINCT_output_names_across_variants(core) -> None:
     for i in (0, 1):
         lin = doc["state"][f"runs_v{i}"]["config"]["state"][f"lineage_v{i}_s0"]["config"]
         assert lin["founder_sim_data"] == f"cache_v{i}/simData.cPickle"
+
+
+def test_multi_variant_campaign_gathers_per_variant_and_multivariant_once(core) -> None:
+    """sim 683: one campaign-wide gather ran five multiseed modules at once over
+    10 x 8 and every one OOM'd. Now each variant gathers its own sweep (all
+    scales but multivariant), and the campaign-wide node runs ONLY multivariant."""
+    from v2ecoli.composites.workflow_nf import build_workflow_nf
+
+    opts = {"single": {"mass_fraction_summary": {}}, "multiseed": {"cd1_fluxomics": {}},
+            "multivariant": {"fss_bioproduction_kpis": {"control_variant": 1}}}
+    doc = build_workflow_nf(core=core, n_seeds=2, n_generations=1, include_analysis=True,
+                            analysis_options=opts, variants=[{"variant_name": "a"}, {"variant_name": "b"}])
+    st = doc["state"]
+    for i in (0, 1):
+        n = st[f"analysis_v{i}"]
+        assert n["config"]["out_dir"] == f"analysis_v{i}" and n["config"]["variant_indices"] == [i]
+        assert set(n["config"]["analysis_options"]) == {"single", "multiseed"}
+        assert n["inputs"] == {f"sweep_v{i}": [f"results_v{i}"], f"cache_v{i}": [f"cache_v{i}"]}
+        assert n["outputs"] == {"report": [f"report_v{i}"]}
+        assert n["config"]["runner"] == {"max_workers": 1, "duckdb": {"temp_dir": "duckdb_tmp"}}
+    mv = st["analysis"]
+    assert mv["config"]["analysis_options"] == {"multivariant": opts["multivariant"]}
+    assert set(mv["inputs"]) == {"sweep_v0", "sweep_v1", "cache_v0", "cache_v1"}
+    doc = build_workflow_nf(core=core, n_seeds=1, n_generations=1, include_analysis=True,
+                            analysis_options={"multiseed": {"cd1_fluxomics": {}}},
+                            variants=[{"variant_name": "a"}, {"variant_name": "b"}])
+    assert "analysis" not in doc["state"] and {"analysis_v0", "analysis_v1"} <= set(doc["state"])
+
+
+def test_single_variant_campaign_keeps_the_one_gather_named_analysis(core) -> None:
+    from v2ecoli.composites.workflow_nf import build_workflow_nf
+
+    opts = {"multiseed": {"cd1_fluxomics": {}}, "multivariant": {"x": {}}}
+    doc = build_workflow_nf(core=core, n_seeds=3, n_generations=1, include_analysis=True, analysis_options=opts)
+    assert "analysis_v0" not in doc["state"]
+    n = doc["state"]["analysis"]
+    assert n["config"]["out_dir"] == "analysis" and n["config"]["analysis_options"] == opts
+    assert n["config"]["runner"]["max_workers"] == 1
+
+
+def test_gather_output_decl_is_a_dir_glob_that_cannot_match_its_manifest() -> None:
+    import fnmatch
+
+    from v2ecoli.composites.workflow_nf import AnalysisTaskStep
+
+    decl = AnalysisTaskStep.nextflow_port_decls["report"]
+    pattern = decl.split('"')[1]
+    assert 'type: "dir"' in decl
+    assert fnmatch.fnmatch("analysis", pattern) and fnmatch.fnmatch("analysis_v7", pattern)
+    assert not fnmatch.fnmatch("report.json", pattern)

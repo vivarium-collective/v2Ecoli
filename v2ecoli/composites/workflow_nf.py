@@ -235,13 +235,20 @@ class AnalysisTaskStep(Step):
         # renderer runs). N named ports, each fed by one variant sub-workflow's
         # already-collected channel, is the shape the document model supports.
         "variant_indices": {"_type": "quote", "_default": [0]},
+        # Resource knobs the v2ecoli-analyze CLI reads from this same config:
+        # runner.max_workers, runner.duckdb.{threads,temp_dir,max_temp_directory_size}.
+        "runner": {"_type": "quote", "_default": {}},
     }
 
     # Only the OUTPUT needs an override. The per-variant inputs are declared with
     # `_is_file: True`, which the renderer already turns into `path <name>` — and
     # this override is read off the CLASS (`_class_annotation` → `getattr(type(...))`),
     # so it cannot depend on config anyway.
-    nextflow_port_decls = {"report": 'path "analysis"'}
+    # `analysis*`: a campaign now has one gather PER VARIANT (`analysis_v{i}`)
+    # plus, only when multivariant modules are configured, one campaign-level
+    # gather (`analysis`); this decl is read off the class, so it is a glob
+    # (blockers 5 and 8), and `type: "dir"` keeps the `report.json` manifest out.
+    nextflow_port_decls = {"report": 'path "analysis*", type: "dir"'}
     # Published for the same reason as LineageStep's sweep: the gather's report is
     # the deliverable, and an unpublished one is as unreachable as no report.
     nextflow_directives = {
@@ -677,24 +684,67 @@ def build_workflow_nf(
 
     if include_analysis:
         indices = [int(s["variant_index"]) for s in _variant_specs(variants)]
-        state["analysis"] = {
-            "_type": "step",
-            "address": "local:AnalysisTaskStep",
-            "config": {
-                "experiment_id": experiment_id,
-                # Task-local, matching the declared `path "analysis"` output --
-                # NOT f"{out_dir}/analysis", which the task's work dir has no way
-                # to produce (the gather runs in an isolated Nextflow work dir).
-                "out_dir": "analysis",
-                "analysis_options": analysis_options or {},
-                "variant_indices": indices,
-            },
-            # one named port per variant, each fed by that variant's sub-workflow,
-            # plus that variant's ParCa cache (sim_data for the analyses)
-            "inputs": {
-                **{f"sweep_v{i}": [f"results_v{i}"] for i in indices},
-                **{f"cache_v{i}": [f"cache_v{i}"] for i in indices},
-            },
-            "outputs": {"report": ["report"]},
-        }
+        options = dict(analysis_options or {})
+        multivariant = options.pop("multivariant", None)
+        # One gather per variant, one module at a time, spilling into the task's
+        # own work dir. Measured on sim 683 (10 seeds x 8 generations, 27 GB):
+        # a single campaign-wide gather ran five multiseed modules concurrently
+        # on a 32 GB task and every one died in DuckDB (22.3 GiB pinned, the
+        # 63.7 GiB temp cap exhausted). Per variant, the history a gather sees
+        # is bounded by seeds x generations, not variants x seeds x generations
+        # -- Run 4 at 84 variants would otherwise be ~900 GB in one process --
+        # and the variants gather in parallel as separate Batch tasks.
+        runner = {"max_workers": 1, "duckdb": {"temp_dir": "duckdb_tmp"}}
+        if len(indices) == 1:
+            # Single-variant campaign: the one node, named and published as
+            # before (`analysis/`), so nothing downstream moves.
+            i0 = indices[0]
+            state["analysis"] = {
+                "_type": "step",
+                "address": "local:AnalysisTaskStep",
+                "config": {
+                    "experiment_id": experiment_id,
+                    "out_dir": "analysis",
+                    "analysis_options": analysis_options or {},
+                    "variant_indices": indices,
+                    "runner": runner,
+                },
+                "inputs": {f"sweep_v{i0}": [f"results_v{i0}"], f"cache_v{i0}": [f"cache_v{i0}"]},
+                "outputs": {"report": ["report"]},
+            }
+        else:
+            for i in indices:
+                state[f"analysis_v{i}"] = {
+                    "_type": "step",
+                    "address": "local:AnalysisTaskStep",
+                    "config": {
+                        "experiment_id": experiment_id,
+                        "out_dir": f"analysis_v{i}",
+                        "analysis_options": options,
+                        "variant_indices": [i],
+                        "runner": runner,
+                    },
+                    "inputs": {f"sweep_v{i}": [f"results_v{i}"], f"cache_v{i}": [f"cache_v{i}"]},
+                    "outputs": {"report": [f"report_v{i}"]},
+                }
+            if multivariant:
+                # Cross-variant modules need every sweep; they get their own
+                # node with ONLY the multivariant scale, so the campaign-wide
+                # process runs nothing a per-variant gather already ran.
+                state["analysis"] = {
+                    "_type": "step",
+                    "address": "local:AnalysisTaskStep",
+                    "config": {
+                        "experiment_id": experiment_id,
+                        "out_dir": "analysis",
+                        "analysis_options": {"multivariant": multivariant},
+                        "variant_indices": indices,
+                        "runner": runner,
+                    },
+                    "inputs": {
+                        **{f"sweep_v{i}": [f"results_v{i}"] for i in indices},
+                        **{f"cache_v{i}": [f"cache_v{i}"] for i in indices},
+                    },
+                    "outputs": {"report": ["report"]},
+                }
     return {"state": state}
