@@ -408,7 +408,7 @@ def test_build_cache_runs_from_the_checkout_but_writes_to_the_work_dir() -> None
     nf = _render_via_generator(n_seeds=1, n_generations=1)
     assert 'WD="\\$PWD"' in nf, "must be ESCAPED: a bare $ is interpolated by Groovy"
     assert 'cd "/app/v2ecoli"' in nf
-    assert '--cache "\\$WD/cache"' in nf
+    assert '--cache "\\$WD/cache_v0"' in nf
     # and it must come back, so the trailing cp writes into the work dir
     assert 'cd "\\$WD"' in nf
 
@@ -571,7 +571,7 @@ def test_independent_founders_reaches_every_lineage() -> None:
         assert cfg["independent_founders"] is True
         # task-local: `cache_dir` is staged as `path "cache"` and ParCa writes
         # simData.cPickle inside it
-        assert cfg["founder_sim_data"] == "cache/simData.cPickle"
+        assert cfg["founder_sim_data"] == "cache_v0/simData.cPickle"
     # and each still draws from its OWN seed -- one founder per lineage_seed is
     # the entire point
     assert sorted(inner[n]["config"]["lineage_seed"] for n in lineages) == [0, 1, 2]
@@ -634,7 +634,7 @@ def test_a_cache_uri_makes_the_node_fetch_instead_of_compute(core) -> None:
 
 
 def test_the_dag_is_unchanged_by_reuse(core) -> None:
-    """The node keeps its `path "cache"` output, so `take: cache` and every
+    """The node keeps its `path "cache_v*"` output (blocker 8: named per variant), so `take: cache` and every
     lineage's staged input are identical. Removing the node instead would leave
     the lineages wired to nothing -- a Nextflow input is fed by a channel, not a
     path."""
@@ -644,7 +644,7 @@ def test_the_dag_is_unchanged_by_reuse(core) -> None:
         ln.split()[1] for ln in nf.splitlines() if ln.startswith("process ")
     ]
     assert names(with_uri) == names(without)
-    assert 'path "cache"' in _parca_block(core, cache_uri="s3://b/c/")
+    assert 'path "cache_v*", type: "dir"' in _parca_block(core, cache_uri="s3://b/c/")
 
 
 def test_a_fetched_cache_is_checked_for_contents(core) -> None:
@@ -652,8 +652,8 @@ def test_a_fetched_cache_is_checked_for_contents(core) -> None:
     and exits 0, leaving a cache-shaped directory that is not a cache. Every
     lineage would then fail far from the cause."""
     block = _parca_block(core, cache_uri="s3://b/c/")
-    assert "test -f cache/simData.cPickle" in block
-    assert "test -f cache/sim_data_cache.dill" in block
+    assert "test -f cache_v0/simData.cPickle" in block
+    assert "test -f cache_v0/sim_data_cache.dill" in block
 
 
 def test_a_variants_own_cache_uri_wins(core) -> None:
@@ -930,3 +930,27 @@ def test_multi_variant_gather_stages_every_variants_cache(core) -> None:
     )
     inputs = doc["state"]["analysis"]["inputs"]
     assert inputs["cache_v0"] == ["cache_v0"] and inputs["cache_v1"] == ["cache_v1"]
+
+
+def test_parca_caches_have_DISTINCT_output_names_across_variants(core) -> None:
+    """Blocker 8 (sim 734): two variants' ParCa tasks both emitted `cache`, and the
+    gather -- which stages every variant's cache -- died on
+    'input file name collision ... cache' after both lineages had SUCCEEDED."""
+    from v2ecoli.composites.workflow_nf import build_workflow_nf
+
+    doc = build_workflow_nf(core=core, n_seeds=1, n_generations=1, include_analysis=True,
+                            variants=[{"variant_name": "a"}, {"variant_name": "b"}], independent_founders=True)
+    names = [doc["state"][f"parca_v{i}"]["config"]["cache_dir"] for i in (0, 1)]
+    assert names == ["cache_v0", "cache_v1"]
+    # the class-level declaration is a glob that matches those names and nothing else
+    from v2ecoli.composites.workflow_nf import ParcaTaskStep
+    import fnmatch
+
+    decl = ParcaTaskStep.nextflow_port_decls["cache_dir"]
+    assert 'type: "dir"' in decl
+    pattern = decl.split('"')[1]
+    assert all(fnmatch.fnmatch(n, pattern) for n in names) and not fnmatch.fnmatch("cache_dir.json", pattern)
+    # every lineage's founder pointer follows its own variant's cache
+    for i in (0, 1):
+        lin = doc["state"][f"runs_v{i}"]["config"]["state"][f"lineage_v{i}_s0"]["config"]
+        assert lin["founder_sim_data"] == f"cache_v{i}/simData.cPickle"

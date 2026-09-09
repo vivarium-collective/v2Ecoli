@@ -142,7 +142,16 @@ class ParcaTaskStep(Step):
         "cache_uri": {"_type": "string", "_default": ""},
     }
 
-    nextflow_port_decls = {"cache_dir": 'path "cache"'}
+    # Blocker 8 (sim 734, 2026-09-09): the gather stages EVERY variant's cache,
+    # and ParCa tasks that all emit a directory literally named `cache` collide
+    # there exactly as the lineages once collided on `sweep` (blocker 5):
+    # "input file name collision -- multiple input files for each of the
+    # following file names: cache". Same fix: a class-level glob (this decl is
+    # read off the class, so it cannot vary per node) and a per-node name,
+    # `cache_v{variant_index}`, set by build_workflow_nf. `type: "dir"` for
+    # the same reason as LineageStep's sweep glob -- run_step writes the port
+    # manifest `cache_dir.json` alongside, and a bare glob would match it.
+    nextflow_port_decls = {"cache_dir": 'path "cache_v*", type: "dir"'}
     # Without a label, `withLabel: parca { cpus/memory/time }` in the executor
     # profile matches NOTHING -- every task silently takes the queue defaults,
     # and in particular gets NO `time`, which is the only bound on a runaway
@@ -590,7 +599,7 @@ def build_workflow_nf(
                 # `cache`, and the task fails with "Missing output file(s)".
                 # Per-variant identity lives in the config and the emitted
                 # partitioning, not in the directory name. (@eagmon, review of #694.)
-                "cache_dir": "cache",
+                "cache_dir": f"cache_v{vi}",
                 "simdata_dir": "parca",
                 # Per-variant wins over the campaign-wide default: a strain sweep
                 # may reuse one cache for some variants and build others.
@@ -639,7 +648,7 @@ def build_workflow_nf(
                 # simData.cPickle inside it, so this resolves against the task's
                 # own work dir rather than any repo layout.
                 config["independent_founders"] = True
-                config["founder_sim_data"] = "cache/simData.cPickle"
+                config["founder_sim_data"] = f"cache_v{vi}/simData.cPickle"
             # Omitted, not empty -- see LineageStep for why the distinction matters.
             if spec.get("injected_processes"):
                 config["injected_processes"] = spec["injected_processes"]
