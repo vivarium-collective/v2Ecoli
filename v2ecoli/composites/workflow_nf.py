@@ -293,9 +293,15 @@ class AnalysisTaskStep(Step):
         # emit --experiment-id/--out-dir, which the CLI rejects with exit 2 (#722).
         # The per-variant sweeps are staged into the task work dir, so sweep_dir is
         # "." -- history_files globs the hive tree recursively from there. The
-        # analyses to run and the task-local out_dir ride in the staged node config
-        # (analysis.config.json), so nothing else goes on the command line.
-        return "v2ecoli-analyze . --config analysis.config.json"
+        # analyses to run and the task-local out_dir ride in the staged node config,
+        # so nothing else goes on the command line. The renderer stages that config
+        # under the NODE's name (`path config_json, stageAs: '<node>.config.json'`):
+        # `analysis.config.json` for the campaign gather, `analysis_v2.config.json`
+        # for a per-variant one (#752). Reference the staged input by its Nextflow
+        # variable, not a literal -- sim 748 (2026-09-09) lost every per-variant
+        # gather to `FileNotFoundError: analysis.config.json` because this line
+        # hard-coded the single-node name.
+        return 'v2ecoli-analyze . --config "${config_json}"'
 
     def update(self, state: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(
