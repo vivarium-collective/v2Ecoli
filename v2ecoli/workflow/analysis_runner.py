@@ -738,14 +738,12 @@ def run_analyses(sweep_dir: str, analysis_options: dict,
     def _analysis_ctx() -> tuple:
         with _ctx_lock:
             if not _ctx:
-                import tempfile
 
                 from viva_emitters import create_duckdb_conn
                 from v2ecoli.library.sweep_io import analysis_temp_dir
                 _dk = duckdb or {}
-                _ctx["conn"] = create_duckdb_conn(
-                    temp_dir=analysis_temp_dir(_dk.get("temp_dir")),
-                    cpus=_dk.get("threads"))
+                _ctx["conn"] = create_duckdb_conn(temp_dir=analysis_temp_dir(_dk.get("temp_dir")),
+                                                  cpus=_dk.get("threads"))
                 apply_analysis_duckdb_config(
                     _ctx["conn"], threads=_dk.get("threads"),
                     max_temp_directory_size=_dk.get("max_temp_directory_size"))
