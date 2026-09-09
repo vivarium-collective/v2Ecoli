@@ -46,7 +46,16 @@ from __future__ import annotations
 # `partial_cell_detection`. Content AND keys change, so the bump is required
 # twice over. A v3 envelope was written WITHOUT the exclusion and its numbers
 # are plausible, so nothing but the key distinguishes them.
-EXTRACTOR_VERSION = 4
+#
+# v4 -> v5: exchange fluxes are DERIVED from per-species dmdt counts on sweeps
+# that do not write the classic array, so a whole GROUP appears that a v4
+# envelope for the same sweep does not contain. ⛔ Without the bump,
+# `load_or_extract` serves the v4 file and the `fluxes` group is silently
+# absent — which is exactly the indistinguishability this doctrine exists to
+# prevent: "this run exchanged nothing we can read" and "this envelope predates
+# the derivation" would look identical, and the first is a fact about the run
+# while the second is a fact about the tooling.
+EXTRACTOR_VERSION = 5
 
 #: A cell whose row count sits below the split is not a complete cell cycle.
 #:
