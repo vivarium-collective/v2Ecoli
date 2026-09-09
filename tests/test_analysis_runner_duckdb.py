@@ -161,6 +161,11 @@ def test_proving_set_end_to_end(tmp_path):
     # ptools TSV files written to sweep/ptools/
     rna_tsvs = _glob.glob(str(sweep / "ptools" / "ptools_rna__*.tsv"))
     assert rna_tsvs, "no ptools_rna TSV written under sweep/ptools/"
+    # the cost block rides alongside, per scale/module/group, without touching results
+    rt = res.get("runtime") or {}
+    assert rt.get("single", {}).get("ptools_rna"), rt
+    snap = next(iter(rt["single"]["ptools_rna"].values()))
+    assert snap["elapsed_s"] >= 0 and "duckdb_memory_mb_after" in snap
     rxns_tsvs = _glob.glob(str(sweep / "ptools" / "ptools_rxns__*.tsv"))
     assert rxns_tsvs, "no ptools_rxns TSV written under sweep/ptools/"
     # TSV content sanity: first non-comment row should start with "$"
