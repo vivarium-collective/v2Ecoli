@@ -4600,7 +4600,7 @@ requires-dist = [
     { name = "v2ecoli", extras = ["parquet", "xarray"], marker = "extra == 'emitters'" },
     { name = "vecoli", extras = ["dev"], specifier = ">=1.1.0" },
     { name = "viva-copasi", git = "https://github.com/vivarium-collective/viva-copasi.git?branch=main" },
-    { name = "viva-emitters", extras = ["parquet", "xarray"], specifier = ">=0.3.0" },
+    { name = "viva-emitters", extras = ["parquet", "xarray"], specifier = ">=0.4.0" },
     { name = "viva-munk", git = "https://github.com/vivarium-collective/Viva-munk.git?branch=main" },
     { name = "viva-superpowers", git = "https://github.com/vivarium-collective/viva-superpowers.git?branch=main" },
     { name = "viva-workspace", git = "https://github.com/vivarium-collective/viva-workspace.git?branch=main" },
@@ -4699,16 +4699,16 @@ dependencies = [
 
 [[package]]
 name = "viva-emitters"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bigraph-schema" },
     { name = "numpy" },
     { name = "process-bigraph" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2f/aa/08cd88ca7f4dba33de73fde454661c798cdb86915daec374630f0c9f09e2/viva_emitters-0.3.0.tar.gz", hash = "sha256:a87b13f9b0f57a426149f43b307b2dd03ae63f299ec794778569215a0297f033", size = 131919, upload-time = "2026-08-21T07:16:06.961Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/37/8b/f4a463d0707dce8457c00769158550f41bbb318c2d15fe8d5e32b9151251/viva_emitters-0.4.0.tar.gz", hash = "sha256:104db3834f702f45e971f796fddcc265e911bec03a8735f6b44a5972191e8064", size = 139706, upload-time = "2026-09-09T18:25:52.57Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f2/47/526ed57e2da5899c02ebcef2008870071bce067ed83070dc7fcc61848a1a/viva_emitters-0.3.0-py3-none-any.whl", hash = "sha256:2c656c28efb1e74715924d12418fdf8d0b0d44e7a32a4de39e49d13fbf112340", size = 110289, upload-time = "2026-08-21T07:16:05.589Z" },
+    { url = "https://files.pythonhosted.org/packages/71/64/b5f458125ca7399fdf2b5c3ba199d6db2ccddfbe59de45bd53b67191a677/viva_emitters-0.4.0-py3-none-any.whl", hash = "sha256:5e232230b2bdc46f9e2157c6d78e1d89e332792ced3e2050c851be5b1faf9d2e", size = 114543, upload-time = "2026-09-09T18:25:50.91Z" },
 ]
 
 [package.optional-dependencies]
