@@ -45,3 +45,40 @@ def test_the_previously_declared_paths_are_all_still_present():
         "reactor", "population", "lineage",
     ):
         assert path in declared, f"{path} dropped from the declared emit paths"
+
+
+def test_environment_binds_the_agent_store_not_the_document_one():
+    """``declared_emit_set`` classifies a declared root by WHERE IT IS FOUND in
+    the built state, not by ``COUPLED_DOCUMENT_EMIT_ROOTS``:
+
+        root in agent_state -> agent leaf
+        root in document    -> ROOT leaf
+        neither             -> agent leaf (catch-all)
+
+    This composite creates a top-level ``environment`` store unconditionally,
+    so if an agent is built WITHOUT its own ``environment`` the declared root
+    binds the document store instead -- the wrong one -- and the per-agent
+    ``exchange`` leaves stay absent while the run still looks fixed.
+    """
+    from v2ecoli.library.parquet_run import declared_emit_set
+
+    class _Fake:
+        def __init__(self, state):
+            self.state = state
+
+    agent_with = _Fake({
+        "environment": {"external_concentrations": {}},   # document-level
+        "agents": {"0": {"bulk": [1], "environment": {"exchange": {}}}},
+    })
+    agent_leaves, root_leaves = declared_emit_set(agent_with, reactor_bird_coupled)
+    assert ("environment",) in agent_leaves
+    assert ("environment",) not in root_leaves
+
+    # The hazard, stated as a test so it cannot be forgotten: no agent-side
+    # environment store => the declared root binds the document one.
+    agent_without = _Fake({
+        "environment": {"external_concentrations": {}},
+        "agents": {"0": {"bulk": [1]}},
+    })
+    _, root_leaves_bad = declared_emit_set(agent_without, reactor_bird_coupled)
+    assert ("environment",) in root_leaves_bad

@@ -101,10 +101,15 @@ def test_declared_emit_set_splits_agent_and_document_roots():
         "agents": {"0": {
             "global_time": 0.0, "bulk": [1], "listeners": {"mass": {}},
             "boundary": {"external": {}},
+            # environment.exchange is initialised into the agent from the cache
+            # bundle on a real build; model it so the split is exercised on the
+            # branch that matters rather than on declared_emit_set's catch-all.
+            "environment": {"exchange": {}},
         }},
     })
     agent_leaves, root_leaves = declared_emit_set(fake, reactor_bird_coupled)
-    assert agent_leaves == [("bulk",), ("listeners",), ("boundary",)]
+    assert agent_leaves == [
+        ("bulk",), ("listeners",), ("boundary",), ("environment",)]
     assert root_leaves == [("reactor",), ("population",), ("lineage",)]
 
 
