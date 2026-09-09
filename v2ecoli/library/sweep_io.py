@@ -184,10 +184,36 @@ def analysis_memory_budget_bytes() -> int | None:
     return int(n * 0.7) if n else None
 
 
-def apply_analysis_duckdb_config(conn) -> None:
+def apply_analysis_duckdb_config(conn, *, threads: int | None = None,
+                                 max_temp_directory_size: str | None = None) -> None:
     """Set the explicit memory_limit on an analysis DuckDB connection so it spills
     to its temp_directory at the container's real budget instead of overshooting
-    host RAM. No-op when no budget is known (keeps DuckDB's default)."""
+    host RAM. No-op when no budget is known (keeps DuckDB's default).
+
+    ``threads`` / ``max_temp_directory_size`` are the two other knobs DuckDB
+    itself names in its out-of-memory message ("Reducing the number of threads
+    (SET threads=X)"; "This limit was set by the 'max_temp_directory_size'
+    setting"). Measured on CD2 Run 2's Nextflow gather (sim 683, 10 seeds x 8
+    generations, 27 GB of history): five multiseed modules ran concurrently on a
+    32 GB task, pinned 22.3 GiB and spilled the temp directory's whole 63.7 GiB
+    cap, and all five died. Both are left alone when None.
+    """
     limit = analysis_memory_limit()
     if limit:
         conn.execute(f"SET memory_limit = '{limit}'")
+    if threads:
+        conn.execute(f"SET threads = {int(threads)}")
+    if max_temp_directory_size:
+        conn.execute(f"SET max_temp_directory_size = '{max_temp_directory_size}'")
+
+
+def analysis_temp_dir(preferred: str | None = None) -> str:
+    """Where an analysis DuckDB spills. ``V2E_DUCKDB_TEMP_DIR`` (env) wins, then
+    ``preferred`` (a caller's choice, e.g. the Nextflow task's own work dir --
+    relative paths resolve against cwd), then the system temp dir. Created if
+    missing: DuckDB refuses a temp_directory that does not exist."""
+    import os
+    import tempfile
+    chosen = os.environ.get("V2E_DUCKDB_TEMP_DIR") or preferred or tempfile.gettempdir()
+    os.makedirs(chosen, exist_ok=True)
+    return chosen

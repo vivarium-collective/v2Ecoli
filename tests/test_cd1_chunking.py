@@ -66,7 +66,7 @@ def test_default_chunk_size_matches_documented_constant_for_both_entry_points():
     """Regression guard (item 77): every OTHER test above passes an explicit
     chunk_size=1/2, so none of them would catch a future silent regression
     back to the old chunk_size=1 default. Confirm both `distinct_cell_filters`
-    and `run_chunked` batch by DEFAULT_CD1_CHUNK_SIZE (100) when chunk_size is
+    and `run_chunked` batch by DEFAULT_CD1_CHUNK_SIZE (8 since sim 742) when chunk_size is
     omitted entirely, for an n_cells that spans multiple chunks at that size.
     """
     import math
@@ -77,9 +77,9 @@ def test_default_chunk_size_matches_documented_constant_for_both_entry_points():
         run_chunked,
     )
 
-    assert DEFAULT_CD1_CHUNK_SIZE == 100
+    assert DEFAULT_CD1_CHUNK_SIZE == 8
 
-    n_cells = 250  # spans multiple chunks at the default size (250 -> 3)
+    n_cells = 250  # spans many chunks at the default size (250 -> 32)
     conn = duckdb.connect()
     conn.register(
         "many_cells",
@@ -489,3 +489,65 @@ def test_cd1_exchange_fluxes_separates_generations_not_just_seeds():
     assert set(header[3:]) == {
         "Cell: 0_0_0", "Cell: 0_1_0", "Cell: 1_0_0", "Cell: 1_1_0",
     }
+
+
+# ---------------------------------------------------------------------------
+# cd1_higher_order_properties went through run_chunked in the sim-742 memory
+# work (it was one of the two 44.8 GiB modules). Chunking must not change a
+# single value: every aggregate is GROUP BY cell and a cell never spans two
+# batches. Five cells so that chunk_size=2 yields uneven batches [2, 2, 1].
+# ---------------------------------------------------------------------------
+
+
+def _hop_history():
+    n_cells, per_cell = 5, 3
+    rows = n_cells * per_cell
+    cols = {
+        "experiment_id": ["e"] * rows,
+        "variant": [0] * rows,
+        "lineage_seed": [i // per_cell % 3 for i in range(rows)],
+        "generation": [i // per_cell // 3 for i in range(rows)],
+        "agent_id": ["0"] * rows,
+        "global_time": [float(i % per_cell) for i in range(rows)],
+        "listeners__mass__cell_mass": [1000.0 + 37.0 * i for i in range(rows)],
+        "listeners__mass__dry_mass": [300.0 + 11.0 * i for i in range(rows)],
+        "listeners__mass__volume": [1.0 + 0.05 * i for i in range(rows)],
+        "listeners__mass__dna_mass": [10.0 + 0.5 * i for i in range(rows)],
+        "listeners__mass__rna_mass": [60.0 + 1.5 * i for i in range(rows)],
+        "bulk__id": [["ATP[c]", "glycogen-monomer[c]", "GLC[p]"]] * rows,
+        "bulk__count": [[5, 1000 + 13 * i, 7] for i in range(rows)],
+    }
+    return _history_conn(cols)
+
+
+@pytest.mark.parametrize("chunk_size", [1, 2, 100])
+def test_cd1_higher_order_properties_chunked_is_identical_to_unchunked(chunk_size):
+    from v2ecoli.workflow.analyses.cd1_higher_order_properties import (
+        Cd1HigherOrderProperties,
+    )
+
+    conn, history_sql = _hop_history()
+    sim_data = types.SimpleNamespace()
+    unchunked = _run_step(Cd1HigherOrderProperties, sim_data, conn, history_sql, {"chunk_size": 1000})
+    chunked = _run_step(Cd1HigherOrderProperties, sim_data, conn, history_sql, {"chunk_size": chunk_size})
+    assert chunked["data"]["n_cells"] == 5
+    assert chunked["data"]["tsv"] == unchunked["data"]["tsv"]
+    header = chunked["data"]["tsv"].splitlines()[0].split("\t")
+    # the column order the single ORDER BY query produced, preserved by the re-sort
+    # ORDER BY the id columns: lineage_seed before generation
+    assert header[3:] == ["Cell: 0_0_0", "Cell: 0_1_0", "Cell: 1_0_0", "Cell: 1_1_0", "Cell: 2_0_0"]
+
+
+def test_cd1_higher_order_properties_chunked_matches_hand_computed_means():
+    from v2ecoli.workflow.analyses.cd1_higher_order_properties import (
+        Cd1HigherOrderProperties,
+    )
+
+    conn, history_sql = _hop_history()
+    out = _run_step(Cd1HigherOrderProperties, types.SimpleNamespace(), conn, history_sql, {"chunk_size": 2})
+    rows = {r[0]: r for r in [line.split("\t") for line in out["data"]["tsv"].splitlines()[1:]]}
+    # first cell = rows 0..2: volume mean of 1.0, 1.05, 1.10
+    vol = [r for r in rows if r.startswith("Cell volume")][0]
+    assert abs(float(rows[vol][3]) - 1.05) < 1e-12
+    # last column = Cell: 2_0_0 = rows 6..8: volume mean of 1.30, 1.35, 1.40
+    assert abs(float(rows[vol][7]) - 1.35) < 1e-12

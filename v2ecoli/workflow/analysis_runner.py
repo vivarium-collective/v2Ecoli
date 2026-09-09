@@ -21,6 +21,7 @@ import concurrent.futures
 import glob
 import json
 import os
+import sys
 import re
 import warnings
 from typing import Any
@@ -607,10 +608,38 @@ def _register_plugin_analyses() -> None:
             )
 
 
+def _runtime_snapshot(cursor: Any, t0: float) -> dict[str, Any]:
+    """Cost of the module that just ran, for the analysis.json ``runtime`` block.
+
+    No effect on results: wall time, the process's peak RSS so far (monotonic --
+    meaningful per module when ``runner.max_workers`` is 1), and DuckDB's own
+    view of what is still resident/spilled after the query (``duckdb_memory()``
+    reports current usage, not a peak; the peak is bounded by ``memory_limit``).
+    Written so a gather's failure ("22.3 GiB/22.3 GiB pinned", sim 683) and any
+    later query rewrite can be compared quantitatively rather than by feel.
+    """
+    import resource
+    import time
+    snap: dict[str, Any] = {
+        "elapsed_s": round(time.perf_counter() - t0, 3),
+        "process_peak_rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1024 ** 2 if sys.platform == "darwin" else 1024), 1),
+    }
+    try:
+        row = cursor.execute(
+            "SELECT COALESCE(SUM(memory_usage_bytes), 0), COALESCE(SUM(temporary_storage_bytes), 0) FROM duckdb_memory()"
+        ).fetchone()
+        snap["duckdb_memory_mb_after"] = round((row[0] or 0) / 1024 ** 2, 1)
+        snap["duckdb_temp_mb_after"] = round((row[1] or 0) / 1024 ** 2, 1)
+    except Exception as e:  # noqa: BLE001 -- a metric must never fail the analysis
+        snap["duckdb_memory_error"] = f"{type(e).__name__}: {e}"
+    return snap
+
+
 def run_analyses(sweep_dir: str, analysis_options: dict,
                  sim_data_path: str | None = None,
                  out_dir: str | None = None,
-                 max_workers: int | None = None) -> dict:
+                 max_workers: int | None = None,
+                 duckdb: dict | None = None) -> dict:
     """Run the analyses named in ``analysis_options`` over the sweep's cells,
     write ``analysis.json``, and return the nested results.
 
@@ -720,6 +749,7 @@ def run_analyses(sweep_dir: str, analysis_options: dict,
         records = cell_keys(sweep_dir)
     core = allocate_core()
     results: dict[str, dict] = {}
+    _runtime: dict[str, dict] = {}  # scale -> name -> group -> cost snapshot
     # Provisioned once on first use and shared across every Analysis step, so the
     # large sim_data pickle is loaded only once per run (not once per analysis),
     # and a single DuckDB connection is reused.
@@ -737,11 +767,15 @@ def run_analyses(sweep_dir: str, analysis_options: dict,
     def _analysis_ctx() -> tuple:
         with _ctx_lock:
             if not _ctx:
-                import tempfile
 
                 from viva_emitters import create_duckdb_conn
-                _ctx["conn"] = create_duckdb_conn(temp_dir=tempfile.gettempdir())
-                apply_analysis_duckdb_config(_ctx["conn"])
+                from v2ecoli.library.sweep_io import analysis_temp_dir
+                _dk = duckdb or {}
+                _ctx["conn"] = create_duckdb_conn(temp_dir=analysis_temp_dir(_dk.get("temp_dir")),
+                                                  cpus=_dk.get("threads"))
+                apply_analysis_duckdb_config(
+                    _ctx["conn"], threads=_dk.get("threads"),
+                    max_temp_directory_size=_dk.get("max_temp_directory_size"))
                 _ctx["from_clause"] = _history_from_clause(sweep_dir)
                 if sim_data_path is not None:
                     from v2ecoli.library.sim_data import LoadSimData
@@ -790,6 +824,8 @@ def run_analyses(sweep_dir: str, analysis_options: dict,
         per_group: dict[str, Any] = {}
         for gkey in groups:
             gstr = _group_key_str(scale, gkey)
+            import time as _time
+            _t0 = _time.perf_counter()
             try:
                 history_sql = scale_history_sql(scale, from_clause, gkey)
                 out = step.update({
@@ -816,6 +852,7 @@ def run_analyses(sweep_dir: str, analysis_options: dict,
                 per_group[gstr] = out.get("data", {})
             except Exception as e:
                 per_group[gstr] = {"error": f"{type(e).__name__}: {e}"}
+            _runtime.setdefault(scale, {}).setdefault(name, {})[gstr] = _runtime_snapshot(cursor, _t0)
         return per_group
 
     # A declared analysis that never runs is a silent deliverable hole: a study
@@ -957,6 +994,7 @@ def run_analyses(sweep_dir: str, analysis_options: dict,
     results["status"] = "PARTIAL" if overall_bad else "OK"
     results["summary"] = summary
     results["errors"] = errors
+    results["runtime"] = _runtime
 
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "analysis.json"), "w") as f:
@@ -1005,6 +1043,7 @@ def main() -> None:
 
     analysis_options: dict = {}
     out_dir: str | None = None
+    runner: dict = {}
     if args.config:
         from v2ecoli.workflow.config import load_config_with_inheritance
         cfg = load_config_with_inheritance(args.config)
@@ -1013,10 +1052,19 @@ def main() -> None:
         # `<sweep_dir> [--config]`; a Nextflow task sets it to a task-local name
         # ("analysis") that matches its declared `path` output.
         out_dir = cfg.get("out_dir") or None
+        # Optional resource knobs, in the config rather than argv so the CLI
+        # contract (sweep_dir + --config) does not move:
+        #   runner.max_workers                      concurrent named analyses (1 = serial)
+        #   runner.duckdb.threads                   SET threads
+        #   runner.duckdb.temp_dir                  DuckDB spill dir (relative -> cwd)
+        #   runner.duckdb.max_temp_directory_size   e.g. "200GB"
+        runner = cfg.get("runner") or {}
     if not analysis_options:
         print("no analysis_options found; nothing to run")
         return
-    run_analyses(args.sweep_dir, analysis_options, out_dir=out_dir)
+    run_analyses(args.sweep_dir, analysis_options, out_dir=out_dir,
+                 max_workers=runner.get("max_workers"),
+                 duckdb=runner.get("duckdb"))
     print(f"Wrote {os.path.join(out_dir or args.sweep_dir, 'analysis.json')}")
 
 

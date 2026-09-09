@@ -285,6 +285,9 @@ def test_parallel_output_identical_to_serial(monkeypatch, tmp_path):
                               out_dir=str(tmp_path / "out_serial"), max_workers=1)
     parallel = ar.run_analyses(str(tmp_path), opts,
                                 out_dir=str(tmp_path / "out_parallel"), max_workers=4)
+    # `runtime` is wall time / RSS / DuckDB memory per module -- measured, so it
+    # legitimately differs between the two runs; everything else must be identical.
+    assert set(serial.pop("runtime")) == set(parallel.pop("runtime"))
     assert serial == parallel
     assert list(serial["multiseed"]) == ["fake_a", "fake_b", "fake_c"]
     assert list(parallel["multiseed"]) == ["fake_a", "fake_b", "fake_c"], (

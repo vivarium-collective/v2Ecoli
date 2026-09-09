@@ -322,7 +322,16 @@ _CD1_ID_COLS = ["experiment_id", "variant", "lineage_seed", "generation", "agent
 # run_chunked -- confirmed live as the direct cause of a 5+ hour analysis run.
 # 100 cuts that to ~400. Still exposed as a per-module tunable `chunk_size`
 # config_schema param, not hardcoded -- see cd1_fluxomics.py etc.
-DEFAULT_CD1_CHUNK_SIZE = 100
+# Cells per DuckDB batch in the cd1 explode+aggregate modules. 100 looked
+# generous until a real campaign had FEWER cells than that: CD2 Run 2 at 10
+# seeds x 8 generations is 80 cells, so the "chunking" ran the whole variant
+# as ONE batch and cd1_metabolomics / cd1_higher_order_properties still needed
+# 44.8 GiB each on the gather (sim 742, 2026-09-09). A batch is bounded by
+# chunk x rows-per-cell x list width (bulk__count is ~16k wide), so 8 keeps a
+# 10 x 8 campaign near 2-3 GB per batch; a module's own `chunk_size` param
+# still overrides. Results are identical for any chunk size: every cd1
+# aggregate is GROUP BY cell, and a group never spans two batches.
+DEFAULT_CD1_CHUNK_SIZE = 8
 
 
 def _sql_literal(value) -> str:
