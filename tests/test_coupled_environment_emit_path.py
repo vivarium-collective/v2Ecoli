@@ -82,3 +82,32 @@ def test_environment_binds_the_agent_store_not_the_document_one():
     })
     _, root_leaves_bad = declared_emit_set(agent_without, reactor_bird_coupled)
     assert ("environment",) in root_leaves_bad
+
+
+def test_agent_frame_is_checked_before_the_document_frame():
+    """``environment`` exists in BOTH frames on a real coupled build, so the
+    binding is decided by CHECK ORDER, not by the store being absent from the
+    document.
+
+    ``declared_emit_set`` tests ``if root in agent_state`` before
+    ``elif root in state``. Swap those two branches and a declared
+    ``environment`` silently binds the document store instead -- the per-agent
+    ``exchange`` leaves vanish while the top-level column list still looks
+    populated, so the change reads as working. Measured on a real build:
+    ``environment`` is present in the agent state AND in the document state.
+    """
+    from v2ecoli.library.parquet_run import declared_emit_set
+
+    class _Fake:
+        def __init__(self, state):
+            self.state = state
+
+    both_frames = _Fake({
+        "environment": {"external_concentrations": {}},   # document level
+        "reactor": {}, "population": {}, "lineage": {},
+        "agents": {"0": {"bulk": [1], "environment": {"exchange": {}}}},
+    })
+    agent_leaves, root_leaves = declared_emit_set(both_frames, reactor_bird_coupled)
+    assert ("environment",) in agent_leaves, (
+        "agent frame must win when the root exists in both")
+    assert ("environment",) not in root_leaves
