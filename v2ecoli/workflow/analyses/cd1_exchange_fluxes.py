@@ -165,6 +165,7 @@ class Cd1ExchangeFluxes(Analysis):
             FROM ({flux_subquery})
             {filter_clause}
             GROUP BY {id_cols}
+            ORDER BY {id_cols}
             """
         ).pl()
 

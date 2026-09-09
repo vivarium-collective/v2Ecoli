@@ -30,9 +30,11 @@ from unum import Unum
 from wholecell.utils import units
 
 from v2ecoli.workflow.analyses._helpers import (
+    DEFAULT_CD1_CHUNK_SIZE,
     bulk_field_ids,
     cd1_filter_clause,
     read_stacked_columns,
+    run_chunked,
     with_cross_cell_stats,
 )
 from v2ecoli.workflow.analysis import Analysis
@@ -47,6 +49,7 @@ class Cd1HigherOrderProperties(Analysis):
     config_schema = {
         "generation_lower_bound": "integer",
         "time_lower_bound": "float",
+        "chunk_size": {"_type": "integer", "_default": DEFAULT_CD1_CHUNK_SIZE},
     }
 
     def analyze(
@@ -60,6 +63,7 @@ class Cd1HigherOrderProperties(Analysis):
     ) -> dict:
         params = {**(self.config or {}), **(variant_metadata or {})}
         filter_clause = cd1_filter_clause(params)
+        chunk_size = int(params.get("chunk_size", DEFAULT_CD1_CHUNK_SIZE))
 
         # Shim A: parquet bulk ordering, the equivalent of field_metadata("bulk")
         bulk_ids = bulk_field_ids(conn, history_sql)
@@ -92,13 +96,18 @@ class Cd1HigherOrderProperties(Analysis):
         mass_scale = Unum.asNumber(units.mg / units.fg) * 10**-9
 
         id_cols = ", ".join(_ID_COLS)
-        aggregated = conn.sql(
-            f"""
-            WITH history AS ({history_subquery}),
-            filtered AS (
-                SELECT * FROM history
-                {filter_clause}
-            )
+        # Chunked per cell (sim 742: this module alone needed 44.8 GiB at 10 x 8
+        # -- `bulk__count[i]` still decodes every row's ~16k-wide list). The
+        # aggregate is GROUP BY the cell columns, so batching by cell changes
+        # nothing but peak memory; rows are re-sorted below to keep the
+        # ORDER BY the single query had.
+        filtered_sql = f"""
+            SELECT * FROM ({history_subquery})
+            {filter_clause}
+        """
+
+        def _batch_sql(cell_filter: str) -> str:
+            return f"""
             SELECT
                 {id_cols},
                 AVG(listeners__mass__cell_mass / {mass_scale}) AS mass_converted,
@@ -109,11 +118,16 @@ class Cd1HigherOrderProperties(Analysis):
                     / NULLIF(listeners__mass__dry_mass, 0)) AS rna_converted,
                 AVG(glycogen_raw * {glycogen_scale}
                     / NULLIF(listeners__mass__dry_mass, 0)) AS glycogen_converted
-            FROM filtered
+            FROM ({filtered_sql})
+            WHERE {cell_filter}
             GROUP BY {id_cols}
-            ORDER BY {id_cols}
             """
-        ).pl()
+
+        aggregated = run_chunked(
+            conn, filtered_sql, _batch_sql, id_cols=_ID_COLS, chunk_size=chunk_size
+        )
+        if not aggregated.is_empty():
+            aggregated = aggregated.sort(_ID_COLS)
 
         if aggregated.is_empty():
             empty = pl.DataFrame({"Properties": [], "mean": [], "std": []})
