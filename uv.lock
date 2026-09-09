@@ -341,7 +341,7 @@ wheels = [
 [[package]]
 name = "bigraph-schema"
 version = "1.6.0"
-source = { git = "https://github.com/vivarium-collective/bigraph-schema.git?branch=main#c19194a0f9b005b1ec9de5fa661271279746a861" }
+source = { git = "https://github.com/vivarium-collective/bigraph-schema.git?branch=main#8268aa142cf2984b575f5762c773cab10c19772d" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
