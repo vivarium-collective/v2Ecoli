@@ -177,8 +177,11 @@ def test_analysis_task_argv_parses_against_the_real_cli(core) -> None:
     line = next(
         l for l in script.splitlines() if l.strip().startswith("v2ecoli-analyze")
     )
-    args = build_analysis_arg_parser().parse_args(shlex.split(line)[1:])
-    assert args.sweep_dir == "." and args.config == "analysis.config.json"
+    # Nextflow substitutes the staged input's variable before the shell sees
+    # it (sim 748: a literal name broke every per-variant gather).
+    staged = line.replace("${config_json}", "analysis_v2.config.json")
+    args = build_analysis_arg_parser().parse_args(shlex.split(staged)[1:])
+    assert args.sweep_dir == "." and args.config == "analysis_v2.config.json"
 
 
 def test_analysis_options_reach_the_gather_config() -> None:
@@ -1007,3 +1010,31 @@ def test_gather_output_decl_is_a_dir_glob_that_cannot_match_its_manifest() -> No
     assert 'type: "dir"' in decl
     assert fnmatch.fnmatch("analysis", pattern) and fnmatch.fnmatch("analysis_v7", pattern)
     assert not fnmatch.fnmatch("report.json", pattern)
+
+
+def test_every_analysis_process_reads_the_config_it_was_staged_with() -> None:
+    """sim 748 (2026-09-09): the per-variant gathers (#752) are staged with
+    `stageAs: 'analysis_v2.config.json'` but the script hard-coded
+    `analysis.config.json`, so all three failed with FileNotFoundError after
+    the lineages had published. The script must reference the staged input
+    by its Nextflow variable (`${config_json}`) or by the exact stageAs name."""
+    import re
+
+    nf = _render_via_generator(
+        n_seeds=1,
+        include_analysis=True,
+        variants=[{"variant_name": "a"}, {"variant_name": "b"}, {"variant_name": "c"}],
+    )
+    blocks = re.findall(r"process (analysis\w*) \{(.*?)\n\}", nf, re.S)
+    names = sorted(n for n, _ in blocks)
+    assert names == ["analysis_v0", "analysis_v1", "analysis_v2"] or "analysis" in names, names
+    for name, body in blocks:
+        staged = re.search(r"path config_json, stageAs: '([^']+)'", body)
+        assert staged, f"{name}: no staged config"
+        script = body.split("script:", 1)[1]
+        assert "${config_json}" in script or staged.group(1) in script, (
+            f"{name} is staged as {staged.group(1)} but its script says: {script.strip()}"
+        )
+        assert "analysis.config.json" not in script or staged.group(1) == "analysis.config.json", (
+            f"{name} hard-codes the single-node config name"
+        )
