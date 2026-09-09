@@ -332,6 +332,11 @@ class Metabolism(Step):
         'ppgpp_id': {'_type': 'string', '_default': 'ppgpp'},
         'removed_aa_uptake': {'_type': 'list[string]', '_default': []},
         'seed': {'_type': 'integer', '_default': 0},
+        # Sulfadiazine DHPS competitive inhibition (opt-in, default off). When
+        # True, cytoplasmic sulfadiazine (CPD-20940[c]) competitively throttles
+        # the H2PTEROATESYNTH-RXN (DHPS) upper bound against PABA, starving
+        # folate synthesis. See _do_update.
+        'sulfadiazine': {'_type': 'boolean', '_default': False},
         'time_step': {'_type': 'integer', '_default': 1},
         'use_trna_charging': {'_type': 'boolean', '_default': False},
     }
@@ -451,6 +456,8 @@ class Metabolism(Step):
         self.use_trna_charging = self.parameters["use_trna_charging"]
         self.include_ppgpp = self.parameters["include_ppgpp"]
         self.mechanistic_aa_transport = self.parameters["mechanistic_aa_transport"]
+        # Sulfadiazine DHPS competitive inhibition (opt-in, default off).
+        self.sulfadiazine = self.parameters.get("sulfadiazine", False)
         self.current_timeline = self.parameters["current_timeline"]
         self.media_id = self.parameters["media_id"]
         self.exchange_molecules = self.parameters["exchange_molecules"]
@@ -633,6 +640,22 @@ class Metabolism(Step):
         self.kinetics_substrates_idx = bulk_name_to_idx(
             self.model.kinetic_constraint_substrates, bulk_ids)
         self.aa_idx = bulk_name_to_idx(self.aa_names, bulk_ids)
+
+        # Sulfadiazine DHPS competitive inhibition (opt-in): precompute the
+        # bulk indices for PABA (substrate), sulfadiazine (competitive
+        # inhibitor), and the DHPS enzyme complex. If any species is absent
+        # after partition, warn and disable the term rather than crashing.
+        if self.sulfadiazine:
+            try:
+                self._paba_idx = bulk_name_to_idx("P-AMINO-BENZOATE[c]", bulk_ids)
+                self._sulfa_idx = bulk_name_to_idx("CPD-20940[c]", bulk_ids)
+                self._dhps_cplx_idx = bulk_name_to_idx(
+                    "H2PTEROATESYNTH-CPLX[c]", bulk_ids)
+            except ValueError as exc:
+                warnings.warn(
+                    "sulfadiazine=True but a required bulk species is absent "
+                    f"({exc}); disabling the DHPS inhibition term.")
+                self.sulfadiazine = False
 
     def _fba_output_to_deltas(self, fba_out, metabolite_counts_init,
                               counts_to_molar, coefficient, timestep):
@@ -896,6 +919,26 @@ class Metabolism(Step):
         # Solve FBA problem and update states
         n_retries = 3
         fba = self.model.fba
+
+        # Sulfadiazine DHPS competitive inhibition (opt-in): cap the DHPS
+        # reaction upper bound by a competitive-inhibition rate law on PABA,
+        # so cytoplasmic sulfadiazine (CPD-20940[c]) starves folate synthesis.
+        # Applied AFTER set_reaction_targets and BEFORE the flux pins / solve.
+        # Ported from the vEcoli reference (Nat. Commun. s41467-023-39778-7
+        # Table 1 kinetics); upper-bound cap only (no lower bound).
+        if self.sulfadiazine:
+            ctm = counts_to_molar.to(CONC_UNITS).magnitude
+            paba = counts(states["bulk"], self._paba_idx) * ctm
+            sulfa = counts(states["bulk"], self._sulfa_idx) * ctm
+            dhps = counts(states["bulk"], self._dhps_cplx_idx) * ctm
+            kcat, km_paba, k_i = 0.38, 7.82e-3, 5.15e-3
+            v_sulfa = kcat * dhps * (
+                paba / (km_paba * (1 + sulfa / k_i) + paba))
+            fba.setReactionFluxBounds(
+                "H2PTEROATESYNTH-RXN",
+                upperBounds=v_sulfa * timestep,
+                raiseForReversible=False,
+            )
 
         # FBA-bridge: hard-pin Millard-ODE-derived reaction fluxes (if any)
         # before solving; relax any pin that makes the LP infeasible.

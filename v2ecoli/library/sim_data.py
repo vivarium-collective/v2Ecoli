@@ -124,6 +124,7 @@ class LoadSimData:
         variable_elongation_translation: bool = False,
         mechanistic_translation_supply: bool = True,
         mechanistic_aa_transport: bool = True,
+        sulfadiazine: bool = False,
         translation_supply: bool = True,
         aa_supply_in_charging: bool = True,
         disable_ppgpp_elongation_inhibition: bool = False,
@@ -193,6 +194,12 @@ class LoadSimData:
             mechanistic_aa_transport: Constrain amino acid uptake based on
                 external concentrations and exchange rates in
                 :py:class:`~ecoli.processes.metabolism.Metabolism`
+            sulfadiazine: If ``True``, cytoplasmic sulfadiazine
+                (``CPD-20940[c]``) competitively inhibits DHPS
+                (``H2PTEROATESYNTH-RXN``) on the PABA substrate in
+                :py:class:`~ecoli.processes.metabolism.Metabolism`, capping the
+                reaction upper bound and starving folate synthesis. Off by
+                default.
             translation_supply: Use :py:class:`~ecoli.processes.polypeptide_elongation.TranslationSupplyPolypeptideElongation`
                 instead of :py:class:`~ecoli.processes.polypeptide_elongation.SteadyStatePolypeptideElongation`.
                 Superseded by ``trna_charging``
@@ -226,6 +233,7 @@ class LoadSimData:
         self.variable_elongation_translation = variable_elongation_translation
         self.mechanistic_translation_supply = mechanistic_translation_supply
         self.mechanistic_aa_transport = mechanistic_aa_transport
+        self.sulfadiazine = sulfadiazine
         self.translation_supply = translation_supply
         self.aa_supply_in_charging = aa_supply_in_charging
         self.disable_ppgpp_elongation_inhibition = disable_ppgpp_elongation_inhibition
@@ -1608,6 +1616,7 @@ class LoadSimData:
             or (not self.trna_charging)
             or getattr(metabolism, "force_constant_ppgpp", False),
             "mechanistic_aa_transport": self.mechanistic_aa_transport,
+            "sulfadiazine": self.sulfadiazine,
             # these values came from the initialized environment state
             "current_timeline": current_timeline,
             "media_id": current_timeline[0][1],
