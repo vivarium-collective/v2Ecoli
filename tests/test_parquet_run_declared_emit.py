@@ -249,6 +249,12 @@ def test_runner_coupled_single_lineage_lands_bulk_fba_and_reactor(monkeypatch, t
     # subsumed by the whole listeners/boundary capture).
     assert "listeners__fba_results__external_exchange_fluxes" in cols
     assert "boundary__external__OXYGEN-MOLECULE" in cols
+    # The declared `environment` root, asserted on an EMITTED artifact rather
+    # than on the declaration. Every other test of that root asserts what the
+    # paths list says or classifies a synthetic fake; this is the only one that
+    # would catch the root binding the document store, or resolving to nothing
+    # at all, since either leaves the column list looking populated.
+    assert "environment__exchange__GLC" in cols
 
 
 @needs_cache
