@@ -93,6 +93,9 @@ TOPOLOGY = {
     # FBA-bridge: Millard-ODE-derived hard flux pins written by the coupler at
     # the agent root as {fba_reaction_id: flux_bound}.
     "pinned_flux_targets": ("pinned_flux_targets",),
+    # Externally-imposed reaction flux bounds written by an injected subsystem
+    # at the agent root as {reaction_id: {"upper_bound"?: v, "lower_bound"?: v}}.
+    "imposed_flux_bounds": ("imposed_flux_bounds",),
 }
 
 # Unit conversion constants for FBA flux -> molecule count conversion:
@@ -332,11 +335,6 @@ class Metabolism(Step):
         'ppgpp_id': {'_type': 'string', '_default': 'ppgpp'},
         'removed_aa_uptake': {'_type': 'list[string]', '_default': []},
         'seed': {'_type': 'integer', '_default': 0},
-        # Sulfadiazine DHPS competitive inhibition (opt-in, default off). When
-        # True, cytoplasmic sulfadiazine (CPD-20940[c]) competitively throttles
-        # the H2PTEROATESYNTH-RXN (DHPS) upper bound against PABA, starving
-        # folate synthesis. See _do_update.
-        'sulfadiazine': {'_type': 'boolean', '_default': False},
         'time_step': {'_type': 'integer', '_default': 1},
         'use_trna_charging': {'_type': 'boolean', '_default': False},
     }
@@ -386,6 +384,10 @@ class Metabolism(Step):
             # FBA-bridge: {fba_reaction_id: flux_bound} hard pins from the
             # Millard ODE coupler. Absent/empty -> no pins -> no-op.
             'pinned_flux_targets': {'_type': 'map[float]', '_default': {}},
+            # Externally-imposed reaction flux bounds from an injected subsystem
+            # as {reaction_id: {"upper_bound"?: v, "lower_bound"?: v}}. Drug- and
+            # mechanism-agnostic; absent/empty -> no-op. See _apply_imposed_bounds.
+            'imposed_flux_bounds': {'_type': 'map[map[float]]', '_default': {}},
         }
 
     def outputs(self):
@@ -456,8 +458,6 @@ class Metabolism(Step):
         self.use_trna_charging = self.parameters["use_trna_charging"]
         self.include_ppgpp = self.parameters["include_ppgpp"]
         self.mechanistic_aa_transport = self.parameters["mechanistic_aa_transport"]
-        # Sulfadiazine DHPS competitive inhibition (opt-in, default off).
-        self.sulfadiazine = self.parameters.get("sulfadiazine", False)
         self.current_timeline = self.parameters["current_timeline"]
         self.media_id = self.parameters["media_id"]
         self.exchange_molecules = self.parameters["exchange_molecules"]
@@ -641,22 +641,6 @@ class Metabolism(Step):
             self.model.kinetic_constraint_substrates, bulk_ids)
         self.aa_idx = bulk_name_to_idx(self.aa_names, bulk_ids)
 
-        # Sulfadiazine DHPS competitive inhibition (opt-in): precompute the
-        # bulk indices for PABA (substrate), sulfadiazine (competitive
-        # inhibitor), and the DHPS enzyme complex. If any species is absent
-        # after partition, warn and disable the term rather than crashing.
-        if self.sulfadiazine:
-            try:
-                self._paba_idx = bulk_name_to_idx("P-AMINO-BENZOATE[c]", bulk_ids)
-                self._sulfa_idx = bulk_name_to_idx("CPD-20940[c]", bulk_ids)
-                self._dhps_cplx_idx = bulk_name_to_idx(
-                    "H2PTEROATESYNTH-CPLX[c]", bulk_ids)
-            except ValueError as exc:
-                warnings.warn(
-                    "sulfadiazine=True but a required bulk species is absent "
-                    f"({exc}); disabling the DHPS inhibition term.")
-                self.sulfadiazine = False
-
     def _fba_output_to_deltas(self, fba_out, metabolite_counts_init,
                               counts_to_molar, coefficient, timestep):
         """Convert the FBA solution into cell-state changes.
@@ -694,6 +678,40 @@ class Metabolism(Step):
         reaction_fluxes = fba_out["reaction_fluxes"] / timestep
         return (delta_metabolites_final, metabolite_counts_final,
                 delta_nutrients, converted_exchange_fluxes, reaction_fluxes)
+
+    def _apply_imposed_bounds(self, fba, imposed_flux_bounds):
+        """Apply externally-imposed reaction flux bounds supplied by an injected
+        subsystem via the ``imposed_flux_bounds`` store, before the LP solve.
+
+        Drug- and mechanism-agnostic: this process only APPLIES the bounds it is
+        handed; the imposing subsystem (e.g. an antibiotic layer in a downstream
+        package) owns which reaction and what value, and computes them from its
+        own state. This keeps ecoli-metabolism free of any drug-specific
+        knowledge. An empty/absent store is a no-op, leaving the LP identical.
+
+        Each entry is ``{reaction_id: {"upper_bound"?: float, "lower_bound"?:
+        float}}`` (either key optional). Unknown reaction ids are skipped with a
+        warning. ``raiseForReversible=False`` matches the pin path's semantics.
+        """
+        if not imposed_flux_bounds:
+            return
+        valid_ids = getattr(self, "_pin_valid_reaction_ids", None)
+        if valid_ids is None:
+            valid_ids = set(fba.getReactionIDs().tolist())
+            self._pin_valid_reaction_ids = valid_ids
+        for rid, bounds in imposed_flux_bounds.items():
+            if rid not in valid_ids:
+                print(f"Warning: ignoring imposed flux bound for unknown "
+                      f"reaction '{rid}'")
+                continue
+            kwargs = {}
+            if "upper_bound" in bounds:
+                kwargs["upperBounds"] = float(bounds["upper_bound"])
+            if "lower_bound" in bounds:
+                kwargs["lowerBounds"] = float(bounds["lower_bound"])
+            if kwargs:
+                fba.setReactionFluxBounds(
+                    rid, raiseForReversible=False, **kwargs)
 
     def _apply_flux_pins(self, fba, pinned_flux_targets):
         """Hard-pin each Millard-ODE-derived reaction flux before the LP solve,
@@ -920,25 +938,10 @@ class Metabolism(Step):
         n_retries = 3
         fba = self.model.fba
 
-        # Sulfadiazine DHPS competitive inhibition (opt-in): cap the DHPS
-        # reaction upper bound by a competitive-inhibition rate law on PABA,
-        # so cytoplasmic sulfadiazine (CPD-20940[c]) starves folate synthesis.
-        # Applied AFTER set_reaction_targets and BEFORE the flux pins / solve.
-        # Ported from the vEcoli reference (Nat. Commun. s41467-023-39778-7
-        # Table 1 kinetics); upper-bound cap only (no lower bound).
-        if self.sulfadiazine:
-            ctm = counts_to_molar.to(CONC_UNITS).magnitude
-            paba = counts(states["bulk"], self._paba_idx) * ctm
-            sulfa = counts(states["bulk"], self._sulfa_idx) * ctm
-            dhps = counts(states["bulk"], self._dhps_cplx_idx) * ctm
-            kcat, km_paba, k_i = 0.38, 7.82e-3, 5.15e-3
-            v_sulfa = kcat * dhps * (
-                paba / (km_paba * (1 + sulfa / k_i) + paba))
-            fba.setReactionFluxBounds(
-                "H2PTEROATESYNTH-RXN",
-                upperBounds=v_sulfa * timestep,
-                raiseForReversible=False,
-            )
+        # Apply any externally-imposed reaction flux bounds supplied by an
+        # injected subsystem via the imposed_flux_bounds store (drug- and
+        # mechanism-agnostic; empty/absent store is a no-op).
+        self._apply_imposed_bounds(fba, states.get("imposed_flux_bounds", {}))
 
         # FBA-bridge: hard-pin Millard-ODE-derived reaction fluxes (if any)
         # before solving; relax any pin that makes the LP infeasible.
