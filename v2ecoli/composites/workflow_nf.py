@@ -86,7 +86,7 @@ def _repo_root() -> str:
     a Groovy string, so `${V2E_ROOT:-/app/v2ecoli}` is interpolated by GROOVY, not
     bash -- it fails at run time with
     `No signature of method: java.lang.String.negative()`, which names nothing
-    useful. Escaping it (`\${...}`) works but puts a Groovy-quoting subtlety in
+    useful. Escaping it (`\\${...}`) works but puts a Groovy-quoting subtlety in
     every Step author's hands, which is the mistake process-bigraph#205 exists to
     stop making.
 
@@ -116,10 +116,10 @@ _PARCA_CHAIN = (
     # `\$WD` is a SHELL variable, escaped so Groovy emits a literal `$`. The
     # in/out paths are made absolute from it, so cd-ing does not move the
     # declared output `cache` out of the work dir where Nextflow looks for it.
-    ' && WD="\$PWD" && cd "{root}"'
+    ' && WD="\\$PWD" && cd "{root}"'
     " && python scripts/build_cache.py"
-    ' --fixture "\$WD/{simdata}/parca_state.pkl.gz" --cache "\$WD/{cache}"'
-    ' && cd "\$WD"'
+    ' --fixture "\\$WD/{simdata}/parca_state.pkl.gz" --cache "\\$WD/{cache}"'
+    ' && cd "\\$WD"'
     " && cp {simdata}/parca_state.pkl.gz {cache}/parca_state.pkl.gz"
 )
 
