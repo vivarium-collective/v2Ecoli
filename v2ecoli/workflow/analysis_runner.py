@@ -984,7 +984,23 @@ def build_analysis_arg_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_analysis_arg_parser().parse_args()
-    if not os.path.isdir(args.sweep_dir):
+    if is_s3_uri(args.sweep_dir):
+        # os.path.isdir() never understands s3:// syntax -- it returns False for
+        # every s3:// URI, valid or not, which blocked EVERY S3-sourced sweep_dir
+        # from ever passing this guard despite the module's own documented,
+        # DuckDB/httpfs-backed S3 support (see the module docstring and
+        # run_analyses()). Found live: viva-api's auto-triggered post-simulation
+        # analysis job (SimulationServiceRay._submit_analysis_job) always passes
+        # an s3:// sweep_dir and always hit this exact SystemExit, for any
+        # dispatch mechanism -- first actually exercised end-to-end by a Run 3
+        # chain-dispatch campaign reaching its own analysis trigger for the first
+        # time (Dispatch 743, 2026-09-09). history_files() is the same existence
+        # check run_analyses() itself relies on moments later (S3-glob via
+        # DuckDB), so a real "nothing there" is still caught, just for the right
+        # reason (no history parquet found, not "not a local directory").
+        if not history_files(args.sweep_dir):
+            raise SystemExit(f"sweep_dir not found or has no history parquet: {args.sweep_dir!r}")
+    elif not os.path.isdir(args.sweep_dir):
         raise SystemExit(f"sweep_dir not found: {args.sweep_dir!r}")
 
     analysis_options: dict = {}

@@ -556,3 +556,65 @@ def test_s3_secret_refresh_is_thread_safe_not_a_catalog_race(monkeypatch, tmp_pa
         assert group == {"n_rows": 1}, (
             f"{n} produced {group!r} instead of a clean result — a catalog "
             "write-write race corrupted or dropped this module's output")
+
+
+# --- main(): the sweep_dir pre-flight guard, local vs. s3:// (2026-09-09) ---
+#
+# os.path.isdir() never understands s3:// syntax -- it returns False for every
+# s3:// URI, valid or not, so main() unconditionally rejected any S3-sourced
+# sweep_dir despite the module's own documented S3 support. Found live: viva-api's
+# auto-triggered post-simulation analysis job always passes an s3:// sweep_dir and
+# always hit this exact SystemExit (Dispatch 743:Run 3, first real chain-dispatch
+# campaign ever to reach its own analysis trigger).
+
+
+def test_main_still_raises_the_original_message_for_a_missing_local_dir(monkeypatch, tmp_path):
+    """Local-path behavior is unchanged -- still a bare os.path.isdir() check,
+    still the original message, no s3-specific framing."""
+    import v2ecoli.workflow.analysis_runner as ar
+
+    missing = str(tmp_path / "does-not-exist")
+    monkeypatch.setattr("sys.argv", ["v2ecoli-analyze", missing])
+    with pytest.raises(SystemExit, match=f"sweep_dir not found: {missing!r}"):
+        ar.main()
+
+
+def test_main_raises_a_clear_error_for_an_s3_sweep_dir_with_no_history_parquet(monkeypatch):
+    """The new branch: an s3:// sweep_dir that genuinely has no history parquet
+    (missing prefix, or exists but empty) still fails loud -- just via the same
+    history_files() existence check run_analyses() itself relies on, not a
+    local-filesystem check that could never have answered this question."""
+    import v2ecoli.workflow.analysis_runner as ar
+
+    monkeypatch.setattr(ar, "history_files", lambda sweep_dir: [])
+    monkeypatch.setattr("sys.argv", ["v2ecoli-analyze", "s3://fake-bucket/empty-sweep"])
+    with pytest.raises(SystemExit, match="sweep_dir not found or has no history parquet"):
+        ar.main()
+
+
+def test_main_does_not_call_isdir_on_an_s3_uri(monkeypatch):
+    """Regression guard: an s3:// sweep_dir must never reach os.path.isdir() at
+    all -- that call can only ever return False for an s3:// string, which is
+    exactly the bug this fix closes."""
+    import v2ecoli.workflow.analysis_runner as ar
+
+    def _boom(path):
+        raise AssertionError(f"os.path.isdir() called with {path!r} — s3:// paths must skip it")
+
+    monkeypatch.setattr(ar, "history_files", lambda sweep_dir: ["s3://fake-bucket/real-sweep/history/experiment_id=e/variant=0/lineage_seed=0/generation=0/agent_id=0/1.pq"])
+    monkeypatch.setattr(os.path, "isdir", _boom)
+    monkeypatch.setattr("sys.argv", ["v2ecoli-analyze", "s3://fake-bucket/real-sweep"])
+    ar.main()  # must not raise -- passes the guard, then "no analysis_options" no-ops cleanly
+
+
+def test_main_passes_the_guard_for_a_real_s3_sweep_dir_with_history_files(monkeypatch, capsys):
+    """A genuine s3:// sweep with real history parquet clears the pre-flight
+    guard -- no --config given, so main() reaches its own documented
+    "no analysis_options found; nothing to run" no-op rather than raising."""
+    import v2ecoli.workflow.analysis_runner as ar
+
+    monkeypatch.setattr(ar, "history_files", lambda sweep_dir: [
+        "s3://fake-bucket/real-sweep/history/experiment_id=e/variant=0/lineage_seed=0/generation=0/agent_id=0/1.pq"])
+    monkeypatch.setattr("sys.argv", ["v2ecoli-analyze", "s3://fake-bucket/real-sweep"])
+    ar.main()
+    assert "nothing to run" in capsys.readouterr().out
