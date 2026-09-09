@@ -101,10 +101,15 @@ def test_declared_emit_set_splits_agent_and_document_roots():
         "agents": {"0": {
             "global_time": 0.0, "bulk": [1], "listeners": {"mass": {}},
             "boundary": {"external": {}},
+            # environment.exchange is initialised into the agent from the cache
+            # bundle on a real build; model it so the split is exercised on the
+            # branch that matters rather than on declared_emit_set's catch-all.
+            "environment": {"exchange": {}},
         }},
     })
     agent_leaves, root_leaves = declared_emit_set(fake, reactor_bird_coupled)
-    assert agent_leaves == [("bulk",), ("listeners",), ("boundary",)]
+    assert agent_leaves == [
+        ("bulk",), ("listeners",), ("boundary",), ("environment",)]
     assert root_leaves == [("reactor",), ("population",), ("lineage",)]
 
 
@@ -244,6 +249,12 @@ def test_runner_coupled_single_lineage_lands_bulk_fba_and_reactor(monkeypatch, t
     # subsumed by the whole listeners/boundary capture).
     assert "listeners__fba_results__external_exchange_fluxes" in cols
     assert "boundary__external__OXYGEN-MOLECULE" in cols
+    # The declared `environment` root, asserted on an EMITTED artifact rather
+    # than on the declaration. Every other test of that root asserts what the
+    # paths list says or classifies a synthetic fake; this is the only one that
+    # would catch the root binding the document store, or resolving to nothing
+    # at all, since either leaves the column list looking populated.
+    assert "environment__exchange__GLC" in cols
 
 
 @needs_cache
