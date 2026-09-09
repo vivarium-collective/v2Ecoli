@@ -149,6 +149,15 @@ def _drive_pbg_lineage(monkeypatch, tmp_path, generations=3):
         def update(self, payload):
             return None
 
+        def advance_generation(self, *, agent_id, success=True, metadata=None):
+            # Lineage-scoped emitter: the driver builds ONE emitter (generation
+            # 1) and advances its partition label in place at each division,
+            # instead of building a fresh emitter per generation. Record the
+            # advance exactly as a build would be, so the generation-progression
+            # invariant below still sees one (agent_id, generation) per
+            # generation — the emitter's label must still walk the phylogeny.
+            emits.append((agent_id, len(agent_id)))
+
         def close(self, success=True):
             return None
 
@@ -187,10 +196,13 @@ def test_the_zarr_GENERATION_LABEL_and_the_fork_GENERATION_INDEX_agree(
     a shift-by-one nobody can see in the numbers, because both sides look
     internally consistent."""
     builds, emits, _out = _drive_pbg_lineage(monkeypatch, tmp_path)
-    # ⚠ ASSERT THE LENGTHS FIRST. `zip` truncates to the shorter list, so without
-    # this an emitter built ONCE (e.g. hoisted into `if gen == 0`) collapses every
-    # generation into generation 1's partition and this loop still passes — it
-    # would compare exactly one pair and call it agreement.
+    # ⚠ ASSERT THE LENGTHS FIRST. `zip` truncates to the shorter list. The
+    # lineage-scoped emitter is built ONCE (generation 1) and advanced per
+    # division; `emits` records the build plus each advance_generation, so it
+    # must still hold one (agent_id, generation) per generation. If a division
+    # ever stops calling advance_generation, every later generation collapses
+    # into generation 1's partition and `emits` shrinks — without this length
+    # check the loop would compare exactly one pair and call it agreement.
     assert len(builds) == len(emits) == 3
     for agent_id, (emit_id, generation) in zip(builds, emits):
         assert len(agent_id) == generation
