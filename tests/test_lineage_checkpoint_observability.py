@@ -58,3 +58,39 @@ def test_checkpoint_s3_client_has_bounded_timeouts():
     assert cfg.read_timeout is not None and cfg.read_timeout <= 120
     # bounded retries (standard mode surfaces total_max_attempts)
     assert cfg.retries and cfg.retries.get("total_max_attempts", 0) >= 2
+
+
+def test_checkpoint_write_is_an_event_with_size_and_seconds(monkeypatch, tmp_path, capsys):
+    """The 313 stall point, as an event: ``checkpoint`` carries the path, the
+    estimated MB and the wall seconds of the write."""
+    import json
+
+    pbg_events = pytest.importorskip("process_bigraph.events")
+    monkeypatch.delenv("PBG_EVENT_SINKS", raising=False)
+    monkeypatch.setenv("PBG_EVENT_HEARTBEAT_S", "0")
+    pbg_events.configure("stdout")
+    from v2ecoli.workflow.lineage import LineageProcess
+
+    lp = LineageProcess.__new__(LineageProcess)
+    out = tmp_path / "gen.pkl"
+    lp.config = {
+        "cache_dir": "x", "seed": 0, "lineage_seed": 0, "variant_index": 0,
+        "variant_name": "b", "config_overrides": {}, "generations": 1,
+        "single_daughters": True, "experiment_id": "t", "out_dir": "out/t",
+        "max_duration_per_gen": 10.0, "initial_carry_state_path": "",
+        "initial_generation_index": 0, "daughter_state_out_path": str(out),
+        "checkpoint_dir": "", "require_output": False,
+    }
+    lp.initialize(lp.config)
+    monkeypatch.setattr(lp, "_build_generation", lambda: setattr(lp, "_gen_elapsed", 0.0))
+    monkeypatch.setattr(lp, "_run_until_division",
+                        lambda interval: (True, {"bulk": {}, "unique": {}}, 1.0))
+    lp.update({}, 10.0)
+    pbg_events.set_emitter(None)
+    events = [json.loads(ln) for ln in capsys.readouterr().out.splitlines() if ln.startswith("{")]
+    ck = [e for e in events if e["event"] == "checkpoint"]
+    assert len(ck) == 1
+    assert ck[0]["payload"]["path"] == str(out)
+    assert ck[0]["payload"]["status"] == "written"
+    assert ck[0]["payload"]["seconds"] >= 0
+    assert out.exists()

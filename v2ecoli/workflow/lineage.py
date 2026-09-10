@@ -20,8 +20,15 @@ import os
 import time
 import warnings
 from v2ecoli.library.quantity_helpers import fg_magnitude
+from v2ecoli.workflow import events as _events
 
 from process_bigraph import Process
+
+
+def _warn_static(message: str, site: str = "") -> None:
+    """Module-level twin of ``LineageProcess._warn`` for staticmethods."""
+    warnings.warn(message)
+    _events.emit("warning", level="warning", message=message, site=site)
 
 
 def _derive_generation_seed(seed, lineage_seed, generation):
@@ -426,6 +433,12 @@ class LineageProcess(Process):
         # Fresh emitted-output bookkeeping for this generation.
         self._parquet_em = None
         self._xarray_emits = 0
+        # Observability (runner layer): bind this generation's identity onto the
+        # engine emitter and open the ``generation[g]`` span; ``generation_start``
+        # is emitted at the end of this build with what was decided here.
+        _emitter = _events.bind_generation(self)
+        self._gen_span = _events.generation_span(self)
+        self._gen_t0 = time.monotonic()
 
         # Forward baseline()'s feature-selection kwargs from the config so an
         # injected candidate arm actually engages the features it declares. The
@@ -479,6 +492,12 @@ class LineageProcess(Process):
             polypeptide_initiation_mode=(
                 _feature_flag("polypeptide_initiation_mode", "discrete") or "discrete"
             ),
+            # The inner cell's tick. Declared in this process's config_schema
+            # (default 1.0) and honoured by baseline(), but it was never forwarded
+            # here, so the inner composite always ran at baseline()'s own default
+            # regardless of config["time_step"]. Forwarding it is a behaviour
+            # change only for a campaign that set time_step != 1.
+            time_step=float(self.config.get("time_step", 1.0) or 1.0),
         )
 
         # The inner composite's own emitter step writes the hive parquet sweep;
@@ -520,6 +539,12 @@ class LineageProcess(Process):
             from v2ecoli.composites._helpers import get_parquet_emitter
 
             self._parquet_em = get_parquet_emitter(self._agent_id)
+            if self._parquet_em is not None and _emitter.enabled:
+                # Observe the (third-party) emitter from outside: chunk_flushed
+                # per 400-emit batch, without editing viva_emitters.
+                self._parquet_em = _events._ObservedEmitter(
+                    self._parquet_em, _emitter, batch_size=int(emitter_cfg.get("batch_size", 400) or 400)
+                )
         else:
             from v2ecoli.composites._helpers import set_null_emitter_override
 
@@ -546,6 +571,22 @@ class LineageProcess(Process):
         self._composite = Composite(doc, core=core)
         self._core = core
         self._gen_elapsed = 0.0
+        _events.emit(
+            "generation_start",
+            generation=int(self._generation),
+            agent_id=str(self._agent_id),
+            gen_seed=int(gen_seed),
+            lineage_offset=float(self._lineage_offset),
+            emitter={
+                "kind": str(self.config.get("emitter", "parquet")),
+                "target": str(self.config.get("out_dir") or ""),
+                "batch_size": int(getattr(getattr(self, "_parquet_em", None), "batch_size", 0) or 0),
+            },
+            time_step=float(self.config.get("time_step", 1.0) or 1.0),
+            max_duration_per_gen=float(self.config["max_duration_per_gen"]),
+            carried_from_previous=getattr(self, "_last_carry_report", None),
+            features=_features,
+        )
 
     def _open_xarray_emitter(self, emit_cell):
         """Open an XArrayEmitter for the current generation, filtering the view
@@ -612,7 +653,7 @@ class LineageProcess(Process):
                     f"downgrade to warn-and-skip."
                 )
         if not view:
-            warnings.warn(
+            self._warn(site="_emit_xarray", message=
                 "LineageProcess: xarray view has no leaves present in "
                 "composite state; skipping xarray emission."
             )
@@ -681,7 +722,7 @@ class LineageProcess(Process):
             )
             self._xarray_emits += 1
         except Exception as e:
-            warnings.warn(
+            self._warn(site="_emit_xarray", message=
                 f"LineageProcess: xarray emit failed at generation "
                 f"{self._generation} t={self._gen_elapsed}: {e}"
             )
@@ -720,14 +761,14 @@ class LineageProcess(Process):
         try:
             flush_parquet(self._composite, success=True)
         except Exception as e:
-            warnings.warn(
+            self._warn(site="_finalize_parquet", message=
                 f"LineageProcess: parquet flush failed for "
                 f"generation {self._generation} ({self._agent_id}): {e}"
             )
         try:
             finalize_emitter_for_agent(self._agent_id, success=True)
         except Exception as e:
-            warnings.warn(
+            self._warn(site="_finalize_parquet", message=
                 f"LineageProcess: parquet finalize failed for "
                 f"generation {self._generation} ({self._agent_id}): {e}"
             )
@@ -817,7 +858,7 @@ class LineageProcess(Process):
         except FileNotFoundError:
             entries = []
         except Exception as e:  # noqa: BLE001 -- "could not look" is not "no output"
-            warnings.warn(
+            _warn_static(site="_assert_history_landed", message=
                 f"LineageProcess: could not list {history_dir!r} to verify that "
                 f"{where} persisted its {num_emits} emitted row(s): {e!r}. The "
                 f"generation is recorded, but its output is UNVERIFIED."
@@ -834,6 +875,28 @@ class LineageProcess(Process):
             f"rows never reached storage (a failed background write, or a sink "
             f"pointed somewhere else) -- refusing to report it as a completed "
             f"generation."
+        )
+
+    # --- observability helpers (runner layer; never raise) ---------------
+
+    def _log(self, line: str, event: str, level: str = "info", **payload) -> None:
+        """Emit a runner event; when no event sink is configured (the local
+        meta-composite path without PBG_EVENT_SINKS) print the legacy log line
+        instead, so nothing that used to be in a run log disappears."""
+        if _events.events_enabled():
+            _events.emit(event, level=level, message=line, **payload)
+        else:
+            print(line, flush=True)
+
+    def _warn(self, message: str, site: str = "") -> None:
+        """``warnings.warn`` PLUS a ``warning`` event per occurrence. Python's
+        warnings machinery de-duplicates by call site, so a condition that
+        repeats every generation would otherwise be reported once; the event
+        stream sees every occurrence."""
+        warnings.warn(message)
+        _events.emit(
+            "warning", level="warning", message=message, site=site,
+            generation=int(getattr(self, "_generation", 0) or 0),
         )
 
     def _elapsed_after_run(self, interval, agents_before, agents_now) -> float:
@@ -897,6 +960,7 @@ class LineageProcess(Process):
             mother_snapshot = None
 
         divided = False
+        _exc_signal = False
         try:
             self._composite.run(interval)
         except Exception as e:
@@ -911,11 +975,13 @@ class LineageProcess(Process):
 
             if not is_division_exception(e):
                 raise
-            warnings.warn(
+            self._warn(
                 f"LineageProcess: treating a raised exception as a division "
-                f"signal at t={self._gen_elapsed}: {e!r}"
+                f"signal at t={self._gen_elapsed}: {e!r}",
+                site="_run_until_division",
             )
             divided = True
+            _exc_signal = True
         agents_now = self._composite.state.get("agents") or {}
         self._gen_elapsed = self._elapsed_after_run(interval, agents_before, agents_now)
         agents_after = set(agents_now.keys())
@@ -945,14 +1011,21 @@ class LineageProcess(Process):
         # fired plus the real state values behind them, since static reading of
         # this function alone couldn't distinguish the cases. Silent unless
         # LINEAGE_DEBUG_DIVISION=1 is set; never touches production behavior.
+        structural = bool(agents_before and agents_after != agents_before)
         if os.environ.get("LINEAGE_DEBUG_DIVISION") == "1":
             print(
                 f"[lineage-debug] t={self._gen_elapsed} divided={divided} "
-                f"structural_agents_change={agents_before and agents_after != agents_before} "
+                f"structural_agents_change={structural} "
                 f"divide_flag={divide_flag} dry_mass={dry_mass} "
                 f"agents_before={sorted(agents_before)} agents_after={sorted(agents_after)}",
                 flush=True,
             )
+        _events.emit(
+            "lineage_debug", level="debug", t=float(self._gen_elapsed), divided=bool(divided),
+            structural_agents_change=structural, divide_flag=bool(divide_flag),
+            dry_mass=float(dry_mass), agents_before=sorted(agents_before),
+            agents_after=sorted(agents_after),
+        )
 
         if self._is_xarray():
             self._emit_xarray(agents_now)
@@ -960,6 +1033,31 @@ class LineageProcess(Process):
         daughter = None
         if divided:
             daughter = select_carry_daughter(agents_before, agents_now, mother_snapshot)
+            # The carry seam, made visible: which roots the daughter inherits,
+            # which the policy dropped, and any root with NO classification (the
+            # #765 class -- request/allocate were silently copied for five hours).
+            # Report against the FULL mother node (root keys incl. the ones the
+            # policy already filtered out of the snapshot), so a dropped store
+            # shows up as dropped rather than vanishing from the report.
+            report = _events.carry_report(
+                mother if isinstance(mother, dict) and mother else mother_snapshot, daughter
+            )
+            self._last_carry_report = report
+            unclassified = list(report.get("dropped", {}).get("unclassified", [])) + list(
+                report.get("carried_unclassified", [])
+            )
+            _events.emit(
+                "division",
+                level="warning" if unclassified else "info",
+                signal="structural" if structural else ("exception" if _exc_signal else "flag"),
+                t_division=float(self._gen_elapsed),
+                dry_mass=float(dry_mass),
+                generation=int(self._generation),
+                agent_id=str(self._agent_id),
+                daughter_keys=sorted(k for k in daughter if not str(k).startswith("_"))
+                if isinstance(daughter, dict) else [],
+                **report,
+            )
         return divided, daughter, dry_mass
 
     # --- main tick -------------------------------------------------------
@@ -994,10 +1092,11 @@ class LineageProcess(Process):
         # invisible. Printed (flushed) so it lands in the run log, and timed so a
         # slow/blocked step is obvious rather than silent.
         _t_flush = time.monotonic()
-        print(
+        self._log(
             f"[LineageProcess] gen {self._generation}: end (divided={divided} "
             f"timed_out={timed_out}); flushing emitters...",
-            flush=True,
+            "generation_flush_start",
+            generation=int(self._generation), divided=bool(divided), timed_out=bool(timed_out),
         )
         if self._is_xarray() and self._xarray_em is not None:
             # ONE emitter drives the whole lineage: advance it to the next
@@ -1019,7 +1118,7 @@ class LineageProcess(Process):
                     next_agent_id = daughter_phylogeny_id(self._agent_id)[0]
                     self._xarray_em.advance_generation(agent_id=next_agent_id, success=True)
             except Exception as e:
-                warnings.warn(
+                self._warn(site="update.xarray_advance", message=
                     f"LineageProcess: xarray advance/close failed for "
                     f"generation {self._generation}: {e}"
                 )
@@ -1030,11 +1129,29 @@ class LineageProcess(Process):
             self._xarray_pending = False
         if self._is_parquet():
             self._finalize_parquet()
-        print(
-            f"[LineageProcess] gen {self._generation}: emitters flushed in "
-            f"{time.monotonic() - _t_flush:.1f}s",
-            flush=True,
+        _flush_s = time.monotonic() - _t_flush
+        self._log(
+            f"[LineageProcess] gen {self._generation}: emitters flushed in {_flush_s:.1f}s",
+            "generation_end",
+            generation=int(self._generation),
+            agent_id=str(self._agent_id),
+            duration=float(self._gen_elapsed),
+            divided=bool(divided),
+            timed_out=bool(timed_out),
+            dry_mass=float(dry_mass),
+            emits=int(getattr(self._parquet_em, "num_emits", 0) or 0) if self._parquet_em is not None else None,
+            xarray_emits=int(self._xarray_emits),
+            flush_seconds=round(_flush_s, 3),
+            lineage_offset_after=float(self._lineage_offset + self._gen_elapsed),
+            wall_seconds=round(time.monotonic() - getattr(self, "_gen_t0", _t_flush), 3),
         )
+        _span = getattr(self, "_gen_span", None)
+        if _span is not None:
+            try:
+                _span.end()
+            except Exception:
+                pass
+            self._gen_span = None
         # AFTER the flush (the trailing batch is what lands a short
         # generation's history at all), BEFORE the summary/checkpoint: a
         # generation that emitted nothing must not be recorded as completed.
@@ -1080,26 +1197,28 @@ class LineageProcess(Process):
             mb = _estimate_state_mb(daughter)
             prev = getattr(self, "_last_checkpoint_mb", 0.0)
             if prev and mb > 1.5 * prev:
-                warnings.warn(
+                self._warn(site="checkpoint", message=
                     f"LineageProcess: gen {self._generation} carry state is "
                     f"{mb:.1f}MB, up {mb / prev:.1f}x from the previous "
                     f"generation ({prev:.1f}MB). A lineage whose per-generation "
                     f"state keeps growing is not reaching steady-state division "
                     f"size (over-growth); the checkpoint reflects it and the "
-                    f"write gets progressively heavier."
-                )
+                    f"write gets progressively heavier.")
             self._last_checkpoint_mb = mb
             _t_ckpt = time.monotonic()
-            print(
+            self._log(
                 f"[LineageProcess] gen {self._generation}: writing checkpoint "
                 f"(~{mb:.1f}MB) -> {out_path}",
-                flush=True,
+                "checkpoint_start",
+                generation=int(self._generation), path=out_path, mb=round(mb, 3),
             )
             save_initial_state(payload, out_path)
-            print(
-                f"[LineageProcess] gen {self._generation}: checkpoint written "
-                f"in {time.monotonic() - _t_ckpt:.1f}s",
-                flush=True,
+            _ckpt_s = time.monotonic() - _t_ckpt
+            self._log(
+                f"[LineageProcess] gen {self._generation}: checkpoint written in {_ckpt_s:.1f}s",
+                "checkpoint",
+                generation=int(self._generation), path=out_path, mb=round(mb, 3),
+                seconds=round(_ckpt_s, 3), status="written",
             )
 
         self._generation += 1

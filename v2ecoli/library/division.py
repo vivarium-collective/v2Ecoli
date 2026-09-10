@@ -320,6 +320,39 @@ NON_CARRIED_ROOT_KEYS = frozenset({
     'agents', 'allocator_rng', 'ppgpp_state', 'attenuation_config',
     # a Division PORT name (wired to environment/media_id), never an agent root
     'media_id',
+    # Per-tick PARTITION bookkeeping (steps/partition.py groups these with
+    # ``process``/``listeners`` as re-derived node stores): every Requester
+    # overwrites its own ``request[<process>]`` each tick and the Allocator
+    # writes ``allocate`` from whatever ``request`` holds. Carrying the mother's
+    # snapshot seeds the daughter's first tick with the MOTHER's full-size
+    # demands for every process, so the Allocator partitions a half-size cell
+    # against stale requests (sims 943/944/945, 2026-09-10; v2ecoli#769).
+    'request', 'allocate',
+})
+
+#: Agent-root stores the carry policy copies into the daughter ON PURPOSE (no
+#: divider registered, so mother and daughter both get an independent deepcopy).
+#: This is the explicit ALLOW-list that makes the policy auditable: every root
+#: store a step/process declares must be in CORE_DIVISIBLE_KEYS, here, in
+#: NON_CARRIED_ROOT_KEYS, or have a registered divider --
+#: ``tests/test_root_store_classification.py`` enforces it, and the lineage
+#: runner's ``division`` event reports any root that reaches a division without
+#: a classification (the class of bug #765 was: ``request``/``allocate`` were
+#: neither listed nor excluded, and were silently copied).
+#: One line of reason each:
+CARRIED_BY_COPY = frozenset({
+    # injected environment / dose fields (sms-ecoli field_timeline, well-mixed
+    # fields): the daughter lives in the mother's medium; the runner's fire-once
+    # timeline re-fires from the cumulative offset, so a copy is the intent
+    'fields',
+    # injected FBA bound overrides -- pure config-shaped state, valid for both
+    'imposed_flux_bounds',
+    # cell_geometry feature: per-compartment volumes, re-derived every tick from
+    # the daughter's own mass; copying only seeds the first tick sensibly
+    'periplasm', 'cytoplasm',
+    # ecoli_millard / fba_flux_coupler: per-tick derived flux vectors, re-written
+    # each tick by their owning step; a stale copy is harmless for one tick
+    'central_fluxes', 'pinned_flux_targets', 'bridge_diagnostics',
 })
 
 _EDGE_TYPES = frozenset({'process', 'step', 'composite', 'edge'})
