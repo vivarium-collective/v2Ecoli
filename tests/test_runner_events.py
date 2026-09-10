@@ -438,3 +438,51 @@ def test_downstream_can_register_its_copied_roots(monkeypatch):
     assert revents.carry_report(mother, carry)["carried_unclassified"] == []
     with pytest.raises(TypeError):
         div.register_carried_by_copy("")
+
+
+def _make_with_emits(monkeypatch, emits, elapsed, time_step=1.0):
+    lp = _make(monkeypatch, generations=1, divide_after=1, time_step=time_step)
+
+    class _Em:
+        num_emits = emits
+        batch_size = 400
+
+    lp._parquet_em = _Em()
+
+    def fake_run(interval):
+        lp._gen_elapsed = elapsed
+        return True, {"bulk": {}, "unique": {}}, 100.0
+
+    monkeypatch.setattr(lp, "_run_until_division", fake_run)
+    monkeypatch.setattr(lp, "_assert_generation_emitted", lambda: None)
+    monkeypatch.setattr(lp, "_finalize_parquet", lambda: None)
+    return lp
+
+
+def test_generation_end_warns_when_duration_disagrees_with_emits(monkeypatch, stdout_events):
+    """sim 956, gen 0: booked 1,072 s against 2,529 one-second emits. The stream
+    must carry the invariant itself, every generation, until v2ecoli#773."""
+    lp = _make_with_emits(monkeypatch, emits=2529, elapsed=1072.0)
+    with pytest.warns(UserWarning, match="duration 1072.0s"):
+        lp.update({}, 1.0)
+    events = stdout_events()
+    w = [e for e in events if e["event"] == "lineage.warning" and e["payload"].get("check") == "duration_vs_emits"]
+    assert len(w) == 1 and w[0]["level"] == "warning"
+    assert w[0]["payload"]["duration"] == 1072.0 and w[0]["payload"]["emits"] == 2529
+    assert w[0]["payload"]["time_step"] == 1.0
+    end = [e for e in events if e["event"] == "lineage.generation.end"][0]["payload"]
+    assert end["duration"] == 1072.0 and end["emits"] == 2529  # reported, not corrected
+
+
+def test_generation_end_is_silent_when_duration_matches_emits(monkeypatch, stdout_events):
+    lp = _make_with_emits(monkeypatch, emits=2529, elapsed=2528.0)
+    lp.update({}, 1.0)
+    events = stdout_events()
+    assert not [e for e in events if e["event"] == "lineage.warning" and e["payload"].get("check") == "duration_vs_emits"]
+    assert [e for e in events if e["event"] == "lineage.generation.end"]
+
+
+def test_duration_check_scales_with_time_step(monkeypatch, stdout_events):
+    lp = _make_with_emits(monkeypatch, emits=100, elapsed=200.0, time_step=2.0)   # 100 x 2 s = 200 s
+    lp.update({}, 1.0)
+    assert not [e for e in stdout_events() if e["payload"].get("check") == "duration_vs_emits"]

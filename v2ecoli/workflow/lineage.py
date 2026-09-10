@@ -25,7 +25,7 @@ from v2ecoli.workflow import events as _events
 from process_bigraph import Process
 
 
-def _warn_static(message: str, site: str = "", owner=None) -> None:
+def _warn_static(message: str, site: str = "", owner=None, **payload) -> None:
     """``warnings.warn`` PLUS a ``lineage.warning`` event per occurrence.
 
     Module-level so it also works when a method is invoked unbound on a
@@ -34,7 +34,7 @@ def _warn_static(message: str, site: str = "", owner=None) -> None:
     warnings.warn(message)
     _events.emit(
         "lineage.warning", level="warning", message=message, site=site,
-        generation=getattr(owner, "_generation", None),
+        generation=getattr(owner, "_generation", None), **payload,
     )
 
 
@@ -895,12 +895,42 @@ class LineageProcess(Process):
         else:
             print(line, flush=True)
 
-    def _warn(self, message: str, site: str = "") -> None:
+    def _warn(self, message: str, site: str = "", **payload) -> None:
         """``warnings.warn`` PLUS a ``lineage.warning`` event per occurrence.
         Python's warnings machinery de-duplicates by call site, so a condition
         that repeats every generation would otherwise be reported once; the
         event stream sees every occurrence. See ``_warn_static``."""
-        _warn_static(message, site=site, owner=self)
+        _warn_static(message, site=site, owner=self, **payload)
+
+    def _check_duration_vs_emits(self, emits) -> None:
+        """The invariant the event stream carries: the parquet emitter fires
+        once per inner tick, so a generation's booked ``duration`` must equal
+        ``emits * time_step`` to within a couple of ticks. Sim 956 (2026-09-10)
+        booked 1,072 s against 2,529 emits (gen 0) and 1,926 s against 1,675
+        (gen 1): a non-zero but wrong daughter ``global_time`` stamp was
+        honoured. This fires on every generation of the single-window
+        ``LineageStep`` path until v2ecoli#773 ends the generation at the
+        division, under which duration == emits by construction. It only
+        reports; the booked value is left alone (precedence is #771's / #773's)."""
+        if emits is None or emits <= 0:
+            return
+        try:
+            time_step = float(self.config.get("time_step", 1.0) or 1.0)
+            duration = float(self._gen_elapsed)
+            expected = float(emits) * time_step
+            tolerance = max(2.0 * time_step, 0.01 * expected)
+            if abs(duration - expected) > tolerance:
+                self._warn(
+                    f"LineageProcess: gen {self._generation} booked duration {duration:.1f}s "
+                    f"but the emitter saw {emits} emits x {time_step}s = {expected:.1f}s "
+                    f"(tolerance {tolerance:.1f}s): the generation clock is wrong "
+                    f"(v2ecoli#771 precedence / #773 window semantics).",
+                    site="generation_end.duration_vs_emits",
+                    check="duration_vs_emits", duration=duration, emits=int(emits),
+                    time_step=time_step, expected=expected, tolerance=tolerance,
+                )
+        except Exception:
+            pass
 
     def _elapsed_after_run(self, interval, agents_before, agents_now) -> float:
         """This generation's REAL simulated elapsed time after one inner run.
@@ -1133,6 +1163,8 @@ class LineageProcess(Process):
         if self._is_parquet():
             self._finalize_parquet()
         _flush_s = time.monotonic() - _t_flush
+        _emits = int(getattr(self._parquet_em, "num_emits", 0) or 0) if self._parquet_em is not None else None
+        self._check_duration_vs_emits(_emits)
         self._log(
             f"[LineageProcess] gen {self._generation}: emitters flushed in {_flush_s:.1f}s",
             "lineage.generation.end",
@@ -1142,7 +1174,7 @@ class LineageProcess(Process):
             divided=bool(divided),
             timed_out=bool(timed_out),
             dry_mass=float(dry_mass),
-            emits=int(getattr(self._parquet_em, "num_emits", 0) or 0) if self._parquet_em is not None else None,
+            emits=_emits,
             xarray_emits=int(self._xarray_emits),
             flush_seconds=round(_flush_s, 3),
             lineage_offset_after=float(self._lineage_offset + self._gen_elapsed),
