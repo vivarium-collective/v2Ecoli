@@ -357,7 +357,30 @@ CARRIED_BY_COPY = frozenset({
     # ecoli_millard / fba_flux_coupler: per-tick derived flux vectors, re-written
     # each tick by their owning step; a stale copy is harmless for one tick
     'central_fluxes', 'pinned_flux_targets', 'bridge_diagnostics',
+    # cell_shape.py: the flat shape dict (mass, density, width, volume ...),
+    # ``map[overwrite[float]]`` re-derived every step from the daughter's mass
+    'shape',
 })
+
+#: Downstream-registered copied roots (an injected composite's own stores --
+#: sms-ecoli's ``fields``, ``kinetic_parameters``, ``<drug>_env`` ... -- are
+#: unknown to this module). Same shape as the divider registry: the module that
+#: declares the store registers its classification, and the lineage runner's
+#: ``lineage.division`` report stops flagging it as unclassified.
+CARRIED_BY_COPY_REGISTERED: set = set()
+
+
+def register_carried_by_copy(*store_names: str) -> None:
+    """Declare agent-root store(s) the carry policy copies ON PURPOSE."""
+    for name in store_names:
+        if not isinstance(name, str) or not name:
+            raise TypeError(f'store name must be a non-empty str, got {name!r}')
+        CARRIED_BY_COPY_REGISTERED.add(name)
+
+
+def carried_by_copy_keys() -> frozenset:
+    """Built-in allow-list plus everything registered downstream."""
+    return frozenset(CARRIED_BY_COPY) | frozenset(CARRIED_BY_COPY_REGISTERED)
 
 _EDGE_TYPES = frozenset({'process', 'step', 'composite', 'edge'})
 
