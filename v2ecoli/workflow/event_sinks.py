@@ -13,7 +13,18 @@ factory registered by :mod:`v2ecoli.workflow.events`::
 default 60 s), so a task's progress is visible in the store *before* the task
 exits -- the property S3 lacks today (nothing lands until the emitter closes).
 Objects stay small (a 5-generation lineage is well under 1 MB), so a whole-
-object rewrite is cheaper than any append emulation. Any fsspec URI works
+object rewrite is cheaper than any append emulation.
+
+*Per writer* means per OS process, not per task: see :func:`_default_source`.
+
+Because the object is rewritten whole, the buffer is capped -- the first
+``PBG_EVENT_MAX_HEAD_LINES`` events (setup, early decisions) plus a rolling
+``PBG_EVENT_MAX_TAIL_LINES`` tail (where a failure lands), with an explicit
+``sink.truncated`` marker between them carrying the drop count. An uncapped
+buffer would hold the whole run in memory and make cumulative bytes-written
+grow with the square of the event count -- tolerable for a lineage task
+emitting thousands of events, not for a process running many composites at a
+high tick rate. Any fsspec URI works
 (``file://`` in tests, ``memory://``); ``s3://`` needs ``s3fs``, which v2ecoli
 already depends on. The sink never raises into the simulation: a failed
 write is retried on the next flush and the engine disables a sink only when
@@ -23,6 +34,7 @@ write is retried on the next flush and the engine disables a sink only when
 from __future__ import annotations
 
 import atexit
+import collections
 import json
 import os
 import socket
@@ -44,16 +56,47 @@ except Exception:  # pragma: no cover - pre-#209 engine; the module is then unus
 
 
 DEFAULT_FLUSH_S = 60.0
+# The object is rewritten WHOLE on every flush, so an unbounded buffer costs
+# both memory and cumulative bytes-written that grow with the square of the
+# run's event count. Keep the head (the run's setup and early decisions) and
+# a rolling tail (where a failure lands), and say so in the object.
+DEFAULT_MAX_HEAD_LINES = 2000
+DEFAULT_MAX_TAIL_LINES = 20000
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
 
 
 def _default_source() -> str:
-    # AWS_BATCH_JOB_ID is read only to make the object key unique per task
-    # attempt; nothing else here knows or cares which cloud it runs on.
-    return (
-        os.environ.get("PBG_EVENT_SOURCE")
-        or os.environ.get("AWS_BATCH_JOB_ID")
-        or f"{socket.gethostname()}-{os.getpid()}"
-    )
+    """A key fragment unique to THIS WRITER -- one OS process, not one task.
+
+    The sink rewrites a whole object per writer, so two writers that resolve
+    the same source silently clobber each other: each flush replaces the
+    object with only that writer's buffer. A task id alone is therefore the
+    wrong granularity the moment a task runs more than one Python process.
+
+    That is not hypothetical. On the Ray/multi-node path the driver and every
+    Ray worker process on a node share one ``AWS_BATCH_JOB_ID`` (Batch gives a
+    multi-node child ``<mainJobId>#<nodeIndex>``, which is per *node*, not per
+    process), and each Ray worker runs its own cell composites through the
+    engine's tick path -- so they all emit. The pid disambiguates them; it
+    costs nothing on the one-process-per-task paths (Nextflow, chain), where
+    the job id still leads the key and keeps it readable.
+
+    ``PBG_EVENT_SOURCE`` remains an exact operator override and is used
+    verbatim: whoever sets it owns the uniqueness.
+    """
+    explicit = os.environ.get("PBG_EVENT_SOURCE")
+    if explicit:
+        return explicit
+    # AWS_BATCH_JOB_ID is read only to make the object key unique and legible
+    # per task attempt; nothing else here knows or cares which cloud it runs on.
+    task = os.environ.get("AWS_BATCH_JOB_ID") or socket.gethostname()
+    return f"{task}-{os.getpid()}"
 
 
 class S3JsonlSink(EventSink):
@@ -78,7 +121,11 @@ class S3JsonlSink(EventSink):
         self.flush_s = float(flush_s)
         self.source = source or _default_source()
         self.trace_id: str | None = None
-        self._lines: list[str] = []
+        self._max_head = _int_env("PBG_EVENT_MAX_HEAD_LINES", DEFAULT_MAX_HEAD_LINES)
+        self._max_tail = _int_env("PBG_EVENT_MAX_TAIL_LINES", DEFAULT_MAX_TAIL_LINES)
+        self._head: list[str] = []
+        self._tail: collections.deque[str] = collections.deque(maxlen=max(self._max_tail, 1))
+        self.dropped = 0
         self._lock = threading.Lock()
         self._dirty = False
         self._timer: threading.Timer | None = None
@@ -94,7 +141,12 @@ class S3JsonlSink(EventSink):
         with self._lock:
             if self.trace_id is None and event.get("trace_id"):
                 self.trace_id = str(event["trace_id"])
-            self._lines.append(line)
+            if len(self._head) < self._max_head:
+                self._head.append(line)
+            else:
+                if len(self._tail) == self._tail.maxlen:
+                    self.dropped += 1
+                self._tail.append(line)
             self._dirty = True
             self._ensure_timer_locked()
 
@@ -102,7 +154,7 @@ class S3JsonlSink(EventSink):
         with self._lock:
             if not self._dirty:
                 return
-            payload = "\n".join(self._lines) + "\n"
+            payload = "\n".join(self._payload_lines_locked()) + "\n"
             key = self.key
         try:
             import fsspec
@@ -128,6 +180,26 @@ class S3JsonlSink(EventSink):
         self.flush()
 
     # -- helpers ---------------------------------------------------------- #
+
+    def _payload_lines_locked(self) -> list[str]:
+        """Head + (an explicit gap marker) + rolling tail. Never silent."""
+        if not self.dropped:
+            return self._head + list(self._tail)
+        marker = json.dumps({
+            "v": 1,
+            "component": "v2ecoli.event_sink",
+            "event": "sink.truncated",
+            "level": "warning",
+            "trace_id": self.trace_id,
+            "source": self.source,
+            "payload": {
+                "dropped": self.dropped,
+                "head_lines": len(self._head),
+                "tail_lines": len(self._tail),
+                "reason": "buffer cap; raise PBG_EVENT_MAX_TAIL_LINES or lower the event rate",
+            },
+        })
+        return self._head + [marker] + list(self._tail)
 
     @property
     def key(self) -> str:

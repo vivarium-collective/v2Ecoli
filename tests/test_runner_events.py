@@ -297,6 +297,106 @@ def test_s3_jsonl_sink_rewrites_one_object_per_writer(tmp_path):
     assert sink.flush_count == 2 and sink.last_error is None
 
 
+def test_two_writers_in_one_batch_task_do_not_share_an_object_key(monkeypatch, tmp_path):
+    """The Ray/multi-node case: one Batch job id, many Python processes.
+
+    A multi-node child node gets ``AWS_BATCH_JOB_ID = <mainJobId>#<nodeIndex>``
+    -- per NODE, not per process -- and every Ray worker on that node runs its
+    own cell composites through the engine's tick path, so every one of them
+    emits. The sink rewrites a whole object per writer, so a shared key means
+    each flush replaces the object with only that writer's buffer and the rest
+    of the node's events are lost. The pid is what keeps them apart.
+    """
+    from v2ecoli.workflow import event_sinks
+
+    monkeypatch.delenv("PBG_EVENT_SOURCE", raising=False)
+    monkeypatch.setenv("AWS_BATCH_JOB_ID", "job-abc#3")
+
+    monkeypatch.setattr(event_sinks.os, "getpid", lambda: 111)
+    driver = event_sinks._default_source()
+    monkeypatch.setattr(event_sinks.os, "getpid", lambda: 222)
+    worker = event_sinks._default_source()
+
+    assert driver != worker
+    assert driver.startswith("job-abc#3-") and worker.startswith("job-abc#3-")
+
+    a = event_sinks.S3JsonlSink(f"file://{tmp_path}/events", flush_s=0, source=driver)
+    b = event_sinks.S3JsonlSink(f"file://{tmp_path}/events", flush_s=0, source=worker)
+    a.emit({"event": "from-driver", "trace_id": "t1"})
+    b.emit({"event": "from-worker", "trace_id": "t1"})
+    a.close()
+    b.close()
+
+    written = sorted((tmp_path / "events" / "t1").iterdir())
+    assert len(written) == 2, "one object per writer, not one per task"
+    seen = set()
+    for f in written:
+        seen.update(json.loads(line)["event"] for line in f.read_text().splitlines())
+    assert seen == {"from-driver", "from-worker"}
+
+
+def test_an_explicit_source_override_is_used_verbatim(monkeypatch):
+    """Whoever sets PBG_EVENT_SOURCE owns uniqueness; we must not decorate it."""
+    from v2ecoli.workflow import event_sinks
+
+    monkeypatch.setenv("AWS_BATCH_JOB_ID", "job-abc")
+    monkeypatch.setenv("PBG_EVENT_SOURCE", "my-writer")
+    assert event_sinks._default_source() == "my-writer"
+
+
+def test_source_is_still_unique_with_no_batch_job_id(monkeypatch):
+    """A laptop run: no Batch id, still one key per process."""
+    from v2ecoli.workflow import event_sinks
+
+    monkeypatch.delenv("PBG_EVENT_SOURCE", raising=False)
+    monkeypatch.delenv("AWS_BATCH_JOB_ID", raising=False)
+    monkeypatch.setattr(event_sinks.socket, "gethostname", lambda: "laptop")
+    monkeypatch.setattr(event_sinks.os, "getpid", lambda: 7)
+    assert event_sinks._default_source() == "laptop-7"
+
+
+def test_the_sink_buffer_is_capped_and_says_what_it_dropped(monkeypatch, tmp_path):
+    """A whole-object rewrite cannot carry an unbounded buffer.
+
+    Keep the head (setup and early decisions) and a rolling tail (where a
+    failure lands), and make the gap explicit rather than silent.
+    """
+    monkeypatch.setenv("PBG_EVENT_MAX_HEAD_LINES", "2")
+    monkeypatch.setenv("PBG_EVENT_MAX_TAIL_LINES", "3")
+    from v2ecoli.workflow.event_sinks import S3JsonlSink
+
+    sink = S3JsonlSink(f"file://{tmp_path}/events", flush_s=0, source="w1")
+    for i in range(10):
+        sink.emit({"event": f"e{i}", "trace_id": "t9"})
+    sink.close()
+
+    lines = [json.loads(x) for x in
+             (tmp_path / "events" / "t9" / "w1.jsonl").read_text().splitlines()]
+    assert [x["event"] for x in lines[:2]] == ["e0", "e1"], "head kept"
+    assert [x["event"] for x in lines[-3:]] == ["e7", "e8", "e9"], "tail kept"
+
+    marker = lines[2]
+    assert marker["event"] == "sink.truncated" and marker["level"] == "warning"
+    assert marker["payload"]["dropped"] == 5
+    assert len(lines) == 2 + 1 + 3
+    assert sink.dropped == 5
+
+
+def test_an_uncapped_run_writes_every_line_and_no_marker(tmp_path):
+    """Below the cap nothing changes: no marker, no drops."""
+    from v2ecoli.workflow.event_sinks import S3JsonlSink
+
+    sink = S3JsonlSink(f"file://{tmp_path}/events", flush_s=0, source="w2")
+    for i in range(5):
+        sink.emit({"event": f"e{i}", "trace_id": "t8"})
+    sink.close()
+
+    lines = [json.loads(x) for x in
+             (tmp_path / "events" / "t8" / "w2.jsonl").read_text().splitlines()]
+    assert [x["event"] for x in lines] == [f"e{i}" for i in range(5)]
+    assert sink.dropped == 0
+
+
 def test_s3_sink_resolves_from_the_engine_registry(tmp_path):
     import v2ecoli.workflow.events  # noqa: F401 -- registers the factory
 
