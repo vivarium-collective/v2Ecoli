@@ -24,6 +24,30 @@ from v2ecoli.library.quantity_helpers import fg_magnitude
 from process_bigraph import Process
 
 
+def _derive_generation_seed(seed, lineage_seed, generation):
+    """Independent, well-mixed RNG seed for one (base seed, lineage_seed,
+    generation) cell of a multiseed x multigeneration sweep.
+
+    Replaces the historical additive combiner ``(seed + generation) % 2**31``,
+    which had two failures that collapsed a "multiseed" grid's stochastic
+    heterogeneity: it (a) ignored ``lineage_seed`` entirely, so every lineage of
+    a multiseed run drew the SAME per-generation seed, and (b) aliased the
+    ``(seed, generation)`` grid -- e.g. ``(seed=1, gen=4)`` and ``(seed=0,
+    gen=5)`` both mapped to 5. Because the resulting ``gen_seed`` is also the
+    ``master_seed`` from which every stochastic process derives its own seed
+    (``baseline(seed=gen_seed)`` -> ``_get_step_config(master_seed=seed)`` ->
+    ``_derive_process_seed``), the collision made whole grid cells bit-identical.
+
+    ``numpy.random.SeedSequence`` hashes the three axes into a fresh 32-bit seed,
+    so every grid cell is a genuinely independent draw while staying reproducible
+    per ``(seed, lineage_seed, generation)``.
+    """
+    import numpy as np
+
+    ss = np.random.SeedSequence([int(seed), int(lineage_seed), int(generation)])
+    return int(ss.generate_state(1, dtype=np.uint32)[0]) & 0x7FFFFFFF
+
+
 def select_carry_daughter(agents_before, agents_now, mother_snapshot, dividers=None):
     """State to seed the next generation (single-daughter lineage), or None.
 
@@ -395,7 +419,9 @@ class LineageProcess(Process):
         from v2ecoli.composites.ecoli_baseline import baseline, seed_mass_listener
 
         core = build_core()
-        gen_seed = (int(self.config["seed"]) + self._generation) % (2**31)
+        gen_seed = _derive_generation_seed(
+            self.config["seed"], self.config["lineage_seed"], self._generation
+        )
         overrides = dict(self.config.get("config_overrides") or {})
         # Fresh emitted-output bookkeeping for this generation.
         self._parquet_em = None
