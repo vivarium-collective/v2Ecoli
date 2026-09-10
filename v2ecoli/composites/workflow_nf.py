@@ -324,6 +324,7 @@ class AnalysisTaskStep(Step):
 _LINEAGE_KNOBS: tuple[str, ...] = (
     "media",
     "time_step",
+    "division_poll_interval",
     "emitter",
     "emitter_arg",
     "single_daughters",
@@ -465,6 +466,16 @@ def _variant_specs(variants: list[dict[str, Any]] | None) -> list[dict[str, Any]
                 "Simulation time step in seconds (LineageStep default 1.0)."
             ),
         },
+        "division_poll_interval": {
+            "type": "number",
+            "default": None,
+            "description": (
+                "Seconds of simulated time per inner-run slice on the single-window "
+                "path, so a generation ends within one slice of its division "
+                "(LineageStep default 10.0; #773). Smaller = tighter residual, more "
+                "run calls."
+            ),
+        },
         "emitter": {
             "type": "string",
             "default": None,
@@ -567,6 +578,7 @@ def build_workflow_nf(
     cache_uri: str = "",
     media: Any = None,
     time_step: Any = None,
+    division_poll_interval: Any = None,
     emitter: Any = None,
     emitter_arg: Any = None,
     single_daughters: Any = None,
