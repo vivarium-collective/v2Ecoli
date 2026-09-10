@@ -876,12 +876,23 @@ class LineageProcess(Process):
         exposes neither (stubs).
 
         With ``_run_until_division`` polling for the division every
-        ``division_poll_interval`` seconds, (2) is the division time to within
-        one slice on every path; before that, the single-window path ran both
-        daughters to the end of the window and (1) returned the surviving
-        daughter's own clock (window - division time; sim 955).
+        ``division_poll_interval`` seconds, the inner clock IS the division time
+        to within one slice on every path, so it is consulted FIRST. The
+        daughter stamp is only a fallback for a composite that does not expose a
+        clock: on the single-window path the daughters have been alive for 0-10 s
+        at the slice break, and ``previous`` is 0.0 there (the whole generation is
+        one ``update()`` call), so a stamp-first rule booked those few seconds as
+        the generation and the lineage offset never advanced (sim 958, five
+        generations, cumulative 14,645 s of simulated time and the 10,000 s dose
+        never fired). On the tick-driven path ``previous`` is already near the
+        division when it lands, which is why the same rule was correct there
+        (sim 952 dosed at 10,001 s).
         """
         previous = float(self._gen_elapsed)
+        state = getattr(self._composite, "state", None)
+        clock = state.get("global_time") if isinstance(state, dict) else None
+        if isinstance(clock, (int, float)) and not isinstance(clock, bool) and float(clock) > previous:
+            return float(clock)
         new_ids = set(agents_now) - set(agents_before or ())
         for agent_id in sorted(new_ids):
             agent = agents_now.get(agent_id)
@@ -892,10 +903,6 @@ class LineageProcess(Process):
                 and float(stamped) > previous
             ):
                 return float(stamped)
-        state = getattr(self._composite, "state", None)
-        clock = state.get("global_time") if isinstance(state, dict) else None
-        if isinstance(clock, (int, float)) and not isinstance(clock, bool) and float(clock) > previous:
-            return float(clock)
         return previous + float(interval)
 
     def _division_signalled(self, agents_before) -> bool:

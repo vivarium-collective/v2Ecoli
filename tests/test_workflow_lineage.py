@@ -737,18 +737,48 @@ class _FakeComposite:
         self.state = state
 
 
-def test_elapsed_after_run_prefers_the_daughters_division_stamp(monkeypatch):
-    """sim 898 / sms-ecoli#166: a generation that divides at 2,528 s inside a
-    3,600 s window must book 2,528 s, not the window -- otherwise
-    lineage_time_offset drifts by (window - division time) per generation and a
-    cumulative-time dose fires early."""
+def test_elapsed_after_run_uses_the_daughter_stamp_when_there_is_no_clock(monkeypatch):
+    """The daughter stamp is the fallback for a composite that exposes no clock.
+    (Its original fixture -- clock 3,600 with daughters stamped 2,528 -- was the
+    pre-#773 window semantics: the inner run carried on past the division to the
+    end of the window. With the slice loop the clock stops AT the division, so
+    that state can no longer occur; the clock-vs-stamp ordering is covered by
+    test_elapsed_after_run_prefers_the_inner_clock_over_a_young_daughter.)"""
     lp, _ = _make(monkeypatch, generations=2)
     lp._gen_elapsed = 0.0
     lp._composite = _FakeComposite({
-        "global_time": 3600.0,
         "agents": {"00": {"global_time": 2528.0}, "01": {"global_time": 2528.0}},
     })
     assert lp._elapsed_after_run(3600.0, {"0"}, lp._composite.state["agents"]) == 2528.0
+
+
+def test_elapsed_after_run_prefers_the_inner_clock_over_a_young_daughter(monkeypatch):
+    """sim 958 (2026-09-10): with the slice loop the daughters are 0-10 s old at
+    the break and ``previous`` is 0.0 on the single-window path (one update() per
+    generation), so a stamp-first rule booked ~2 s per generation, the lineage
+    offset never advanced, and the 10,000 s dose never fired across five
+    generations (cumulative 14,645 s). The inner clock stops at the division and
+    must win."""
+    lp, _ = _make(monkeypatch, generations=2)
+    lp._gen_elapsed = 0.0
+    lp._composite = _FakeComposite({
+        "global_time": 2530.0,
+        "agents": {"00": {"global_time": 2.0}, "01": {"global_time": 2.0}},
+    })
+    assert lp._elapsed_after_run(3600.0, {"0"}, lp._composite.state["agents"]) == 2530.0
+
+
+def test_elapsed_after_run_tick_driven_path_is_unchanged(monkeypatch):
+    """The chain path drives the runner per tick, so ``previous`` is already at
+    the division when it lands and the inner clock agrees with it (sim 952 dosed
+    at cumulative 10,001 s). Reordering the precedence must not move that."""
+    lp, _ = _make(monkeypatch, generations=2)
+    lp._gen_elapsed = 2527.0
+    lp._composite = _FakeComposite({
+        "global_time": 2528.0,
+        "agents": {"00": {"global_time": 1.0}, "01": {"global_time": 1.0}},
+    })
+    assert lp._elapsed_after_run(1.0, {"0"}, lp._composite.state["agents"]) == 2528.0
 
 
 def test_elapsed_after_run_ignores_a_daughter_stamp_that_does_not_advance(monkeypatch):
