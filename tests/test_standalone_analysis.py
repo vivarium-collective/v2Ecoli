@@ -290,3 +290,48 @@ def test_main_reads_config_file(tmp_path, monkeypatch, capsys):
 
     assert "s3://bucket/exp/analyses/test-analysis/doubling_time_distribution.json" in written
     assert '"status": "done"' in capsys.readouterr().out
+
+
+# --- V2ECOLI_EXTRA_ANALYSIS_MODULES hook -------------------------------------
+# Downstream packages (e.g. sms-ecoli's sms_modules) register Analysis ports
+# into the same ANALYSIS_REGISTRY as an import side effect; this script never
+# imported them, so their names resolved to "unknown analysis". The env-var
+# hook imports caller-named modules for that side effect, best-effort.
+
+def test_extra_modules_unset_is_noop(monkeypatch):
+    import scripts.run_standalone_analysis as mod
+    monkeypatch.delenv("V2ECOLI_EXTRA_ANALYSIS_MODULES", raising=False)
+    assert mod._register_extra_analysis_modules() == []
+
+
+def test_extra_modules_bad_name_reported_not_fatal(monkeypatch):
+    import scripts.run_standalone_analysis as mod
+    monkeypatch.setenv("V2ECOLI_EXTRA_ANALYSIS_MODULES", "definitely_not_a_real_module_xyz")
+    errs = mod._register_extra_analysis_modules()
+    assert len(errs) == 1
+    assert errs[0]["module"] == "definitely_not_a_real_module_xyz"
+    assert "import failed" in errs[0]["error"]
+
+
+def test_extra_modules_comma_and_space_separated(monkeypatch):
+    """Both separators work; modules that import fine produce no error, so only
+    the bogus one is reported (order preserved)."""
+    import scripts.run_standalone_analysis as mod
+    monkeypatch.setenv("V2ECOLI_EXTRA_ANALYSIS_MODULES", "json, os bogus_xyz")
+    errs = mod._register_extra_analysis_modules()
+    assert [e["module"] for e in errs] == ["bogus_xyz"]
+
+
+def test_extra_modules_import_side_effect_runs(tmp_path, monkeypatch):
+    """A named module is actually imported -- an Analysis port registers this
+    way. Proven via an observable import side effect."""
+    import sys as _sys
+    import scripts.run_standalone_analysis as mod
+    (tmp_path / "fake_extra_analyses.py").write_text(
+        "import sys\nsys.modules.setdefault('_extra_import_marker', object())\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    _sys.modules.pop("_extra_import_marker", None)
+    _sys.modules.pop("fake_extra_analyses", None)
+    monkeypatch.setenv("V2ECOLI_EXTRA_ANALYSIS_MODULES", "fake_extra_analyses")
+    assert mod._register_extra_analysis_modules() == []
+    assert "_extra_import_marker" in _sys.modules
