@@ -72,6 +72,18 @@ class PtoolsRxns(Analysis):
         "skip_n_gens": "integer",
     }
 
+    # Multiseed (cross-seed) render spec, consumed by _MultiseedMixin: reaction
+    # fluxes are heavy-tailed, so the mean/spread panels render on a log color
+    # scale, magnitude-sorted, absolute value.
+    _ptools_multiseed_spec = {
+        "filename": "ptools_rxns_multiseed.tsv",
+        "title": "Reaction fluxes",
+        "color_label": "|flux| (mmol/gDCW/h)",
+        "log_color": True,
+        "sort_rows": True,
+        "take_abs": True,
+    }
+
     def _do_read_outputs(
         self,
         history_sql: str,
@@ -81,22 +93,15 @@ class PtoolsRxns(Analysis):
         """Delegate to module-level read_outputs (overridable by mixins)."""
         return read_outputs(history_sql, conn, columns)
 
-    def analyze(
-        self,
-        *,
-        conn: DuckDBPyConnection,
-        history_sql: str,
-        sim_data,
-        variant_metadata: dict[str, Any] | None = None,
-        **ctx,
-    ) -> dict:
-        params = dict(variant_metadata or {})
-        params.setdefault("n_tp", 8)
-        params.setdefault("time_unit", "minutes")
+    def _feature_matrix(self, history_sql, conn, sim_data, params):
+        """Raw ``(time × reaction)`` flux matrix + axes.
 
-        if params["time_unit"] not in ("minutes", "seconds"):
-            params["time_unit"] = "minutes"
-
+        The extraction half of :meth:`analyze`, factored out so the multiseed
+        variant (:class:`~v2ecoli.workflow.analyses.ptools_multiscale._MultiseedMixin`)
+        reuses it per seed before its own cross-seed aggregation.  Returns
+        ``(matrix, time_vec, feature_ids, generation_vec_or_None)`` — ``matrix``
+        is ``(n_timepoints × n_features)``, un-consolidated.
+        """
         output_columns = ["listeners__fba_results__base_reaction_fluxes"]
         output_df = self._do_read_outputs(history_sql, conn, output_columns)
 
@@ -110,7 +115,6 @@ class PtoolsRxns(Analysis):
         ].reset_index(drop=True)
 
         rxn_mtx = np.stack(output_df[flux_col].values)
-
         rxn_ids_base = sim_data.process.metabolism.base_reaction_ids
 
         # v2ecoli's metabolism listener emits
@@ -157,18 +161,41 @@ class PtoolsRxns(Analysis):
             )
             rxn_ids = rxn_ids + [f"injected-reaction-{k}" for k in range(extra)]
 
-        n_tp = int(params["n_tp"])
         gens = (
             output_df["generation"].values
-            if params.get("per_generation") and "generation" in output_df.columns
-            else None
+            if "generation" in output_df.columns else None
         )
+        return rxn_mtx, output_df["time"].values, rxn_ids, gens
+
+    def analyze(
+        self,
+        *,
+        conn: DuckDBPyConnection,
+        history_sql: str,
+        sim_data,
+        variant_metadata: dict[str, Any] | None = None,
+        **ctx,
+    ) -> dict:
+        params = dict(variant_metadata or {})
+        params.setdefault("n_tp", 8)
+        params.setdefault("time_unit", "minutes")
+
+        if params["time_unit"] not in ("minutes", "seconds"):
+            params["time_unit"] = "minutes"
+
+        rxn_mtx, time_vec, rxn_ids, gens = self._feature_matrix(
+            history_sql, conn, sim_data, params
+        )
+        if not (params.get("per_generation") and gens is not None):
+            gens = None
+
+        n_tp = int(params["n_tp"])
 
         rxn_blocksum, tp_idx = consolidate_timepoints(
             rxn_mtx, n_tp, normalized=True, generations=gens
         )
 
-        tp_checkpoints = output_df["time"].values[tp_idx]
+        tp_checkpoints = time_vec[tp_idx]
 
         if params["time_unit"] == "minutes":
             tp_checkpoints = tp_checkpoints / 60

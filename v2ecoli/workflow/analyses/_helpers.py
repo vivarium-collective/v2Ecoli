@@ -151,6 +151,75 @@ def cumulative_time_history(history_sql: str) -> str:
     """
 
 
+def reconstruct_cumulative_time(
+    conn: duckdb.DuckDBPyConnection, history_sql: str
+) -> str:
+    """Rewrite ``history_sql`` so ``global_time`` is CUMULATIVE lineage time,
+    multiseed-safe.
+
+    Unlike :func:`cumulative_time_history` (single-lineage, pure SQL, one cell
+    per generation), this handles a slice spanning MULTIPLE seeds: it offsets
+    each generation by the summed duration of prior generations **per lineage
+    group** ``(lineage_seed, variant)``, so distinct seeds never cross-
+    contaminate each other's clock.  Ported from the sms ``reconstruct_
+    cumulative_time`` (#321), which was in turn extracted from ``mec_ic50``.
+
+    NO-OP when there is no ``generation`` column, only one generation, or the
+    per-generation ``global_time`` ranges are already monotonically
+    non-overlapping (the absolute-clock parquet path): the original SQL is
+    returned unchanged, so an already-absolute clock is left untouched.  The
+    offset uses ``max - min + 1`` per prior generation (unit emit step) so the
+    reconstructed cumulative times stay contiguous integers landing exactly on
+    the sampled absolute times.
+    """
+    avail = available_columns(conn, history_sql)
+    if "generation" not in avail:
+        return history_sql
+    group_cols = [c for c in ("lineage_seed", "variant") if c in avail]
+    sel = ", ".join([*group_cols, "generation"])
+    rows = conn.sql(
+        f"SELECT {sel}, min(global_time) AS mn, max(global_time) AS mx "
+        f"FROM ({history_sql}) GROUP BY {sel}"
+    ).fetchall()
+    ng = len(group_cols)
+    groups: dict[tuple, list] = {}
+    for r in rows:
+        key = tuple(r[:ng])
+        groups.setdefault(key, []).append(
+            (int(r[ng]), float(r[ng + 1]), float(r[ng + 2]))
+        )
+
+    resets = False
+    deltas: dict[tuple, float] = {}  # (group_key, generation) -> additive offset
+    for key, gens in groups.items():
+        gens.sort()
+        start = gens[0][1]  # first generation's min preserves the original base
+        prev_max = None
+        for gen, mn, mx in gens:
+            if prev_max is not None and mn <= prev_max:
+                resets = True  # a later generation restarts within an earlier one
+            deltas[(key, gen)] = start - mn  # cumulative = global_time - mn + start
+            start += (mx - mn) + 1.0  # next generation begins one step after this
+            prev_max = mx
+
+    if not resets:
+        return history_sql  # already cumulative (absolute-clock path) — untouched
+
+    def _clause(group_key: tuple, gen: int) -> str:
+        conds = [f"{col} = {val}" for col, val in zip(group_cols, group_key)]
+        conds.append(f"generation = {gen}")
+        return " AND ".join(conds)
+
+    case = " ".join(
+        f"WHEN {_clause(key, gen)} THEN {delta}"
+        for (key, gen), delta in deltas.items()
+    )
+    return (
+        f"SELECT * REPLACE ((global_time + CASE {case} ELSE 0 END) AS global_time) "
+        f"FROM ({history_sql})"
+    )
+
+
 def num_cells(conn: duckdb.DuckDBPyConnection, subquery: str) -> int:
     """Distinct cell count in a subquery (vEcoli parity)."""
     return conn.sql(
