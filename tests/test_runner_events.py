@@ -23,6 +23,17 @@ from v2ecoli.workflow import events as revents  # noqa: E402
 from v2ecoli.workflow.lineage import LineageProcess, _derive_generation_seed  # noqa: E402
 
 
+def _ident(e, key):
+    """Domain identity lives in the engine's opaque ``baggage`` map (the engine
+    schema has no v2ecoli fields); older engine builds carried the same keys at
+    the top level. Read either."""
+    bag = e.get("baggage")
+    if isinstance(bag, dict) and key in bag:
+        return str(bag[key])            # strings on the wire, by design
+    v = e.get(key)
+    return None if v is None else str(v)
+
+
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -72,7 +83,7 @@ def _make(monkeypatch, generations, divide_after=2, **cfg):
         lp._gen_span = revents.generation_span(lp)
         lp._gen_elapsed = 0.0
         gen_seed = _derive_generation_seed(lp.config["seed"], lp.config["lineage_seed"], lp._generation)
-        revents.emit("generation_start", generation=lp._generation, gen_seed=gen_seed,
+        revents.emit("lineage.generation.start", generation=lp._generation, gen_seed=gen_seed,
                      lineage_offset=float(lp._lineage_offset))
 
     def fake_run(interval):
@@ -98,14 +109,14 @@ def test_one_generation_start_and_end_per_generation(monkeypatch, stdout_events)
         if out.get("complete"):
             break
     events = stdout_events()
-    starts = [e for e in events if e["event"] == "generation_start"]
-    ends = [e for e in events if e["event"] == "generation_end"]
+    starts = [e for e in events if e["event"] == "lineage.generation.start"]
+    ends = [e for e in events if e["event"] == "lineage.generation.end"]
     assert [e["payload"]["generation"] for e in starts] == [0, 1, 2]
     assert [e["payload"]["generation"] for e in ends] == [0, 1, 2]
     # identity bound by the runner, not by any dispatcher env
-    assert all(e["layer"] == "runner" for e in starts + ends)
-    assert all(e["variant"] == 2 and e["lineage_seed"] == 7 for e in starts + ends)
-    assert all(e["experiment_id"] == "exp-t" for e in starts + ends)
+    assert all((e.get("component") or e.get("layer")) == "v2ecoli.lineage" for e in starts + ends)
+    assert all(_ident(e, "variant") == "2" and _ident(e, "lineage_seed") == "7" for e in starts + ends)
+    assert all(_ident(e, "experiment_id") == "exp-t" for e in starts + ends)
     # the seed is the real one (#766's combiner), not the base seed
     for e in starts:
         g = e["payload"]["generation"]
@@ -114,7 +125,7 @@ def test_one_generation_start_and_end_per_generation(monkeypatch, stdout_events)
     assert [e["payload"]["duration"] for e in ends] == [2.0, 2.0, 2.0]
     assert [round(e["payload"]["lineage_offset_after"]) for e in ends] == [2, 4, 6]
     # the generation spans opened and closed, nested under a common trace
-    span_ends = [e for e in events if e["event"] == "span_end" and e["payload"]["name"] == "generation"]
+    span_ends = [e for e in events if e["event"] in ("span_end", "span.end") and e["payload"]["name"] == "generation"]
     assert len(span_ends) == 3
     assert len({e["trace_id"] for e in events}) == 1
 
@@ -142,7 +153,7 @@ def test_carry_report_classifies_every_root():
         "bulk": "M", "unique": {}, "environment": {}, "boundary": {},
         "request": {"p": {"bulk": [[1, 2]]}},          # non-carried (the #765 class)
         "listeners": {"mass": {}},                     # never wholesale
-        "division": {"address": "local:Division"},     # an edge
+        "lineage.division": {"address": "local:Division"},     # an edge
         "fields": {"drug": 1.0},                       # carried by copy
         "mystery_root": {"x": 1},                      # nobody classified this
     }
@@ -151,7 +162,7 @@ def test_carry_report_classifies_every_root():
     assert "request" in NON_CARRIED_ROOT_KEYS
     assert report["carried"] == ["boundary", "bulk", "environment", "fields", "unique"]
     assert report["dropped"]["non_carried"] == ["listeners", "request"]
-    assert report["dropped"]["edges"] == ["division"]
+    assert report["dropped"]["edges"] == ["lineage.division"]
     assert report["dropped"]["unclassified"] == ["mystery_root"]
     assert report["carried_unclassified"] == []
 
@@ -174,7 +185,7 @@ def test_division_event_reports_signal_and_report(monkeypatch, stdout_events):
         "bulk": "M", "unique": {}, "environment": {}, "boundary": {},
         "request": {"p": {"bulk": []}}, "fields": {"drug": 2.0},
         "listeners": {"mass": {"dry_mass": 500.0}},
-        "division": {"address": "local:Division"},
+        "lineage.division": {"address": "local:Division"},
     }
 
     class _FakeComposite:
@@ -198,14 +209,14 @@ def test_division_event_reports_signal_and_report(monkeypatch, stdout_events):
     assert "request" not in daughter and daughter["fields"] == {"drug": 2.0}
 
     events = stdout_events()
-    div = [e for e in events if e["event"] == "division"]
+    div = [e for e in events if e["event"] == "lineage.division"]
     assert len(div) == 1
     p = div[0]["payload"]
     assert p["signal"] == "structural"
     assert p["t_division"] == 42.0            # the inner clock (#771), not the window
     assert p["carried"] == ["boundary", "bulk", "environment", "fields", "unique"]
     assert p["dropped"]["non_carried"] == ["listeners", "request"]
-    assert p["dropped"]["edges"] == ["division"]
+    assert p["dropped"]["edges"] == ["lineage.division"]
     assert p["dropped"]["unclassified"] == []
     assert div[0]["level"] == "info"
     assert lp._last_carry_report["carried"] == p["carried"]
@@ -235,7 +246,7 @@ def test_division_with_an_unclassified_root_is_a_warning(monkeypatch, stdout_eve
     lp._composite = _C()
     lp._gen_elapsed = 0.0
     lp._run_until_division(100.0)
-    div = [e for e in stdout_events() if e["event"] == "division"][0]
+    div = [e for e in stdout_events() if e["event"] == "lineage.division"][0]
     # the policy COPIED it (extras are copied by default) but nothing classified it
     assert div["level"] == "warning"
     assert div["payload"]["carried_unclassified"] == ["not_a_known_root"]
@@ -261,7 +272,7 @@ def test_observed_emitter_emits_chunk_flushed_on_batch_boundaries(stdout_events)
     for _ in range(9):
         inner.update({})          # the composite calls the INNER instance's update
     assert wrapped.num_emits == 9  # delegation
-    chunks = [e for e in stdout_events() if e["event"] == "chunk_flushed"]
+    chunks = [e for e in stdout_events() if e["event"] == "lineage.chunk.flushed"]
     assert [c["payload"]["chunk"] for c in chunks] == [1, 2]
     assert [c["payload"]["num_emits"] for c in chunks] == [4, 8]
 

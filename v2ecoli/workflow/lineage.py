@@ -28,7 +28,7 @@ from process_bigraph import Process
 def _warn_static(message: str, site: str = "") -> None:
     """Module-level twin of ``LineageProcess._warn`` for staticmethods."""
     warnings.warn(message)
-    _events.emit("warning", level="warning", message=message, site=site)
+    _events.emit("lineage.warning", level="warning", message=message, site=site)
 
 
 def _derive_generation_seed(seed, lineage_seed, generation):
@@ -572,7 +572,7 @@ class LineageProcess(Process):
         self._core = core
         self._gen_elapsed = 0.0
         _events.emit(
-            "generation_start",
+            "lineage.generation.start",
             generation=int(self._generation),
             agent_id=str(self._agent_id),
             gen_seed=int(gen_seed),
@@ -895,7 +895,7 @@ class LineageProcess(Process):
         stream sees every occurrence."""
         warnings.warn(message)
         _events.emit(
-            "warning", level="warning", message=message, site=site,
+            "lineage.warning", level="warning", message=message, site=site,
             generation=int(getattr(self, "_generation", 0) or 0),
         )
 
@@ -1021,7 +1021,7 @@ class LineageProcess(Process):
                 flush=True,
             )
         _events.emit(
-            "lineage_debug", level="debug", t=float(self._gen_elapsed), divided=bool(divided),
+            "lineage.debug", level="debug", t=float(self._gen_elapsed), divided=bool(divided),
             structural_agents_change=structural, divide_flag=bool(divide_flag),
             dry_mass=float(dry_mass), agents_before=sorted(agents_before),
             agents_after=sorted(agents_after),
@@ -1047,7 +1047,7 @@ class LineageProcess(Process):
                 report.get("carried_unclassified", [])
             )
             _events.emit(
-                "division",
+                "lineage.division",
                 level="warning" if unclassified else "info",
                 signal="structural" if structural else ("exception" if _exc_signal else "flag"),
                 t_division=float(self._gen_elapsed),
@@ -1095,7 +1095,7 @@ class LineageProcess(Process):
         self._log(
             f"[LineageProcess] gen {self._generation}: end (divided={divided} "
             f"timed_out={timed_out}); flushing emitters...",
-            "generation_flush_start",
+            "lineage.generation.flushing",
             generation=int(self._generation), divided=bool(divided), timed_out=bool(timed_out),
         )
         if self._is_xarray() and self._xarray_em is not None:
@@ -1132,7 +1132,7 @@ class LineageProcess(Process):
         _flush_s = time.monotonic() - _t_flush
         self._log(
             f"[LineageProcess] gen {self._generation}: emitters flushed in {_flush_s:.1f}s",
-            "generation_end",
+            "lineage.generation.end",
             generation=int(self._generation),
             agent_id=str(self._agent_id),
             duration=float(self._gen_elapsed),
@@ -1197,7 +1197,7 @@ class LineageProcess(Process):
             mb = _estimate_state_mb(daughter)
             prev = getattr(self, "_last_checkpoint_mb", 0.0)
             if prev and mb > 1.5 * prev:
-                self._warn(site="checkpoint", message=
+                self._warn(site="lineage.checkpoint", message=
                     f"LineageProcess: gen {self._generation} carry state is "
                     f"{mb:.1f}MB, up {mb / prev:.1f}x from the previous "
                     f"generation ({prev:.1f}MB). A lineage whose per-generation "
@@ -1209,14 +1209,14 @@ class LineageProcess(Process):
             self._log(
                 f"[LineageProcess] gen {self._generation}: writing checkpoint "
                 f"(~{mb:.1f}MB) -> {out_path}",
-                "checkpoint_start",
+                "lineage.checkpoint.start",
                 generation=int(self._generation), path=out_path, mb=round(mb, 3),
             )
             save_initial_state(payload, out_path)
             _ckpt_s = time.monotonic() - _t_ckpt
             self._log(
                 f"[LineageProcess] gen {self._generation}: checkpoint written in {_ckpt_s:.1f}s",
-                "checkpoint",
+                "lineage.checkpoint",
                 generation=int(self._generation), path=out_path, mb=round(mb, 3),
                 seconds=round(_ckpt_s, 3), status="written",
             )

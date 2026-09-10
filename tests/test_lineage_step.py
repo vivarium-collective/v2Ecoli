@@ -235,16 +235,16 @@ def test_failure_writes_failure_json_emits_failure_record_and_reraises(core, tmp
 
     events = [json.loads(ln) for ln in capsys.readouterr().out.splitlines() if ln.startswith("{")]
     kinds = [e["event"] for e in events]
-    assert "failure_record" in kinds
-    fr = [e for e in events if e["event"] == "failure_record"][0]
-    assert fr["level"] == "error" and fr["layer"] == "runner"
+    assert "lineage.failure" in kinds
+    fr = [e for e in events if e["event"] == "lineage.failure"][0]
+    assert fr["level"] == "error" and (fr.get("component") or fr.get("layer")) == "v2ecoli.lineage"
     assert fr["payload"]["failure_json"] == str(out_dir / "failure.json")
     # the lineage span was closed with status=error
-    ends = [e for e in events if e["event"] == "span_end" and e["payload"]["name"] == "lineage"]
+    ends = [e for e in events if e["event"] in ("span_end", "span.end") and e["payload"]["name"] == "lineage"]
     assert ends and ends[-1]["payload"]["status"] == "error"
     # and the per-task file sink got the same stream
     lines = (out_dir / "events.jsonl").read_text().splitlines()
-    assert any(json.loads(ln)["event"] == "failure_record" for ln in lines)
+    assert any(json.loads(ln)["event"] == "lineage.failure" for ln in lines)
 
 
 def test_success_closes_the_lineage_span_ok(core, tmp_path, monkeypatch, capsys):
@@ -260,6 +260,6 @@ def test_success_closes_the_lineage_span_ok(core, tmp_path, monkeypatch, capsys)
     step.update({"cache_dir": "c"})
     pbg_events.set_emitter(None)
     events = [json.loads(ln) for ln in capsys.readouterr().out.splitlines() if ln.startswith("{")]
-    ends = [e for e in events if e["event"] == "span_end" and e["payload"]["name"] == "lineage"]
+    ends = [e for e in events if e["event"] in ("span_end", "span.end") and e["payload"]["name"] == "lineage"]
     assert ends and ends[-1]["payload"]["status"] == "ok"
     assert not (out_dir / "failure.json").exists()

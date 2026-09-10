@@ -273,7 +273,7 @@ class LineageStep(Step):
         # ``lineage`` span under the entrypoint's task span, and on ANY failure
         # writes <out_dir>/failure.json (exception, traceback tail, the engine's
         # pbg_context: process path / global_time / state summary) and emits a
-        # ``failure_record`` before re-raising the original exception unchanged.
+        # ``lineage.failure`` event before re-raising the original exception unchanged.
         from v2ecoli.workflow import events as _events
 
         emitter = _events.configure_for_task(out_dir or None)
@@ -290,7 +290,7 @@ class LineageStep(Step):
         except BaseException as exc:
             record = _events.failure_record(
                 exc,
-                generation=getattr(emitter, "identity", {}).get("generation"),
+                generation=_events.current_baggage(emitter).get("generation"),
                 wall_time=round(time.monotonic() - _t0, 3),
                 out_dir=out_dir,
                 experiment_id=self.config.get("experiment_id"),
@@ -298,7 +298,7 @@ class LineageStep(Step):
                 lineage_seed=self.config.get("lineage_seed"),
             )
             record["failure_json"] = _events.write_failure_json(out_dir, record)
-            _events.emit("failure_record", level="error", **record)
+            _events.emit("lineage.failure", level="error", **record)
             span.end(status="error", error=f"{type(exc).__name__}: {exc}"[:500])
             try:
                 emitter.flush()

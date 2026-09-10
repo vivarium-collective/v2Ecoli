@@ -5,14 +5,14 @@ The engine (``process_bigraph.events``, process-bigraph >= 1.9 / PR #209) emits
 every ``Composite.run``. This module adds the *runner* layer on top of it: the
 per-generation decisions that only ``LineageProcess`` / ``LineageStep`` know --
 
-* ``generation_start``  -- the generation seed, the cumulative lineage-time
+* ``lineage.generation.start`` -- the generation seed, the cumulative lineage-time
   offset, the emitter target, and the previous division's carry report;
-* ``division``          -- which signal fired (structural / divide flag /
+* ``lineage.division`` -- which signal fired (structural / divide flag /
   exception), when, at what mass, and exactly which agent-root stores were
   carried, dropped by policy, filtered as edges, or left UNCLASSIFIED (the
   #765 ``request``/``allocate`` class, now a warning-level event);
-* ``generation_end`` / ``checkpoint`` / ``chunk_flushed`` / ``warning``;
-* ``failure_record``    -- written next to the task's output *and* emitted,
+* ``lineage.generation.end`` / ``lineage.checkpoint`` / ``lineage.chunk.flushed`` / ``lineage.warning``;
+* ``lineage.failure`` -- written next to the task's output *and* emitted,
   with the engine's ``pbg_context`` (process path, ``global_time``, state
   summary) when the exception carries one.
 
@@ -28,9 +28,14 @@ Design rules, inherited from the engine and load-bearing here too:
   stdout + a per-task ``events.jsonl`` file sink; a laptop run of the local
   sweep runner gets nothing unless ``PBG_EVENT_SINKS`` says so.
 
-Identity: the task entrypoint (``process_bigraph.run_step``) already parsed
-``PBG_TRACEPARENT`` / ``PBG_TRACE_BAGGAGE``; the runner *binds* the fields only
-it knows (``variant``, ``lineage_seed``, ``generation``, ``experiment_id``).
+Identity boundary: the engine's schema is domain-free (``v, ts, seq, source,
+component, event, level, trace_id, span_id, parent_span_id, global_time,
+wall_time, baggage, tags, payload``) -- generic fields plus an opaque W3C
+``baggage`` map (string values on the wire) and opaque span ``attrs``. ``experiment_id``,
+``variant``, ``lineage_seed`` and ``generation`` are v2ecoli's keys, bound INTO
+baggage here (``emitter.bind(**kv)``) and read back from ``event["baggage"]``
+by consumers; the task entrypoint (``process_bigraph.run_step``) seeds baggage
+from ``PBG_TRACE_BAGGAGE`` with whatever the dispatcher knew.
 """
 
 from __future__ import annotations
@@ -41,7 +46,8 @@ import os
 import time
 from typing import Any
 
-LAYER = "runner"
+COMPONENT = "v2ecoli.lineage"
+LAYER = COMPONENT  # back-compat alias for the pre-refactor engine (`layer`)
 
 try:  # process-bigraph >= 1.9 (feat/events, #209)
     from process_bigraph import events as _pbg_events
@@ -190,12 +196,51 @@ def generation_span(lp):
 
 
 def emit(name: str, level: str = "info", **payload) -> None:
-    """Emit a runner-layer event; never raises."""
+    """Emit a runner event under ``component="v2ecoli.lineage"``; never raises.
+
+    Event names are dotted and namespaced (``lineage.generation.start`` ...).
+    The engine after the schema refactor takes ``component=``; the pre-refactor
+    build took ``layer=`` -- try the former, fall back to the latter.
+    """
     emitter = get_emitter()
     try:
-        emitter.event(name, level=level, layer=LAYER, **payload)
+        emitter.event(name, level=level, **{_component_kw(emitter): COMPONENT}, **payload)
     except Exception:
         pass
+
+
+def _component_kw(emitter) -> str:
+    """``component`` on the settled engine schema, ``layer`` on the pre-refactor
+    build (where an unknown keyword would silently land in ``payload``)."""
+    cached = getattr(emitter, "_v2e_component_kw", None)
+    if cached:
+        return cached
+    import inspect
+
+    try:
+        params = inspect.signature(emitter.event).parameters
+        kw = "component" if "component" in params else ("layer" if "layer" in params else "component")
+    except (TypeError, ValueError):
+        kw = "component"
+    try:
+        emitter._v2e_component_kw = kw
+    except Exception:
+        pass
+    return kw
+
+
+def current_baggage(emitter=None) -> dict[str, Any]:
+    """The identity the emitter currently carries. On the current engine that
+    is the opaque W3C ``baggage`` map (filled from ``PBG_TRACE_BAGGAGE`` and
+    ``bind()``); older builds exposed the same keys as ``identity``. The runner
+    treats ``experiment_id`` / ``variant`` / ``lineage_seed`` / ``generation``
+    as *its* domain keys inside that map -- the engine knows nothing of them."""
+    emitter = emitter or get_emitter()
+    for attr in ("baggage", "identity"):
+        value = getattr(emitter, attr, None)
+        if isinstance(value, dict):
+            return dict(value)
+    return {}
 
 
 def events_enabled() -> bool:
@@ -294,10 +339,8 @@ class _ObservedEmitter:
             idx = self._chunk_index()
             if idx > self._last_chunk:
                 object.__setattr__(self, "_last_chunk", idx)
-                self._emitter.event(
-                    "chunk_flushed",
-                    level="info",
-                    layer=LAYER,
+                emit(
+                    "lineage.chunk.flushed",
                     num_emits=int(getattr(self._inner, "num_emits", 0) or 0),
                     chunk=idx,
                     seconds=round(time.monotonic() - t0, 4),
@@ -323,11 +366,15 @@ class _ObservedEmitter:
 
 
 def failure_record(exc: BaseException, **extra) -> dict[str, Any]:
+    """The engine's ``exception_record`` (``failure_record`` on the pre-refactor
+    build), or a local equivalent when the engine is absent."""
     if _pbg_events is not None:
-        try:
-            return _pbg_events.failure_record(exc, **extra)
-        except Exception:
-            pass
+        fn = getattr(_pbg_events, "exception_record", None) or getattr(_pbg_events, "failure_record", None)
+        if fn is not None:
+            try:
+                return fn(exc, **extra)
+            except Exception:
+                pass
     import traceback
 
     text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))

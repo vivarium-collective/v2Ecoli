@@ -88,7 +88,7 @@ def test_checkpoint_write_is_an_event_with_size_and_seconds(monkeypatch, tmp_pat
     lp.update({}, 10.0)
     pbg_events.set_emitter(None)
     events = [json.loads(ln) for ln in capsys.readouterr().out.splitlines() if ln.startswith("{")]
-    ck = [e for e in events if e["event"] == "checkpoint"]
+    ck = [e for e in events if e["event"] == "lineage.checkpoint"]
     assert len(ck) == 1
     assert ck[0]["payload"]["path"] == str(out)
     assert ck[0]["payload"]["status"] == "written"
