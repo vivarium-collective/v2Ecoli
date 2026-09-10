@@ -911,18 +911,32 @@ class LineageProcess(Process):
         (Run 3's ``field_timeline`` onset at 10,000 s) fired ~2,900 s of simulated
         time early (sim 898, sms-ecoli#166, 2026-09-10).
 
-        Precedence: (1) the division timestamp the Division step stamps onto each
-        NEW daughter agent (``global_time``); (2) the inner composite's own clock,
+        Precedence: (1) a division timestamp stamped onto a NEW daughter agent
+        (``global_time``) -- but only if it ADVANCES the clock. The Division step
+        rebuilds each daughter document from ``baseline()``, whose ``global_time``
+        is ``0.0`` (``ecoli_baseline.py``), so on the real composite the stamp is
+        0.0, not the division time. The first version of this method (#767)
+        returned that 0.0: ``_gen_elapsed`` never advanced, ``lineage_time_offset``
+        stayed 0 across every generation, ``summary.json`` recorded
+        ``duration 0.0`` five times, and Run 3's cumulative 10,000 s dose never
+        fired at all (sims 946/947, 2026-09-10) -- #767 had moved the bug from
+        "3,600 x n, early" to "0, never". (2) The inner composite's own clock,
         which restarts at 0 every generation and stops where the run stopped;
-        (3) the previous value plus ``interval`` -- the old behaviour, kept for a
-        composite that exposes neither (stubs).
+        on the ``LineageStep`` path the run stops at the division signal, so the
+        clock IS the division time (2,528 s on 898/946/947). (3) The previous
+        value plus ``interval`` -- the old behaviour, kept for a composite that
+        exposes neither (stubs).
         """
         previous = float(self._gen_elapsed)
         new_ids = set(agents_now) - set(agents_before or ())
         for agent_id in sorted(new_ids):
             agent = agents_now.get(agent_id)
             stamped = agent.get("global_time") if isinstance(agent, dict) else None
-            if isinstance(stamped, (int, float)) and not isinstance(stamped, bool):
+            if (
+                isinstance(stamped, (int, float))
+                and not isinstance(stamped, bool)
+                and float(stamped) > previous
+            ):
                 return float(stamped)
         state = getattr(self._composite, "state", None)
         clock = state.get("global_time") if isinstance(state, dict) else None

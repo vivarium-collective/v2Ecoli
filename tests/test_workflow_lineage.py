@@ -751,6 +751,25 @@ def test_elapsed_after_run_prefers_the_daughters_division_stamp(monkeypatch):
     assert lp._elapsed_after_run(3600.0, {"0"}, lp._composite.state["agents"]) == 2528.0
 
 
+def test_elapsed_after_run_ignores_a_daughter_stamp_that_does_not_advance(monkeypatch):
+    """sims 946/947 (2026-09-10): the Division step rebuilds each daughter from
+    baseline(), whose global_time is 0.0, so the "stamp" on a real daughter is 0.0.
+    Trusting it booked 0 s per generation: lineage_time_offset never advanced and
+    Run 3's cumulative 10,000 s dose never fired. A non-advancing stamp must be
+    ignored in favour of the inner clock, which stops at the division (2,528 s)."""
+    lp, _ = _make(monkeypatch, generations=2)
+    lp._gen_elapsed = 0.0
+    lp._composite = _FakeComposite({
+        "global_time": 2528.0,
+        "agents": {"00": {"global_time": 0.0}, "01": {"global_time": 0.0}},
+    })
+    assert lp._elapsed_after_run(3600.0, {"0"}, lp._composite.state["agents"]) == 2528.0
+    # and with neither a usable stamp nor an advancing clock, the window (stubs)
+    lp._composite = _FakeComposite({"global_time": 0.0,
+                                    "agents": {"00": {"global_time": 0.0}}})
+    assert lp._elapsed_after_run(3600.0, {"0"}, lp._composite.state["agents"]) == 3600.0
+
+
 def test_elapsed_after_run_uses_the_inner_clock_without_daughters(monkeypatch):
     lp, _ = _make(monkeypatch, generations=2)
     lp._gen_elapsed = 0.0
@@ -769,3 +788,39 @@ def test_elapsed_after_run_falls_back_to_the_window_for_stubs(monkeypatch):
     # A stale clock (not past what is already booked) never rewinds.
     lp._composite = _FakeComposite({"global_time": 5.0, "agents": {"0": {}}})
     assert lp._elapsed_after_run(10.0, {"0"}, {"0": {}}) == 50.0
+
+
+def test_partition_bookkeeping_roots_are_never_carried():
+    """``request``/``allocate`` are per-tick partition bookkeeping (each Requester
+    overwrites its own entry; the Allocator derives ``allocate`` from ``request``).
+    Carrying the mother's snapshot seeded the daughter's first tick with stale,
+    full-size demands from EVERY process and the Allocator partitioned a half-size
+    cell against them: sims 943/944 (2026-09-10) died in generation 1 on
+    ``NegativeCountsError`` / ``Failed to meet molecule limits with ppGpp``."""
+    from v2ecoli.library.division import extra_store_keys
+    from v2ecoli.workflow.lineage import apply_carry_state, select_carry_daughter
+
+    stale_request = {"ecoli-polypeptide-elongation": {"bulk": [[300, 10 ** 6]]}}
+    stale_allocate = {"ecoli-polypeptide-elongation": {"bulk": [[300, 10 ** 6]]}}
+    mother_snapshot = {
+        "bulk": "M", "unique": {}, "environment": {}, "boundary": {},
+        "request": stale_request, "allocate": stale_allocate,
+        "fields": {"drug": 1.0},
+    }
+    assert "request" not in extra_store_keys(mother_snapshot)
+    assert "allocate" not in extra_store_keys(mother_snapshot)
+
+    agents_now = {
+        "00": {"bulk": "D0", "unique": {}, "environment": {}, "boundary": {},
+               "request": {}, "allocate": {}, "fields": {"drug": 0.0}},
+        "01": {"bulk": "D1", "unique": {}, "environment": {}, "boundary": {}},
+    }
+    carry = select_carry_daughter({"0"}, agents_now, mother_snapshot)
+    assert "request" not in carry and "allocate" not in carry
+    assert carry["fields"] == {"drug": 1.0}          # injected extras still ride
+
+    fresh = {"bulk": "F", "unique": {}, "environment": {}, "boundary": {},
+             "request": {}, "allocate": {}, "fields": {"drug": 0.0}}
+    apply_carry_state(fresh, carry)
+    assert fresh["request"] == {} and fresh["allocate"] == {}
+    assert fresh["fields"] == {"drug": 1.0}
