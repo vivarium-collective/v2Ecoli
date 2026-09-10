@@ -264,22 +264,21 @@ class PtoolsRna(Analysis):
         """Delegate to module-level read_outputs (overridable by mixins)."""
         return read_outputs(history_sql, conn, columns)
 
-    def analyze(
-        self,
-        *,
-        conn: DuckDBPyConnection,
-        history_sql: str,
-        sim_data,
-        variant_metadata: dict[str, Any] | None = None,
-        **ctx,
-    ) -> dict:
-        params = dict(variant_metadata or {})
-        params.setdefault("n_tp", 8)
-        params.setdefault("time_unit", "minutes")
+    # Multiseed (cross-seed) render spec, consumed by _MultiseedMixin.
+    _ptools_multiseed_spec = {
+        "filename": "ptools_rna_multiseed.tsv",
+        "title": "RNA counts",
+        "color_label": "count",
+        "log_color": False,
+        "sort_rows": False,
+        "take_abs": False,
+    }
 
-        if params["time_unit"] not in ("minutes", "seconds"):
-            params["time_unit"] = "minutes"
-
+    def _feature_matrix(self, history_sql, conn, sim_data, params):
+        """Raw ``(time × gene)`` RNA-count matrix + axes; the extraction half of
+        :meth:`analyze`, reused per seed by ``_MultiseedMixin``. Returns
+        ``(matrix, time_vec, feature_ids, generation_vec_or_None)``.
+        """
         wd_raw = _flat_dir()
 
         rna_data = sim_data.process.transcription.rna_data
@@ -462,19 +461,41 @@ class PtoolsRna(Analysis):
 
         tu_counts_mtx = np.stack(list(tu_dict_full.values())).transpose()
         rna_counts_gene = np.matmul(tu_counts_mtx, tu_gene_mtx)
+        gens_raw = (
+            output_df["generation"].values
+            if "generation" in output_df.columns else None
+        )
+        return rna_counts_gene, output_df["time"].values, tu_genes_all, gens_raw
+
+    def analyze(
+        self,
+        *,
+        conn: DuckDBPyConnection,
+        history_sql: str,
+        sim_data,
+        variant_metadata: dict[str, Any] | None = None,
+        **ctx,
+    ) -> dict:
+        params = dict(variant_metadata or {})
+        params.setdefault("n_tp", 8)
+        params.setdefault("time_unit", "minutes")
+
+        if params["time_unit"] not in ("minutes", "seconds"):
+            params["time_unit"] = "minutes"
+
+        rna_counts_gene, time_vec, tu_genes_all, gens = self._feature_matrix(
+            history_sql, conn, sim_data, params
+        )
+        if not (params.get("per_generation") and gens is not None):
+            gens = None
 
         n_tp = int(params["n_tp"])
-        gens = (
-            output_df["generation"].values
-            if params.get("per_generation") and "generation" in output_df.columns
-            else None
-        )
 
         rna_counts_gene_blocksum, tp_idx = consolidate_timepoints(
             rna_counts_gene, n_tp, normalized=True, generations=gens
         )
 
-        tp_checkpoints = output_df["time"].values[tp_idx]
+        tp_checkpoints = time_vec[tp_idx]
 
         if params["time_unit"] == "minutes":
             tp_checkpoints = tp_checkpoints / 60
