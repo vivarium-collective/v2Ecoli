@@ -91,7 +91,7 @@ def test_every_declared_root_store_is_classified():
         "agent-root store(s) with NO carry classification -- decide what division "
         "does to each (CORE_DIVISIBLE_KEYS / NON_CARRIED_ROOT_KEYS / CARRIED_BY_COPY / "
         "register_store_divider, or COMPOSITE_LEVEL_ROOTS in this test if it is not "
-        f"an agent root):\n" + "\n".join(f"  {k}: {v}" for k, v in sorted(unclassified.items()))
+        "an agent root):\n" + "\n".join(f"  {k}: {v}" for k, v in sorted(unclassified.items()))
     )
 
 
