@@ -187,7 +187,12 @@ def counts_to_gdcw_rate(delta_counts: float, dry_mass_fg: float,
         a NaN would propagate through every downstream mean, turning one
         undefined tick into an undefined generation.
     """
-    if dry_mass_fg <= 0 or timestep_s <= 0:
+    # `not (x > 0)`, NOT `x <= 0`: `nan <= 0` is False, so a NaN dry mass
+    # (a freshly divided daughter whose mass listener seed missed) would
+    # sail through the old guard and emit a NaN flux into the KPI trace —
+    # exactly the undefined-tick-poisons-the-generation case the 0.0 return
+    # exists to prevent.
+    if not (dry_mass_fg > 0) or not (timestep_s > 0):
         return 0.0
     mmol = (delta_counts / _N_AVOGADRO) * 1e3
     grams = dry_mass_fg * 1e-15

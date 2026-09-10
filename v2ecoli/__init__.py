@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 from process_bigraph import Composite
@@ -123,7 +124,25 @@ def _install_xarray_flush_hook(composite: Composite) -> None:
     _orig_run = composite.run
 
     def _run_and_flush(interval, *args, **kwargs):
-        result = _orig_run(interval, *args, **kwargs)
+        # The flush must happen however run() ends. An exception out of
+        # run() (a process crash, an OOM) used to skip close_emitter()
+        # entirely, losing the up-to-600-row trailing buffer AND the store
+        # finalization (no consolidate, no division_reached attr) — the
+        # durability gap CD2 hit as "empty group skeletons crash the next
+        # generation". On the failure path a flush error is reported, never
+        # raised over the run's own exception; on the success path a flush
+        # failure stays loud exactly as before.
+        try:
+            result = _orig_run(interval, *args, **kwargs)
+        except BaseException:
+            for em in _find_lazy_xarray_emitters(composite.state):
+                try:
+                    em.close_emitter()
+                except Exception as flush_err:  # noqa: BLE001
+                    warnings.warn(
+                        f"xarray flush after failed run() also failed "
+                        f"(the run's own exception follows): {flush_err}")
+            raise
         for em in _find_lazy_xarray_emitters(composite.state):
             em.close_emitter()
         return result
