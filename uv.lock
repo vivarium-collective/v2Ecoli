@@ -3131,7 +3131,7 @@ wheels = [
 [[package]]
 name = "process-bigraph"
 version = "1.8.4"
-source = { git = "https://github.com/vivarium-collective/process-bigraph.git?rev=70fbdccf5e60295d19c6cf5880a600bfa101d45d#70fbdccf5e60295d19c6cf5880a600bfa101d45d" }
+source = { git = "https://github.com/vivarium-collective/process-bigraph.git?rev=487ba0efca3e67d6dc8dfa3e8c5a8b8fb07ae226#487ba0efca3e67d6dc8dfa3e8c5a8b8fb07ae226" }
 dependencies = [
     { name = "bigraph-schema" },
     { name = "matplotlib" },
@@ -4586,7 +4586,7 @@ requires-dist = [
     { name = "pbg-torch", git = "https://github.com/vivarium-collective/viva-torch.git?branch=main" },
     { name = "plotly", specifier = ">=5.0" },
     { name = "plum-dispatch", specifier = ">=2.5" },
-    { name = "process-bigraph", git = "https://github.com/vivarium-collective/process-bigraph.git?rev=70fbdccf5e60295d19c6cf5880a600bfa101d45d" },
+    { name = "process-bigraph", git = "https://github.com/vivarium-collective/process-bigraph.git?rev=487ba0efca3e67d6dc8dfa3e8c5a8b8fb07ae226" },
     { name = "pymunk" },
     { name = "pytest-timeout", marker = "extra == 'dev'", specifier = ">=2.3" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.6" },
