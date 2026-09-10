@@ -195,7 +195,7 @@ packages = { find = { where = ["."], include = ["v2ecoli*", "pbg_v2ecoli*"] } }
 # branch head -- the renderer fixes workflow_nf requires (a `nextflow_script()`
 # override wrapped as Groovy, and `cache = 'lenient'` so `-resume` can match)
 # are on main now. Also picks up #206 (`analyses` on GeneratorEntry).
-process-bigraph = { git = "https://github.com/vivarium-collective/process-bigraph.git", rev = "487ba0efca3e67d6dc8dfa3e8c5a8b8fb07ae226" }
+process-bigraph = { git = "https://github.com/vivarium-collective/process-bigraph.git", rev = "66bccbdd77f0f8622e7d2f1161d2cf9ec755337e" }
 bigraph-schema = { git = "https://github.com/vivarium-collective/bigraph-schema.git", branch = "main" }
 viva-superpowers = { git = "https://github.com/vivarium-collective/viva-superpowers.git", branch = "main" }
 viva-workspace = { git = "https://github.com/vivarium-collective/viva-workspace.git", branch = "main" }
