@@ -53,7 +53,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -178,6 +180,36 @@ def run_duckdb_analyses(
     return written, errors
 
 
+def _register_extra_analysis_modules() -> list[dict[str, str]]:
+    """Import any modules named in ``V2ECOLI_EXTRA_ANALYSIS_MODULES`` for their
+    ``ANALYSIS_REGISTRY`` registration side effect, and return one error record
+    per module that failed to import.
+
+    ``import v2ecoli.workflow.analyses`` only registers v2ecoli's own ports.
+    Downstream packages register Analysis ports into the SAME registry purely as
+    an import side effect, but they live outside v2ecoli, so this script never
+    imported them and every such name silently resolved to "unknown analysis"
+    in ``run()`` -- e.g. sms-ecoli's whole ``sms_modules`` suite
+    (ptools_metabolites_multiseed, the fss_* family) was invisible to every
+    standalone flush. A caller names those modules in the env var (comma- or
+    whitespace-separated, e.g. ``sms_modules``); each is imported here.
+
+    Best-effort by design: v2ecoli must stay standalone when the var is unset,
+    and a typo'd or unimportable module name is surfaced in the manifest rather
+    than crashing the run (it would otherwise take down analyses that ARE
+    registered). The repo root is on sys.path (see top of file), so a
+    downstream's top-level package resolves regardless of invocation."""
+    errors: list[dict[str, str]] = []
+    spec = os.environ.get("V2ECOLI_EXTRA_ANALYSIS_MODULES", "")
+    for mod in spec.replace(",", " ").split():
+        try:
+            importlib.import_module(mod)
+        except Exception as e:  # noqa: BLE001 -- a bad extra module must not crash the run
+            errors.append({"module": mod,
+                           "error": f"import failed: {type(e).__name__}: {e}"})
+    return errors
+
+
 def run(out_uri: str, n_seeds: int, modules: dict[str, dict[str, Any]],
         analysis_name: str, tmp: Path) -> dict[str, Any]:
     from bigraph_schema import allocate_core
@@ -189,6 +221,9 @@ def run(out_uri: str, n_seeds: int, modules: dict[str, dict[str, Any]],
     outdir = f"{out_uri.rstrip('/')}/analyses/{analysis_name}"
     written: list[str] = []
     errors: list[dict[str, str]] = []
+    # Register downstream Analysis ports (e.g. sms_modules) BEFORE any name is
+    # looked up below; import failures are surfaced in the manifest, not fatal.
+    errors.extend(_register_extra_analysis_modules())
 
     for scale, entries in modules.items():
         # Split this scale's requested names by which analysis-class family they
