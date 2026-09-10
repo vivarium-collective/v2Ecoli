@@ -730,3 +730,42 @@ def test_apply_carry_state_merges_a_carried_listener_leaf():
     assert agent["listeners"]["peptidoglycan_shape"]["murein"] == 0
     assert agent["listeners"]["mass"] == {"dry_mass": 0.0}
     assert "_carried_listeners" not in agent
+
+
+class _FakeComposite:
+    def __init__(self, state):
+        self.state = state
+
+
+def test_elapsed_after_run_prefers_the_daughters_division_stamp(monkeypatch):
+    """sim 898 / sms-ecoli#166: a generation that divides at 2,528 s inside a
+    3,600 s window must book 2,528 s, not the window -- otherwise
+    lineage_time_offset drifts by (window - division time) per generation and a
+    cumulative-time dose fires early."""
+    lp, _ = _make(monkeypatch, generations=2)
+    lp._gen_elapsed = 0.0
+    lp._composite = _FakeComposite({
+        "global_time": 3600.0,
+        "agents": {"00": {"global_time": 2528.0}, "01": {"global_time": 2528.0}},
+    })
+    assert lp._elapsed_after_run(3600.0, {"0"}, lp._composite.state["agents"]) == 2528.0
+
+
+def test_elapsed_after_run_uses_the_inner_clock_without_daughters(monkeypatch):
+    lp, _ = _make(monkeypatch, generations=2)
+    lp._gen_elapsed = 0.0
+    lp._composite = _FakeComposite({"global_time": 1734.0, "agents": {"0": {}}})
+    assert lp._elapsed_after_run(3600.0, {"0"}, {"0": {}}) == 1734.0
+    # A window that ran to its end books the whole window.
+    lp._composite = _FakeComposite({"global_time": 3600.0, "agents": {"0": {}}})
+    assert lp._elapsed_after_run(3600.0, {"0"}, {"0": {}}) == 3600.0
+
+
+def test_elapsed_after_run_falls_back_to_the_window_for_stubs(monkeypatch):
+    lp, _ = _make(monkeypatch, generations=2)
+    lp._gen_elapsed = 40.0
+    lp._composite = _FakeComposite({"agents": {"0": {}}})
+    assert lp._elapsed_after_run(10.0, {"0"}, {"0": {}}) == 50.0
+    # A stale clock (not past what is already booked) never rewinds.
+    lp._composite = _FakeComposite({"global_time": 5.0, "agents": {"0": {}}})
+    assert lp._elapsed_after_run(10.0, {"0"}, {"0": {}}) == 50.0

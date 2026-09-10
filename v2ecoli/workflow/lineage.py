@@ -836,6 +836,37 @@ class LineageProcess(Process):
             f"generation."
         )
 
+    def _elapsed_after_run(self, interval, agents_before, agents_now) -> float:
+        """This generation's REAL simulated elapsed time after one inner run.
+
+        On the ``LineageStep`` path the inner composite is run for the whole
+        ``max_duration_per_gen`` window in one call, so ``interval`` is the
+        WINDOW, not the duration. Booking ``_gen_elapsed += interval`` made a
+        generation that divided at 1,734 s count as 3,600 s: ``lineage_time_offset``
+        became 3,600 x generations completed, the summary ``duration`` was wrong,
+        every generation reported ``timed_out``, and a cumulative-time dose
+        (Run 3's ``field_timeline`` onset at 10,000 s) fired ~2,900 s of simulated
+        time early (sim 898, sms-ecoli#166, 2026-09-10).
+
+        Precedence: (1) the division timestamp the Division step stamps onto each
+        NEW daughter agent (``global_time``); (2) the inner composite's own clock,
+        which restarts at 0 every generation and stops where the run stopped;
+        (3) the previous value plus ``interval`` -- the old behaviour, kept for a
+        composite that exposes neither (stubs).
+        """
+        previous = float(self._gen_elapsed)
+        new_ids = set(agents_now) - set(agents_before or ())
+        for agent_id in sorted(new_ids):
+            agent = agents_now.get(agent_id)
+            stamped = agent.get("global_time") if isinstance(agent, dict) else None
+            if isinstance(stamped, (int, float)) and not isinstance(stamped, bool):
+                return float(stamped)
+        state = getattr(self._composite, "state", None)
+        clock = state.get("global_time") if isinstance(state, dict) else None
+        if isinstance(clock, (int, float)) and not isinstance(clock, bool) and float(clock) > previous:
+            return float(clock)
+        return previous + float(interval)
+
     def _run_until_division(self, interval):
         """Run the internal composite for ``interval`` seconds. Returns
         ``(divided, daughter_cell_data_or_None, final_dry_mass)``."""
@@ -885,9 +916,8 @@ class LineageProcess(Process):
                 f"signal at t={self._gen_elapsed}: {e!r}"
             )
             divided = True
-        self._gen_elapsed += interval
-
         agents_now = self._composite.state.get("agents") or {}
+        self._gen_elapsed = self._elapsed_after_run(interval, agents_before, agents_now)
         agents_after = set(agents_now.keys())
         if agents_before and agents_after != agents_before:
             divided = True
