@@ -267,10 +267,10 @@ def carry_report(mother_snapshot, carry) -> dict[str, Any]:
     shipped; the caller emits it at warning level.
     """
     from v2ecoli.library.division import (
-        CARRIED_BY_COPY,
         CORE_DIVISIBLE_KEYS,
         NON_CARRIED_ROOT_KEYS,
         STORE_DIVIDERS,
+        carried_by_copy_keys,
         is_edge_node,
     )
 
@@ -288,13 +288,37 @@ def carry_report(mother_snapshot, carry) -> dict[str, Any]:
             edges.append(key)
         else:
             unclassified.append(key)
-    known = set(CORE_DIVISIBLE_KEYS) | set(CARRIED_BY_COPY) | set(STORE_DIVIDERS)
+    known = set(CORE_DIVISIBLE_KEYS) | set(carried_by_copy_keys()) | set(STORE_DIVIDERS)
     unknown_carried = [k for k in carried if k not in known]
+    # What an unclassified root IS -- so the reader can tell a real store from
+    # a stray key without opening a checkpoint (sim 956: a root literally named
+    # "0" was being carried by an injected composite).
+    summaries = {k: _summarize_root(carry.get(k, mother_snapshot.get(k)))
+                 for k in (*unknown_carried, *unclassified)}
     return {
         "carried": carried,
         "carried_unclassified": unknown_carried,
         "dropped": {"non_carried": non_carried, "edges": edges, "unclassified": unclassified},
+        "unclassified_summary": summaries,
     }
+
+
+def _summarize_root(value) -> dict[str, Any]:
+    """Tiny, JSON-safe description of a root store: its type and, for a dict,
+    its first keys; for an array, its shape. Never large, never raises."""
+    try:
+        if isinstance(value, dict):
+            keys = [str(k) for k in list(value)[:8]]
+            return {"type": "dict", "n_keys": len(value), "keys": keys,
+                    "is_edge": bool("address" in value or "instance" in value)}
+        shape = getattr(value, "shape", None)
+        if shape is not None:
+            return {"type": type(value).__name__, "shape": [int(x) for x in shape]}
+        if isinstance(value, (list, tuple)):
+            return {"type": type(value).__name__, "len": len(value)}
+        return {"type": type(value).__name__, "value": str(value)[:60]}
+    except Exception:
+        return {"type": "?"}
 
 
 # ---------------------------------------------------------------------------

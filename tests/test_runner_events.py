@@ -377,3 +377,64 @@ def test_runner_helpers_are_noops_without_the_engine(monkeypatch):
     revents.emit("anything", a=1)
     assert revents.events_enabled() is False
     assert revents.configure_for_task("/tmp/does-not-matter").enabled is False
+
+
+def test_report_never_names_agent_ids_on_a_real_shaped_agents_map(monkeypatch, stdout_events):
+    """The report is computed on the CELL (mother node / carry dict), never on
+    the agents map: with agents {"0"} -> {"00", "01"} no agent id may appear
+    anywhere in it (sim 956 review question)."""
+    lp = LineageProcess.__new__(LineageProcess)
+    lp.config = {
+        "cache_dir": "x", "seed": 0, "lineage_seed": 0, "variant_index": 0,
+        "variant_name": "b", "config_overrides": {}, "generations": 2,
+        "single_daughters": True, "experiment_id": "t", "out_dir": "out/t",
+        "max_duration_per_gen": 100.0, "initial_carry_state_path": "",
+        "initial_generation_index": 0, "daughter_state_out_path": "",
+        "checkpoint_dir": "", "require_output": False,
+    }
+    lp.initialize(lp.config)
+    cell = {"bulk": "M", "unique": {}, "environment": {}, "boundary": {}, "fields": {"d": 1.0},
+            "listeners": {"mass": {"dry_mass": 1.0}}, "division": {"address": "local:Division"}}
+
+    class _C:
+        state = {"global_time": 0.0, "agents": {"0": cell}}
+
+        def run(self, interval):
+            d = {"bulk": "D", "unique": {}, "environment": {}, "boundary": {},
+                 "listeners": {"mass": {"dry_mass": 0.5}}}
+            self.state = {"global_time": 7.0, "agents": {"00": d, "01": dict(d)}}
+
+    lp._composite = _C()
+    lp._gen_elapsed = 0.0
+    lp._run_until_division(100.0)
+    div = [e for e in stdout_events() if e["event"] == "lineage.division"][0]["payload"]
+    named = set(div["carried"]) | set(div["carried_unclassified"]) | set(div["daughter_keys"])
+    for bucket in div["dropped"].values():
+        named |= set(bucket)
+    assert not named & {"0", "00", "01"}, named
+    assert div["carried"] == ["boundary", "bulk", "environment", "fields", "unique"]
+
+
+def test_a_root_store_literally_named_0_is_reported_with_a_summary():
+    """sim 956 (2026-09-10): an injected composite carried an agent-root store
+    named "0". That is a finding about the composite, not a bug in the report --
+    the report says so and describes what the store is."""
+    mother = {"bulk": "M", "unique": {}, "environment": {}, "boundary": {},
+              "0": {"volume": 1.0, "counts": {}}, "listeners": {}}
+    carry = {"bulk": "D", "unique": {}, "environment": {}, "boundary": {}, "0": {"volume": 1.0, "counts": {}}}
+    report = revents.carry_report(mother, carry)
+    assert report["carried_unclassified"] == ["0"]
+    assert report["unclassified_summary"]["0"] == {"type": "dict", "n_keys": 2, "keys": ["volume", "counts"], "is_edge": False}
+
+
+def test_downstream_can_register_its_copied_roots(monkeypatch):
+    from v2ecoli.library import division as div
+
+    monkeypatch.setattr(div, "CARRIED_BY_COPY_REGISTERED", set())
+    mother = {"bulk": "M", "unique": {}, "environment": {}, "boundary": {}, "kinetic_parameters": {"k": 1}}
+    carry = dict(mother)
+    assert revents.carry_report(mother, carry)["carried_unclassified"] == ["kinetic_parameters"]
+    div.register_carried_by_copy("kinetic_parameters")
+    assert revents.carry_report(mother, carry)["carried_unclassified"] == []
+    with pytest.raises(TypeError):
+        div.register_carried_by_copy("")
