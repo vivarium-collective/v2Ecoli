@@ -452,7 +452,13 @@ class LineageProcess(Process):
                 doc = baseline(core=core, seed=gen_seed, **_bio_kwargs)
             finally:
                 set_null_emitter_override(False)
-        if self._is_xarray():
+        if self._is_xarray() and self._xarray_em is None:
+            # The lineage's ONE XArrayEmitter is opened lazily on the first
+            # populated tick of generation 0; every later generation reuses it
+            # via advance_generation (see update()), so it must NOT re-open a
+            # fresh emitter here. (A fallback to a fresh emitter — if a prior
+            # advance failed and nulled _xarray_em — still works: this is reached
+            # only when _xarray_em is None.)
             self._xarray_pending = True
 
         if self._carry_state is not None:
@@ -875,14 +881,32 @@ class LineageProcess(Process):
             flush=True,
         )
         if self._is_xarray() and self._xarray_em is not None:
+            # ONE emitter drives the whole lineage: advance it to the next
+            # generation's partition IN PLACE (flush this generation's trailing
+            # buffer, mark the division event, and consolidate — so this
+            # generation is durably on disk before the next opens) instead of
+            # closing and rebuilding a fresh emitter every generation. Only the
+            # LAST generation closes it. This is Eran's "same emitter, launch a
+            # new internal ecoli model per generation" and the viva-emitters
+            # 0.4.0 advance_generation pattern (#38/#761).
+            is_last_gen = (self._generation + 1) >= int(self.config["generations"])
             try:
-                self._xarray_em.close(success=True)
+                if is_last_gen:
+                    self._xarray_em.close(success=True)
+                    self._xarray_em = None
+                else:
+                    from v2ecoli.steps.division import daughter_phylogeny_id
+
+                    next_agent_id = daughter_phylogeny_id(self._agent_id)[0]
+                    self._xarray_em.advance_generation(agent_id=next_agent_id, success=True)
             except Exception as e:
                 warnings.warn(
-                    f"LineageProcess: xarray close failed for "
+                    f"LineageProcess: xarray advance/close failed for "
                     f"generation {self._generation}: {e}"
                 )
-            self._xarray_em = None
+                # Fall back to a fresh emitter next generation (the
+                # pre-advance_generation per-generation-emitter behavior).
+                self._xarray_em = None
         if self._is_xarray():
             self._xarray_pending = False
         if self._is_parquet():

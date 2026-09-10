@@ -61,6 +61,40 @@ def test_completes_after_generations(monkeypatch):
     assert all(s["divided"] for s in lp._summaries)
 
 
+def test_lineage_drives_one_advance_generation_emitter(monkeypatch):
+    """The whole lineage is driven by ONE XArrayEmitter: at each generation
+    boundary it is ADVANCED in place (advance_generation) to the next
+    generation's partition, not closed and rebuilt; only the LAST generation
+    closes it. This is what keeps a single emitter (and its per-generation
+    flush+consolidate durability) across the lineage -- Eran's "same emitter,
+    launch a new internal ecoli model per generation"."""
+    from unittest.mock import MagicMock
+
+    lp, _calls = _make(monkeypatch, generations=3, divide_after=2)
+    # The stubbed biology never builds an emitter; inject one and force the
+    # xarray branch so we can observe the generation-boundary handling.
+    monkeypatch.setattr(lp, "_is_xarray", lambda: True)
+    monkeypatch.setattr(lp, "_is_parquet", lambda: False)
+    em = MagicMock()
+    lp._xarray_em = em
+
+    out = {}
+    for _ in range(30):
+        out = lp.update({}, 1.0)
+        if out.get("complete"):
+            break
+    assert out["complete"] is True
+
+    # advance_generation at each NON-final boundary, walking the phylogeny
+    # (0 -> 00 -> 000), success=True; never a per-generation close before the end.
+    advanced = [c.kwargs["agent_id"] for c in em.advance_generation.call_args_list]
+    assert advanced == ["00", "000"]
+    assert all(c.kwargs.get("success") is True for c in em.advance_generation.call_args_list)
+    # The LAST generation closes the one emitter exactly once, and nulls it.
+    em.close.assert_called_once_with(success=True)
+    assert lp._xarray_em is None
+
+
 def test_single_daughters_false_not_implemented(monkeypatch):
     lp, _ = _make(monkeypatch, generations=2)
     lp.config["single_daughters"] = False
