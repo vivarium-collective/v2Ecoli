@@ -180,7 +180,13 @@ def test_sign_is_preserved_so_uptake_stays_negative():
 
 @pytest.mark.fast
 @pytest.mark.parametrize("dry_mass,timestep", [(0.0, 1.0), (500.0, 0.0),
-                                               (-1.0, 1.0)])
+                                               (-1.0, 1.0),
+                                               # nan <= 0 is False: the old
+                                               # `<= 0` guard passed a NaN
+                                               # dry mass straight through
+                                               # to a NaN flux in the trace.
+                                               (float("nan"), 1.0),
+                                               (500.0, float("nan"))])
 def test_an_undefined_rate_is_zero_not_nan_or_infinite(dry_mass, timestep):
     """At division the mass listener can read zero. An infinity or NaN there
     propagates through every downstream mean, turning one undefined tick into
