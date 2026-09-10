@@ -320,6 +320,18 @@ NON_CARRIED_ROOT_KEYS = frozenset({
     'agents', 'allocator_rng', 'ppgpp_state', 'attenuation_config',
     # a Division PORT name (wired to environment/media_id), never an agent root
     'media_id',
+    # Per-tick PARTITION bookkeeping (steps/partition.py groups these with
+    # ``process``/``listeners`` as re-derived node stores): every Requester
+    # overwrites its own ``request[<process>]`` each tick and the Allocator
+    # writes ``allocate`` from whatever ``request`` holds. Carrying the mother's
+    # snapshot forward seeds the daughter's first tick with the MOTHER's requests
+    # for every process -- including ones that do not request on that tick -- so
+    # the Allocator partitions a half-size cell against full-size, stale demands.
+    # Measured 2026-09-10 on the first #765 images (sims 943/944, 898's shape):
+    # both lineages died in generation 1 within the first ticks after division,
+    # ``NegativeCountsError ... partitioned_counts`` and ``Failed to meet
+    # molecule limits with ppGpp reactions``; 898 (pre-#765) ran 5 generations.
+    'request', 'allocate',
 })
 
 _EDGE_TYPES = frozenset({'process', 'step', 'composite', 'edge'})
