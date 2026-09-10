@@ -344,11 +344,28 @@ def build_run_identity(*, repo_root: Path | str | None = None,
     :func:`sim_data_ref`) so a standalone analysis of the sweep resolves it the
     same way the all-at-once study does. Pass ``sim_data_uri`` when the caller
     knows the resolvable location (e.g. a dispatch's staged S3 cache).
+
+    ``code`` resolves git-first, then the installed-package ``direct_url.json``
+    fallback (:func:`_repo_code_provenance`). The git-only ``code_provenance``
+    call this used to make returned ``commit: null`` for every deployed run —
+    in a container v2ecoli is an INSTALLED git dependency with no ``.git``
+    tree, so "which code ran" could not be recovered from the S3 artifact even
+    though pip had recorded the resolved commit the whole time. The fallback
+    already existed for chassis provenance; run identity just never used it.
+
+    ``simulator`` names the engine (id + installed version) so a mixed-source
+    sweep directory is attributable without guessing from the artifact shape.
     """
     if repo_root is None:
         repo_root = Path(__file__).resolve().parents[2]
+    try:
+        import importlib.metadata as _metadata
+        _version = _metadata.version("v2ecoli")
+    except Exception:
+        _version = None
     return {
-        "code": code_provenance(Path(repo_root)),
+        "simulator": {"id": "v2ecoli", "version": _version},
+        "code": _repo_code_provenance(Path(repo_root), dist_name="v2ecoli"),
         "cache_version": _cache_fingerprint(cache_dir),
         "design": dict(design) if design else {},
         "sim_data": sim_data_ref(cache_dir, sim_data_uri),
