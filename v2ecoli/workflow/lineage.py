@@ -25,10 +25,17 @@ from v2ecoli.workflow import events as _events
 from process_bigraph import Process
 
 
-def _warn_static(message: str, site: str = "") -> None:
-    """Module-level twin of ``LineageProcess._warn`` for staticmethods."""
+def _warn_static(message: str, site: str = "", owner=None) -> None:
+    """``warnings.warn`` PLUS a ``lineage.warning`` event per occurrence.
+
+    Module-level so it also works when a method is invoked unbound on a
+    duck-typed stand-in (tests call ``LineageProcess._finalize_parquet(ns)``);
+    ``owner`` may be any object with a ``_generation`` attribute."""
     warnings.warn(message)
-    _events.emit("lineage.warning", level="warning", message=message, site=site)
+    _events.emit(
+        "lineage.warning", level="warning", message=message, site=site,
+        generation=getattr(owner, "_generation", None),
+    )
 
 
 def _derive_generation_seed(seed, lineage_seed, generation):
@@ -653,7 +660,7 @@ class LineageProcess(Process):
                     f"downgrade to warn-and-skip."
                 )
         if not view:
-            self._warn(site="_emit_xarray", message=
+            _warn_static(owner=self, site="_emit_xarray", message=
                 "LineageProcess: xarray view has no leaves present in "
                 "composite state; skipping xarray emission."
             )
@@ -722,7 +729,7 @@ class LineageProcess(Process):
             )
             self._xarray_emits += 1
         except Exception as e:
-            self._warn(site="_emit_xarray", message=
+            _warn_static(owner=self, site="_emit_xarray", message=
                 f"LineageProcess: xarray emit failed at generation "
                 f"{self._generation} t={self._gen_elapsed}: {e}"
             )
@@ -761,14 +768,14 @@ class LineageProcess(Process):
         try:
             flush_parquet(self._composite, success=True)
         except Exception as e:
-            self._warn(site="_finalize_parquet", message=
+            _warn_static(owner=self, site="_finalize_parquet", message=
                 f"LineageProcess: parquet flush failed for "
                 f"generation {self._generation} ({self._agent_id}): {e}"
             )
         try:
             finalize_emitter_for_agent(self._agent_id, success=True)
         except Exception as e:
-            self._warn(site="_finalize_parquet", message=
+            _warn_static(owner=self, site="_finalize_parquet", message=
                 f"LineageProcess: parquet finalize failed for "
                 f"generation {self._generation} ({self._agent_id}): {e}"
             )
@@ -889,15 +896,11 @@ class LineageProcess(Process):
             print(line, flush=True)
 
     def _warn(self, message: str, site: str = "") -> None:
-        """``warnings.warn`` PLUS a ``warning`` event per occurrence. Python's
-        warnings machinery de-duplicates by call site, so a condition that
-        repeats every generation would otherwise be reported once; the event
-        stream sees every occurrence."""
-        warnings.warn(message)
-        _events.emit(
-            "lineage.warning", level="warning", message=message, site=site,
-            generation=int(getattr(self, "_generation", 0) or 0),
-        )
+        """``warnings.warn`` PLUS a ``lineage.warning`` event per occurrence.
+        Python's warnings machinery de-duplicates by call site, so a condition
+        that repeats every generation would otherwise be reported once; the
+        event stream sees every occurrence. See ``_warn_static``."""
+        _warn_static(message, site=site, owner=self)
 
     def _elapsed_after_run(self, interval, agents_before, agents_now) -> float:
         """This generation's REAL simulated elapsed time after one inner run.
@@ -975,10 +978,10 @@ class LineageProcess(Process):
 
             if not is_division_exception(e):
                 raise
-            self._warn(
+            _warn_static(
                 f"LineageProcess: treating a raised exception as a division "
                 f"signal at t={self._gen_elapsed}: {e!r}",
-                site="_run_until_division",
+                site="_run_until_division", owner=self,
             )
             divided = True
             _exc_signal = True
@@ -1118,7 +1121,7 @@ class LineageProcess(Process):
                     next_agent_id = daughter_phylogeny_id(self._agent_id)[0]
                     self._xarray_em.advance_generation(agent_id=next_agent_id, success=True)
             except Exception as e:
-                self._warn(site="update.xarray_advance", message=
+                _warn_static(owner=self, site="update.xarray_advance", message=
                     f"LineageProcess: xarray advance/close failed for "
                     f"generation {self._generation}: {e}"
                 )
@@ -1197,7 +1200,7 @@ class LineageProcess(Process):
             mb = _estimate_state_mb(daughter)
             prev = getattr(self, "_last_checkpoint_mb", 0.0)
             if prev and mb > 1.5 * prev:
-                self._warn(site="lineage.checkpoint", message=
+                _warn_static(owner=self, site="lineage.checkpoint", message=
                     f"LineageProcess: gen {self._generation} carry state is "
                     f"{mb:.1f}MB, up {mb / prev:.1f}x from the previous "
                     f"generation ({prev:.1f}MB). A lineage whose per-generation "
