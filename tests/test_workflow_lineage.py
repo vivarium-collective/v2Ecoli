@@ -573,3 +573,160 @@ def test_xarray_emitter_caller_writer_override_still_wins(monkeypatch):
     lp._open_xarray_emitter(emit_cell={"bulk": {}})
 
     assert captured["kwargs"]["writer"] == {"buffers_per_chunk": 4, "backend": "zarr"}
+
+
+# --- injected agent-root stores survive the generation boundary --------------
+# sms-ecoli#166 P0 items 2 and 3: a native lineage lost EVERY injected
+# agent-root store at each generation boundary, because only
+# bulk/unique/environment/boundary were selected from the surviving daughter and
+# overlaid onto the next generation's freshly built document. A `fields` dose
+# was re-zeroed (and re-fired) every generation, wall damage could not
+# accumulate, and a `lysed` latch un-latched.
+
+
+def _restore_division_registries(monkeypatch):
+    """Keep the module-level divider / carried-listener registries per-test."""
+    import v2ecoli.library.division as _div
+
+    monkeypatch.setattr(_div, "STORE_DIVIDERS", dict(_div.STORE_DIVIDERS))
+    monkeypatch.setattr(
+        _div, "CARRIED_LISTENER_PATHS", list(_div.CARRIED_LISTENER_PATHS))
+
+
+def test_select_carry_daughter_returns_extra_root_stores():
+    """The …0 daughter's carry state includes the injected agent-root stores,
+    taken from the mother snapshot (the rebuilt daughter's are fresh/zeroed)."""
+    import numpy as np
+    from v2ecoli.workflow.lineage import select_carry_daughter
+
+    dosed = np.array([[7.5]])
+    mother_snapshot = {
+        "bulk": "M", "unique": {}, "environment": {}, "boundary": {},
+        "fields": {"_type": "map[overwrite[array[float]]]", "tetracycline": dosed},
+        "imposed_flux_bounds": {"RXN": 3.0},
+        "periplasm": {"global": {"volume": 0.2}},
+    }
+    agents_now = {
+        "00": {
+            "bulk": "D0", "unique": {"u": 1}, "environment": {}, "boundary": {},
+            # what the Division step's baseline() rebuild produces: FRESH zeros
+            "fields": {"_type": "map[overwrite[array[float]]]",
+                       "tetracycline": np.zeros((1, 1))},
+            "imposed_flux_bounds": {},
+            # a process EDGE on the daughter node must never be carried
+            "division": {"address": "local:Division", "config": {}},
+        },
+        "01": {"bulk": "D1", "unique": {}, "environment": {}, "boundary": {}},
+    }
+    carry = select_carry_daughter({"0"}, agents_now, mother_snapshot)
+
+    assert carry["bulk"] == "D0"                 # core state still the daughter's
+    assert carry["fields"]["tetracycline"] == dosed
+    assert carry["imposed_flux_bounds"] == {"RXN": 3.0}
+    assert carry["periplasm"] == {"global": {"volume": 0.2}}
+    assert "division" not in carry               # edges filtered out
+    assert "listeners" not in carry              # never carried wholesale
+
+
+def test_select_carry_daughter_applies_a_registered_divider(monkeypatch):
+    """A store that declares a divider is SPLIT (the fork's pg_cellwall
+    behaviour), not copied; everything else is copied."""
+    _restore_division_registries(monkeypatch)
+    from v2ecoli.library.division import register_store_divider
+    from v2ecoli.workflow.lineage import select_carry_daughter
+
+    register_store_divider("pg_cellwall", lambda v: (["half-a"], ["half-b"]))
+    mother_snapshot = {
+        "bulk": "M", "unique": {}, "environment": {}, "boundary": {},
+        "pg_cellwall": ["whole"], "fields": {"drug": 1.0},
+    }
+    carry = select_carry_daughter(
+        {"0"}, {"00": {"bulk": "D0", "unique": {}}}, mother_snapshot)
+    assert carry["pg_cellwall"] == ["half-a"]    # divided, daughter 1's share
+    assert carry["fields"] == {"drug": 1.0}      # copied
+
+
+def test_select_carry_daughter_carries_a_declared_listener_leaf(monkeypatch):
+    """A declared listener LEAF (the lysed latch) rides along; the rest of
+    ``listeners`` does not."""
+    _restore_division_registries(monkeypatch)
+    from v2ecoli.library.division import register_carried_listener_path
+    from v2ecoli.workflow.lineage import select_carry_daughter
+
+    register_carried_listener_path(("peptidoglycan_shape", "lysed"))
+    mother_snapshot = {
+        "bulk": "M", "unique": {}, "environment": {}, "boundary": {},
+        "listeners": {
+            "peptidoglycan_shape": {"lysed": True, "murein": 42},
+            "mass": {"dry_mass": 500.0},
+        },
+    }
+    carry = select_carry_daughter(
+        {"0"}, {"00": {"bulk": "D0", "unique": {}}}, mother_snapshot)
+    assert carry["_carried_listeners"] == {"peptidoglycan_shape": {"lysed": True}}
+    assert "listeners" not in carry
+
+
+def test_apply_carry_state_merges_extra_store_and_keeps_its_type():
+    """The typed-node trap: the fresh document represents an injected root as a
+    dict carrying ``_type`` (sms-ecoli's ``_materialize_native_declared_state``
+    stamps ``fields`` as ``map[overwrite[array[float]]]`` and pre-seeds the
+    molecule keys as zero arrays). Overlaying the carried store must MERGE
+    leaves into that node — replacing it with a raw dict would drop the
+    ``_type`` and with it the overwrite updater, the exact failure
+    ``_FRESH_ENVIRONMENT_SUBSTORES`` guards for ``exchange_data``."""
+    import numpy as np
+    from v2ecoli.workflow.lineage import apply_carry_state
+
+    fresh_exchange_data = {"constrained": {"GLC[p]": 20.0}}
+    agent = {
+        "bulk": "FRESH", "unique": {},
+        "environment": {"exchange_data": fresh_exchange_data},
+        "boundary": {},
+        "listeners": {"mass": {}},
+        "fields": {
+            "_type": "map[overwrite[array[float]]]",
+            "tetracycline": np.zeros((1, 1)),
+            "glucose": np.zeros((1, 1)),        # key the carry state lacks
+        },
+        "imposed_flux_bounds": {},
+    }
+    dosed = np.array([[7.5]])
+    carry_state = {
+        "bulk": "CARRIED", "unique": {},
+        "environment": {"exchange_data": {"constrained": {"GLC[p]": 9999.0}}},
+        "boundary": {},
+        "fields": {"tetracycline": dosed},
+        "imposed_flux_bounds": {"RXN": 3.0},
+        "counts": {"x": 1},                      # root absent from the fresh doc
+    }
+    apply_carry_state(agent, carry_state)
+
+    assert agent["fields"]["_type"] == "map[overwrite[array[float]]]"  # type kept
+    assert agent["fields"]["tetracycline"] == dosed                    # seed replaced
+    assert agent["fields"]["glucose"] == np.zeros((1, 1))              # fresh key kept
+    assert agent["imposed_flux_bounds"] == {"RXN": 3.0}
+    assert agent["counts"] == {"x": 1}
+    assert agent["bulk"] == "CARRIED"
+    # the exchange_data guard is untouched by the new overlay
+    assert agent["environment"]["exchange_data"] is fresh_exchange_data
+
+
+def test_apply_carry_state_merges_a_carried_listener_leaf():
+    """``_carried_listeners`` merges into ``listeners`` without disturbing the
+    fresh listener tree (the caller resets ``listeners.mass`` right after)."""
+    from v2ecoli.workflow.lineage import apply_carry_state
+
+    agent = {
+        "bulk": "F", "unique": {}, "environment": {}, "boundary": {},
+        "listeners": {"mass": {"dry_mass": 0.0},
+                      "peptidoglycan_shape": {"lysed": False, "murein": 0}},
+    }
+    apply_carry_state(agent, {
+        "bulk": "C",
+        "_carried_listeners": {"peptidoglycan_shape": {"lysed": True}},
+    })
+    assert agent["listeners"]["peptidoglycan_shape"]["lysed"] is True
+    assert agent["listeners"]["peptidoglycan_shape"]["murein"] == 0
+    assert agent["listeners"]["mass"] == {"dry_mass": 0.0}
+    assert "_carried_listeners" not in agent

@@ -24,7 +24,7 @@ from v2ecoli.library.quantity_helpers import fg_magnitude
 from process_bigraph import Process
 
 
-def select_carry_daughter(agents_before, agents_now, mother_snapshot):
+def select_carry_daughter(agents_before, agents_now, mother_snapshot, dividers=None):
     """State to seed the next generation (single-daughter lineage), or None.
 
     The inner baseline composite's Division step already splits the mother
@@ -34,13 +34,39 @@ def select_carry_daughter(agents_before, agents_now, mother_snapshot):
     multigeneration bug this guards against). Only when no structural daughter
     surfaced (a divide-flag / exception signal with no agents-map change) fall
     back to dividing the pre-run mother snapshot exactly once.
+
+    INJECTED agent-root stores (``fields``, ``imposed_flux_bounds``,
+    ``<drug>_env``, ``periplasm``, ``pg_cellwall``, …) follow the one policy in
+    :mod:`v2ecoli.library.division` — copied by default, split by a registered
+    divider — and are taken from the ``mother_snapshot`` rather than from the
+    structural daughter: the Division step REBUILDS each daughter document from
+    ``baseline()``, so the daughter's injected roots are freshly materialized
+    (zeroed) and reading them would carry the zeros forward. The snapshot is
+    taken at the top of the same ``_run_until_division`` call that observed the
+    division, i.e. at most one composite tick (``time_step``, 1 s by default)
+    before it. When there is no snapshot the daughter's own extras are used.
+    Declared carried listener leaves (the ``lysed`` latch) ride along under
+    ``_carried_listeners``.
     """
-    keys = ("bulk", "unique", "environment", "boundary")
+    from v2ecoli.library.division import (
+        CORE_DIVISIBLE_KEYS, collect_carried_listeners, divide_extra_stores)
+
     new_ids = set(agents_now) - set(agents_before)
     d0_id = next((i for i in sorted(new_ids) if i.endswith("0")), None)
     if d0_id is not None:
         dcell = agents_now.get(d0_id, {}) or {}
-        return {k: dcell.get(k) for k in keys}
+        carry = {k: dcell.get(k) for k in CORE_DIVISIBLE_KEYS}
+        extras_source = (
+            mother_snapshot
+            if isinstance(mother_snapshot, dict) and mother_snapshot
+            else dcell
+        )
+        d1_extra, _d2_extra = divide_extra_stores(extras_source, dividers)
+        carry.update(d1_extra)
+        carried_listeners = collect_carried_listeners(extras_source)
+        if carried_listeners:
+            carry["_carried_listeners"] = carried_listeners
+        return carry
     if mother_snapshot and mother_snapshot.get("bulk") is not None:
         from v2ecoli.library.division import divide_cell
 
@@ -70,8 +96,25 @@ def apply_carry_state(agent, carry_state):
     but PRESERVES the fresh agent's derived ``environment`` substores listed in
     :data:`_FRESH_ENVIRONMENT_SUBSTORES` so their overwrite updaters survive the
     daughter rebuild (see the note there).
+
+    Also overlays every INJECTED agent-root store the carry state holds (see
+    :func:`v2ecoli.library.division.extra_store_keys`). Those are MERGED leaf by
+    leaf onto the fresh node rather than replacing it, because the fresh build
+    may have stamped the node with its declared ``_type`` (sms-ecoli's
+    ``fields`` is materialized as
+    ``{"_type": "map[overwrite[array[float]]]", <mol>: zeros}``) — replacing it
+    with a raw dict would drop the type and with it the overwrite updater,
+    exactly the failure :data:`_FRESH_ENVIRONMENT_SUBSTORES` documents. Carried
+    molecule arrays therefore replace the fresh zero seeds while the ``_type``
+    and any un-carried key survive. Declared carried listener leaves are merged
+    back into ``listeners`` last; the caller's subsequent ``listeners.mass``
+    reset is unaffected (it replaces only that one substore).
     """
-    for key in ("bulk", "unique", "environment", "boundary"):
+    from v2ecoli.library.division import (
+        CORE_DIVISIBLE_KEYS, apply_carried_listeners, extra_store_keys,
+        merge_carried_store)
+
+    for key in CORE_DIVISIBLE_KEYS:
         if key not in carry_state:
             continue
         if key == "environment":
@@ -84,6 +127,11 @@ def apply_carry_state(agent, carry_state):
         else:
             agent[key] = carry_state[key]
 
+    for key in extra_store_keys(carry_state):
+        agent[key] = merge_carried_store(agent.get(key), carry_state[key])
+
+    apply_carried_listeners(agent, carry_state.get("_carried_listeners"))
+
 
 def _estimate_state_mb(state) -> float:
     """Rough MB of a carry/checkpoint state: the summed ``nbytes`` of its numpy
@@ -93,8 +141,10 @@ def _estimate_state_mb(state) -> float:
     """
     if not isinstance(state, dict):
         return 0.0
+    from v2ecoli.library.division import CORE_DIVISIBLE_KEYS, extra_store_keys
+
     total = 0
-    for key in ("bulk", "unique", "environment", "boundary"):
+    for key in (*CORE_DIVISIBLE_KEYS, *extra_store_keys(state)):
         val = state.get(key)
         if hasattr(val, "nbytes"):
             total += int(val.nbytes)
@@ -770,11 +820,24 @@ class LineageProcess(Process):
         # reading after the run samples an already-divided daughter. Only the
         # snapshot is used for the exception/divide-flag fallback path.
         mother = agents.get(self._agent_id) or next(iter(agents.values()), {})
-        mother_snapshot = (
-            {k: mother.get(k) for k in ("bulk", "unique", "environment", "boundary")}
-            if isinstance(mother, dict)
-            else None
-        )
+        # The snapshot also captures the INJECTED agent-root stores and any
+        # declared carried listener leaf, because they cannot be recovered after
+        # the run: the mother is removed from the agents map, and the daughters
+        # the Division step adds were rebuilt from baseline() with FRESH
+        # (zeroed) injected roots. select_carry_daughter reads them from here.
+        # Process/step EDGES and per-tick bookkeeping are filtered out by
+        # extra_store_keys, so this stays a state snapshot, not a doc copy.
+        from v2ecoli.library.division import CORE_DIVISIBLE_KEYS, extra_store_keys
+
+        if isinstance(mother, dict):
+            mother_snapshot = {k: mother.get(k) for k in CORE_DIVISIBLE_KEYS}
+            for _extra in extra_store_keys(mother):
+                mother_snapshot[_extra] = mother[_extra]
+            _listeners = mother.get("listeners")
+            if isinstance(_listeners, dict):
+                mother_snapshot["listeners"] = _listeners
+        else:
+            mother_snapshot = None
 
         divided = False
         try:
