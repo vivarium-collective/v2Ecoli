@@ -920,3 +920,39 @@ def test_no_division_consumes_the_whole_window(monkeypatch):
     assert max(comp.calls) <= 250.0
     assert lp._gen_elapsed == 3600.0
     assert lp._gen_elapsed >= float(lp.config["max_duration_per_gen"])
+
+
+def test_partition_bookkeeping_roots_are_never_carried():
+    """``request``/``allocate`` are per-tick partition bookkeeping (each Requester
+    overwrites its own entry; the Allocator derives ``allocate`` from ``request``).
+    Carrying the mother's snapshot seeded the daughter's first tick with stale,
+    full-size demands from EVERY process and the Allocator partitioned a half-size
+    cell against them: sims 943/944 (2026-09-10) died in generation 1 on
+    ``NegativeCountsError`` / ``Failed to meet molecule limits with ppGpp``."""
+    from v2ecoli.library.division import extra_store_keys
+    from v2ecoli.workflow.lineage import apply_carry_state, select_carry_daughter
+
+    stale_request = {"ecoli-polypeptide-elongation": {"bulk": [[300, 10 ** 6]]}}
+    stale_allocate = {"ecoli-polypeptide-elongation": {"bulk": [[300, 10 ** 6]]}}
+    mother_snapshot = {
+        "bulk": "M", "unique": {}, "environment": {}, "boundary": {},
+        "request": stale_request, "allocate": stale_allocate,
+        "fields": {"drug": 1.0},
+    }
+    assert "request" not in extra_store_keys(mother_snapshot)
+    assert "allocate" not in extra_store_keys(mother_snapshot)
+
+    agents_now = {
+        "00": {"bulk": "D0", "unique": {}, "environment": {}, "boundary": {},
+               "request": {}, "allocate": {}, "fields": {"drug": 0.0}},
+        "01": {"bulk": "D1", "unique": {}, "environment": {}, "boundary": {}},
+    }
+    carry = select_carry_daughter({"0"}, agents_now, mother_snapshot)
+    assert "request" not in carry and "allocate" not in carry
+    assert carry["fields"] == {"drug": 1.0}          # injected extras still ride
+
+    fresh = {"bulk": "F", "unique": {}, "environment": {}, "boundary": {},
+             "request": {}, "allocate": {}, "fields": {"drug": 0.0}}
+    apply_carry_state(fresh, carry)
+    assert fresh["request"] == {} and fresh["allocate"] == {}
+    assert fresh["fields"] == {"drug": 1.0}
