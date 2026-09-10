@@ -486,3 +486,66 @@ def test_duration_check_scales_with_time_step(monkeypatch, stdout_events):
     lp = _make_with_emits(monkeypatch, emits=100, elapsed=200.0, time_step=2.0)   # 100 x 2 s = 200 s
     lp.update({}, 1.0)
     assert not [e for e in stdout_events() if e["payload"].get("check") == "duration_vs_emits"]
+
+
+def test_the_null_emitter_answers_the_whole_engine_surface(monkeypatch):
+    """An image whose process-bigraph pin predates #209 gets ``_pbg_events is
+    None``. Every call the runner makes must still work -- with arguments, and
+    including the error paths -- because the runner does not check first."""
+    monkeypatch.setattr(revents, "_pbg_events", None)
+    assert revents.engine_available() is False
+    em = revents.get_emitter()
+
+    assert em.bind(experiment_id="exp-t", variant=2, lineage_seed=7, generation=3) is em
+    assert em.enabled is False and em.trace_id is None
+    assert em.event("lineage.generation.start", level="info", component="v2ecoli.lineage", generation=0) is None
+    assert em.heartbeat(global_time=12.0) is False
+    assert em.exception(RuntimeError("boom"), path="/agents/0", cls="X") is None
+    assert em.flush() is None
+    assert em.current_traceparent() == ""
+
+    span = em.start_span("generation", generation=0, agent_id="0")
+    assert span.end("error", "boom") is None          # the failure path closes too
+    with em.span("generation", generation=1) as inner:
+        assert inner.end() is None
+
+    # and the module-level helpers the runner actually calls
+    assert revents.current_baggage() == {}
+    assert revents.events_enabled() is False
+    assert revents.configure_for_task("/tmp/does-not-matter", default="stdout").enabled is False
+    assert revents.generation_span(_stub_lp()).end() is None
+    assert revents.bind_generation(_stub_lp()) is em
+    revents.emit("lineage.warning", level="warning", check="duration_vs_emits")
+
+    # failure_record still produces a usable record without the engine
+    try:
+        raise ValueError("nope")
+    except ValueError as exc:
+        record = revents.failure_record(exc, generation=0)
+    assert record["exc_type"] == "ValueError" and record["generation"] == 0
+    assert "nope" in record["traceback_tail"]
+
+
+def _stub_lp():
+    lp = LineageProcess.__new__(LineageProcess)
+    lp.config = {"experiment_id": "exp-t", "variant_index": 2, "lineage_seed": 7}
+    lp._generation = 0
+    lp._agent_id = "0"
+    return lp
+
+
+def test_a_generation_runs_to_completion_with_no_engine_at_all(monkeypatch, capsys):
+    """The legacy-image case end to end: run three generations with the events
+    module absent. No JSON is written, no call raises, and the legacy stdout
+    log lines are exactly what a pre-observability image printed."""
+    monkeypatch.setattr(revents, "_pbg_events", None)
+    lp = _make(monkeypatch, generations=3, divide_after=2)
+    for _ in range(20):
+        out = lp.update({}, 1.0)
+        if out.get("complete"):
+            break
+    assert out.get("complete") is True
+    text = capsys.readouterr().out
+    assert not [ln for ln in text.splitlines() if ln.strip().startswith("{")]
+    for g in (0, 1, 2):
+        assert f"[LineageProcess] gen {g}: end" in text
