@@ -43,6 +43,7 @@ _FORWARDED = (
     "generations",
     "max_duration_per_gen",
     "time_step",
+    "division_poll_interval",
     "media",
     "emitter",
     "emitter_arg",
@@ -90,6 +91,9 @@ class LineageStep(Step):
         "generations": {"_type": "integer", "_default": 1},
         "max_duration_per_gen": {"_type": "float", "_default": 3600.0},
         "time_step": {"_type": "float", "_default": 1.0},
+        # Slice length of the inner run so a generation ends within one slice of
+        # its division (see LineageProcess._run_until_division; #773).
+        "division_poll_interval": {"_type": "float", "_default": 10.0},
         "media": {"_type": "string", "_default": "minimal"},
         "emitter": {"_type": "string", "_default": "parquet"},
         "emitter_arg": {"_default": {}},

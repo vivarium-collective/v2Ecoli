@@ -824,3 +824,103 @@ def test_partition_bookkeeping_roots_are_never_carried():
     apply_carry_state(fresh, carry)
     assert fresh["request"] == {} and fresh["allocate"] == {}
     assert fresh["fields"] == {"drug": 1.0}
+class _DividingComposite:
+    """A composite whose ``run(dt)`` advances its clock and, once it passes a
+    scripted division time, swaps the mother ``0`` for daughters ``00``/``01``
+    whose own clocks start at 0 and keep advancing -- the shape sim 955 exposed
+    on the single-window path (division at 2,528 s, daughter clock 1,072 s at
+    the 3,600 s window end)."""
+
+    def __init__(self, divide_at=None, mother_id="0"):
+        self.divide_at = divide_at
+        self.state = {
+            "global_time": 0.0,
+            "agents": {mother_id: {"bulk": "M", "unique": {}, "environment": {},
+                                   "boundary": {}, "global_time": 0.0,
+                                   "listeners": {"mass": {"dry_mass": 700.0}}}},
+        }
+        self.calls = []
+        self.divided_at = None
+
+    def run(self, dt):
+        self.calls.append(float(dt))
+        t0 = self.state["global_time"]
+        t1 = t0 + float(dt)
+        self.state["global_time"] = t1
+        agents = self.state["agents"]
+        if self.divided_at is None and self.divide_at is not None and t1 >= self.divide_at:
+            self.divided_at = t1
+            for d in ("00", "01"):
+                agents[d] = {"bulk": "D", "unique": {}, "environment": {}, "boundary": {},
+                             "global_time": 0.0, "listeners": {"mass": {"dry_mass": 350.0}}}
+            agents.pop("0", None)
+        elif self.divided_at is not None:
+            for d in ("00", "01"):
+                agents[d]["global_time"] += float(dt)
+        else:
+            agents["0"]["global_time"] = t1
+
+
+def _real_run_until_division(monkeypatch, lp):
+    monkeypatch.setattr(lp, "_run_until_division",
+                        LineageProcess._run_until_division.__get__(lp))
+
+
+def test_single_window_generation_stops_within_one_slice_of_division(monkeypatch):
+    """sim 955 (2026-09-10): on the LineageStep path one ``run(3600)`` ran both
+    daughters to the window end and booked the daughter's clock (1,072 s =
+    3,600 - 2,528) as the generation's duration. Polling every
+    ``division_poll_interval`` seconds must stop within one slice of the
+    division, book the division time, and carry the daughter at division."""
+    lp, _ = _make(monkeypatch, generations=2)
+    _real_run_until_division(monkeypatch, lp)
+    lp.config["division_poll_interval"] = 10.0
+    lp.config["max_duration_per_gen"] = 3600.0
+    lp._gen_elapsed = 0.0
+    comp = _DividingComposite(divide_at=2528.0)
+    lp._composite = comp
+
+    divided, daughter, _ = lp._run_until_division(3600.0)
+
+    assert divided is True
+    assert 2528.0 <= lp._gen_elapsed <= 2538.0            # within one slice
+    assert sum(comp.calls) <= comp.divided_at + 10.0       # never ran the sibling on
+    assert daughter is not None and daughter["bulk"] == "D"
+    assert comp.state["agents"]["00"]["global_time"] <= 10.0   # daughter at division
+
+
+def test_tick_driven_path_is_unchanged_by_division_polling(monkeypatch):
+    """The chain path drives the runner one second at a time: with
+    ``interval=1`` a poll interval of 10 s still issues exactly one 1 s run."""
+    lp, _ = _make(monkeypatch, generations=2)
+    _real_run_until_division(monkeypatch, lp)
+    lp.config["division_poll_interval"] = 10.0
+    lp._gen_elapsed = 0.0
+    comp = _DividingComposite(divide_at=None)
+    lp._composite = comp
+
+    divided, daughter, _ = lp._run_until_division(1.0)
+
+    assert comp.calls == [1.0]
+    assert divided is False and daughter is None
+    assert lp._gen_elapsed == 1.0
+
+
+def test_no_division_consumes_the_whole_window(monkeypatch):
+    """Without a division the slices add up to the full window and the
+    generation books the window (so ``update`` reports ``timed_out``)."""
+    lp, _ = _make(monkeypatch, generations=2)
+    _real_run_until_division(monkeypatch, lp)
+    lp.config["division_poll_interval"] = 250.0
+    lp.config["max_duration_per_gen"] = 3600.0
+    lp._gen_elapsed = 0.0
+    comp = _DividingComposite(divide_at=None)
+    lp._composite = comp
+
+    divided, daughter, _ = lp._run_until_division(3600.0)
+
+    assert divided is False and daughter is None
+    assert sum(comp.calls) == 3600.0
+    assert max(comp.calls) <= 250.0
+    assert lp._gen_elapsed == 3600.0
+    assert lp._gen_elapsed >= float(lp.config["max_duration_per_gen"])

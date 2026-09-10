@@ -810,6 +810,31 @@ def _declared_parameters() -> set[str]:
     }
 
 
+def test_division_poll_interval_is_reachable_through_a_dispatch() -> None:
+    """#773: the slice length that makes a generation end at its division on the
+    single-window path must be settable from a dispatch -- declared as a generator
+    parameter, forwarded by LineageStep, and known to LineageProcess -- or it is
+    the same silent-drop class as #730/#731/#732."""
+    from v2ecoli.workflow.lineage import LineageProcess
+    from v2ecoli.workflow.lineage_step import LineageStep, _FORWARDED
+
+    assert "division_poll_interval" in _FORWARDED
+    assert LineageStep.config_schema["division_poll_interval"]["_default"] == 10.0
+    assert LineageProcess.config_schema["division_poll_interval"]["_default"] == 10.0
+    assert "division_poll_interval" in _declared_parameters()
+
+    doc = build_workflow_nf(n_seeds=2, n_generations=1, division_poll_interval=2.5)
+    inner = doc["state"]["runs_v0"]["config"]["state"]
+    lineage_nodes = [v for k, v in inner.items() if k.startswith("lineage_v")]
+    assert len(lineage_nodes) == 2
+    for node in lineage_nodes:
+        assert node["config"]["division_poll_interval"] == 2.5
+    # unset stays unset, so LineageStep's own default (10.0) applies
+    doc = build_workflow_nf(n_seeds=1, n_generations=1)
+    inner = doc["state"]["runs_v0"]["config"]["state"]
+    assert "division_poll_interval" not in inner["lineage_v0_s0"]["config"]
+
+
 def test_every_forwarded_key_is_classified() -> None:
     """Each `_FORWARDED` key is a declared parameter, derived by the generator,
     reachable via injected_processes, or a known gap -- never unclassified.

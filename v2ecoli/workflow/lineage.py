@@ -269,6 +269,17 @@ class LineageProcess(Process):
         "experiment_id": {"_type": "string", "_default": "default"},
         "out_dir": {"_type": "string", "_default": "out/workflow"},
         "max_duration_per_gen": {"_type": "float", "_default": 3600.0},
+        # How often (simulated seconds) _run_until_division looks for a division
+        # while running a single-window generation (the LineageStep / Nextflow
+        # path, where ``interval == max_duration_per_gen``). Without it the inner
+        # composite ran the WHOLE window after the mother divided -- both
+        # daughters kept simulating and the next founder was daughter "0" aged
+        # (window - division time) past its birth (sim 955: division at 2,528 s,
+        # ``_gen_elapsed`` booked 1,072 s = 3,600 - 2,528). With it a generation
+        # ends within one slice of the division, like the tick-driven chain path.
+        # The residual overshoot is bounded by this value; ``time_step`` removes
+        # it at the cost of one composite.run() call per tick.
+        "division_poll_interval": {"_type": "float", "_default": 10.0},
         "time_step": {"_type": "float", "_default": 1.0},
         "media": {"_type": "string", "_default": "minimal"},
         # Gate 1b / v2ecoli#693: seeds sharing a cache_dir share a FOUNDER cell,
@@ -863,6 +874,12 @@ class LineageProcess(Process):
         clock IS the division time (2,528 s on 898/946/947). (3) The previous
         value plus ``interval`` -- the old behaviour, kept for a composite that
         exposes neither (stubs).
+
+        With ``_run_until_division`` polling for the division every
+        ``division_poll_interval`` seconds, (2) is the division time to within
+        one slice on every path; before that, the single-window path ran both
+        daughters to the end of the window and (1) returned the surviving
+        daughter's own clock (window - division time; sim 955).
         """
         previous = float(self._gen_elapsed)
         new_ids = set(agents_now) - set(agents_before or ())
@@ -881,8 +898,22 @@ class LineageProcess(Process):
             return float(clock)
         return previous + float(interval)
 
+    def _division_signalled(self, agents_before) -> bool:
+        """True once the inner composite shows a division: the agents map changed
+        (the Division step swapped the mother for daughters) or the surviving
+        cell carries the ``divide`` flag (MarkDPeriod). Read between run slices
+        so a single-window generation stops at the division instead of running
+        both daughters to the end of the window."""
+        state = getattr(self._composite, "state", None)
+        agents_now = (state.get("agents") if isinstance(state, dict) else None) or {}
+        if agents_before and set(agents_now.keys()) != set(agents_before):
+            return True
+        survivor = agents_now.get(self._agent_id) or next(iter(agents_now.values()), {})
+        return isinstance(survivor, dict) and bool(survivor.get("divide"))
+
     def _run_until_division(self, interval):
-        """Run the internal composite for ``interval`` seconds. Returns
+        """Run the internal composite for up to ``interval`` seconds, stopping
+        within one ``division_poll_interval`` slice of a division. Returns
         ``(divided, daughter_cell_data_or_None, final_dry_mass)``."""
         agents = self._composite.state.get("agents") or {}
         agents_before = set(agents.keys())
@@ -911,8 +942,31 @@ class LineageProcess(Process):
             mother_snapshot = None
 
         divided = False
+        # Run in slices and stop at the first division signal. A single
+        # ``run(interval)`` for the whole window (the LineageStep / Nextflow
+        # path) does NOT stop when the mother divides: the Division step swaps
+        # the mother for two daughters and the composite keeps simulating BOTH
+        # of them to the end of the window. The generation then booked the
+        # surviving daughter's own clock as its duration (sim 955, 2026-09-10:
+        # ``DIVISION at t=2528s`` followed by ``[lineage-debug] t=1072.0`` --
+        # exactly 3,600 - 2,528) and carried that daughter aged 1,072 s past
+        # its birth as the next founder, while the tick-driven chain path ended
+        # the generation at the division. Polling every
+        # ``division_poll_interval`` seconds makes both paths agree: a
+        # generation ends within one slice of the division, the founder is the
+        # daughter at (within one slice of) division, and no compute is spent
+        # on the abandoned sibling.
+        slice_s = float(self.config.get("division_poll_interval") or 10.0)
+        if slice_s <= 0:
+            slice_s = float(interval)
+        remaining = float(interval)
         try:
-            self._composite.run(interval)
+            while remaining > 0:
+                step = min(slice_s, remaining)
+                self._composite.run(step)
+                remaining -= step
+                if self._division_signalled(agents_before):
+                    break
         except Exception as e:
             # A genuine division surfaces as a structural agents-map update that
             # process-bigraph raises through; its message mentions divide/division.
