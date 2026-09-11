@@ -206,7 +206,7 @@ pbg-torch = { git = "https://github.com/vivarium-collective/viva-torch.git", bra
 investigation-contracts = { git = "https://github.com/vivarium-collective/investigation-contracts.git", branch = "main" }
 viva-munk = { git = "https://github.com/vivarium-collective/Viva-munk.git", branch = "main" }
 spatio-flux = { git = "https://github.com/vivarium-collective/spatio-flux.git", branch = "main" }
-ecoli-sources = { git = "https://github.com/vivarium-collective/ecoli-sources.git", rev = "840bc9739d25ad76841bfeaa3b97f133a84676c9" }
+ecoli-sources = { git = "https://github.com/vivarium-collective/ecoli-sources.git", rev = "86607c4dff73f56a33844bf4941804827d14a190" }
 # Report/dashboard tooling (optional `report` extra). Pinned to a rev so the version is
 # reproducible (0.3.78 — the current published main at time of pin).
 vivarium-workbench = { git = "https://github.com/vivarium-collective/vivarium-workbench.git", rev = "0e7c24b497218e7f38c70e9fe3222f999bb48ef6" }
