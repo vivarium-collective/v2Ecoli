@@ -597,6 +597,10 @@ def _resolve_build_params(build_params: dict | None) -> dict:
     return resolved
 
 
+SKIP_CACHE_VERIFY_ENV = "V2ECOLI_SKIP_CACHE_VERIFY"
+_skip_verify_warned = False
+
+
 def verify_cache_version(cache_dir: str, repo_root: str | None = None,
                          expected_build_params: dict | None = None,
                          require_clean_chain: bool = False,
@@ -652,6 +656,27 @@ def verify_cache_version(cache_dir: str, repo_root: str | None = None,
     layer was built from a different commit — the chain-level mirror of
     ``expected_build_params``.
     """
+    if os.environ.get(SKIP_CACHE_VERIFY_ENV):
+        # The advertised escape hatch for deliberate cross-commit / cross-version
+        # work (e.g. re-firing a run on a cache copied from another commit).
+        # Honoured HERE, at the single verification chokepoint, so EVERY caller
+        # respects it -- not only core.load_cache_bundle (which has its own
+        # pre-check). Before this, direct callers on the staging path (the
+        # ray-batch entrypoint's cache-verify, via run_pbg) ran verification
+        # unconditionally, so the env var -- documented as the bypass -- had no
+        # effect at that layer and a legitimately-copied cross-commit cache
+        # failed at staging despite the flag being set.
+        global _skip_verify_warned
+        if not _skip_verify_warned:
+            warnings.warn(
+                f"{SKIP_CACHE_VERIFY_ENV} is set: skipping cache-version "
+                f"verification for {cache_dir}. A stale or cross-commit cache "
+                f"may load silently. Unset it for normal use.",
+                stacklevel=2,
+            )
+            _skip_verify_warned = True
+        return None
+
     stored = read_cache_version(cache_dir)
     current = compute_cache_version(
         repo_root=repo_root,
