@@ -623,11 +623,19 @@ class LineageProcess(Process):
                     f"downgrade to warn-and-skip."
                 )
         if not view:
-            warnings.warn(
-                "LineageProcess: xarray view has no leaves present in "
-                "composite state; skipping xarray emission."
-            )
-            self._xarray_pending = False
+            # This tick's composite state has no declared KPI leaves yet. The
+            # docstring's contract is to open "on the first POPULATED tick", so
+            # do NOT give up the generation here: leave _xarray_pending True and
+            # return, so a later populated tick in this same generation opens the
+            # emitter. The old code set _xarray_pending = False on the FIRST empty
+            # tick, abandoning the whole generation even when later ticks would
+            # populate -- and abandoning a generation writes NO group for it,
+            # which breaks the NEXT generation's _check_group linkage ("Missing
+            # path from previous generation"). A generation that stays empty for
+            # ALL ticks is still caught, loudly, by _assert_generation_emitted
+            # (0 populated emits) at this generation's own end -- not by a cryptic
+            # crash one generation later. (Contributing fix to the multi-seed-gang
+            # #777 residual; not on its own the completion fix.)
             return
         output_metadata = extract_output_metadata_from_state(wrapped, view)
 
@@ -655,18 +663,50 @@ class LineageProcess(Process):
             "max_duration": float(self.config["max_duration_per_gen"]),
         }
         self._xarray_view = view
-        self._xarray_em = _build_emitter(
-            core=self._core,
-            store_path=self._xarray_store,
-            view=view,
-            metadata_base=metadata_base,
-            generation=self._generation,
-            agent_id=self._agent_id,
-            buffer_size=buf,
-            output_metadata=output_metadata,
-            writer=writer,
-            predicate=predicate,
-        )
+        try:
+            self._xarray_em = _build_emitter(
+                core=self._core,
+                store_path=self._xarray_store,
+                view=view,
+                metadata_base=metadata_base,
+                generation=self._generation,
+                agent_id=self._agent_id,
+                buffer_size=buf,
+                output_metadata=output_metadata,
+                writer=writer,
+                predicate=predicate,
+            )
+        except Exception as e:
+            # DIAGNOSTIC GUARD (multi-seed-gang #777 residual). A FRESH emitter
+            # open at generation>0 means the single lineage emitter was NOT
+            # carried forward from the previous generation (advance_generation).
+            # The emitter's own _open_store->_check_group then raises a cryptic
+            # zarr "Missing path from previous generation" FileNotFoundError on
+            # the missing prior-gen group. Re-raise with the lineage context so
+            # the exact gen/seed and the two suspected causes are named -- turning
+            # the next gang failure into a precise diagnostic instead of another
+            # opaque _check_group crash. (A fresh open that SUCCEEDS at gen>0 --
+            # e.g. a legitimate checkpoint resume where the prior gen IS on disk
+            # -- is untouched; only a FAILED one is annotated.) This NAMES the
+            # residual; it is NOT the completion fix -- the prior gen is either
+            # empty-view-skipped (see the _open guard above, now fixed to wait
+            # for a populated tick) or advance_generation's consolidate was not
+            # durably visible before this gen read consolidated metadata.
+            if int(self._generation) > 0:
+                raise RuntimeError(
+                    f"LineageProcess: opening a FRESH xarray emitter at generation "
+                    f"{self._generation} (lineage_seed "
+                    f"{self.config.get('lineage_seed')}) failed on the previous "
+                    f"generation's linkage: {type(e).__name__}: {e}\n"
+                    f"  A fresh open at generation>0 means the one lineage emitter "
+                    f"was not carried forward across the last division. The prior "
+                    f"generation's consolidated group is missing -- either its emit "
+                    f"view was empty and the generation was skipped, or "
+                    f"advance_generation's consolidate was not durably visible "
+                    f"before this generation read it. This is the multi-seed-gang "
+                    f"residual to #777 (NOT yet the completion fix)."
+                ) from e
+            raise
         self._xarray_pending = False
 
     def _emit_xarray(self, agents_now):
