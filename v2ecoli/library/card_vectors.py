@@ -55,7 +55,16 @@ from __future__ import annotations
 # prevent: "this run exchanged nothing we can read" and "this envelope predates
 # the derivation" would look identical, and the first is a fact about the run
 # while the second is a fact about the tooling.
-EXTRACTOR_VERSION = 5
+#
+# v5 -> v6: a cell is identified by EVERY partition key the sweep carries --
+# ``experiment_id`` and ``variant`` join ``(lineage_seed, generation, agent_id)``
+# when present (#776). A sweep whose variants or experiments reuse a lineage seed
+# was merged into one pseudo-cell per generation: ``n_cells`` 1 where ten exist,
+# per-cell means pooled across variants, and the median timestep lagged across a
+# variant boundary, which scales every derived flux. The numbers change for
+# exactly those sweeps and for no other, so only the key tells a v5 envelope for
+# one of them apart from a correct one.
+EXTRACTOR_VERSION = 6
 
 #: A cell whose row count sits below the split is not a complete cell cycle.
 #:
@@ -174,17 +183,42 @@ def _complete_cells(cell_order: list, per_cell_rows: dict) -> tuple[list, int, s
     included = [c for c in cell_order if per_cell_rows[c] >= split_at]
     return included, len(cell_order) - len(included), "clean"
 
-def _timestep_seconds(con, rel: str) -> float | None:
+#: Columns that together identify ONE cell, outermost first. The first two are
+#: optional hive partitions; the last three are required, as they always were.
+_OPTIONAL_CELL_KEYS = ("experiment_id", "variant")
+_REQUIRED_CELL_KEYS = ("lineage_seed", "generation", "agent_id")
+
+
+def _cell_key(raw_cols: list) -> list[str]:
+    """The cell-identity columns for this sweep: every optional partition key it
+    carries, then ``lineage_seed, generation, agent_id``.
+
+    ⛔ **``lineage_seed`` alone does not identify a lineage (#776).** A sweep can
+    run several variants -- or pool several experiments under one directory, since
+    ``history_files`` globs recursively -- that reuse the same seed. Keyed without
+    ``variant``/``experiment_id``, every such cell with the same generation and
+    agent collapses into one, and nothing raises. The optional keys are included
+    only when present, so a sweep laid out without them is read exactly as before.
+    """
+    available = {c.lower() for c in raw_cols}
+    return [c for c in _OPTIONAL_CELL_KEYS if c in available] + list(_REQUIRED_CELL_KEYS)
+
+
+def _timestep_seconds(con, rel: str, cell_key: list[str]) -> float | None:
     """Median ``global_time`` delta within a cell, or None if undecidable.
 
     ⛔ MEASURED, NEVER ASSUMED. The counts->flux conversion is inversely
     proportional to the timestep, so hardcoding 1 s would silently mis-scale
     every derived flux on any run that does not use it, by exactly the ratio.
+
+    ⚠ The window is partitioned by the FULL cell key. Partitioned by less, the lag
+    is taken between rows of two different cells whose clocks interleave, and the
+    median comes out as the offset between them rather than the timestep.
     """
     try:
         row = con.sql(
             "SELECT median(d) FROM (SELECT global_time - lag(global_time) OVER "
-            "(PARTITION BY lineage_seed, generation, agent_id ORDER BY global_time) d "
+            f"(PARTITION BY {', '.join(cell_key)} ORDER BY global_time) d "
             f"FROM {rel}) WHERE d IS NOT NULL AND d > 0"
         ).fetchone()
     except Exception:
@@ -212,7 +246,7 @@ def _derived_exchange(raw_cols: list, con, rel: str) -> list:
     cols = sorted(c for c in raw_cols if c.startswith(_DMDT_PREFIX))
     if not cols or _DRY_MASS_COL not in {c.lower() for c in raw_cols}:
         return []
-    dt = _timestep_seconds(con, rel)
+    dt = _timestep_seconds(con, rel, _cell_key(raw_cols))
     if not dt:
         return []
     k = _COUNTS_TO_MMOL_PER_GDCW_H * dt
@@ -329,8 +363,10 @@ def extract_vectors(sweep_dir: str, generation_lower_bound: int = 0) -> dict:
             "determines which exchange leaf (if any) is written."
         )
     cols = ", ".join(expr for expr, _ in present)
+    cell_key = _cell_key(raw_cols)
+    nk = len(cell_key)
     result = con.sql(
-        f"SELECT lineage_seed, generation, agent_id, {cols} FROM {rel} "
+        f"SELECT {', '.join(cell_key)}, {cols} FROM {rel} "
         f"WHERE generation >= {int(generation_lower_bound)}"
     )
 
@@ -376,14 +412,14 @@ def extract_vectors(sweep_dir: str, generation_lower_bound: int = 0) -> dict:
         if not batch:
             break
         for r in batch:
-            cell = (r[0], r[1], r[2])
+            cell = tuple(r[:nk])
             if cell not in seen_cells:
                 seen_cells.add(cell)
                 cell_order.append(cell)
             # Counted over ROWS, so membership is a property of the cell rather
             # than of whichever observable happens to be widest.
             per_cell_rows[cell] = per_cell_rows.get(cell, 0) + 1
-            for i, val in enumerate(r[3:]):
+            for i, val in enumerate(r[nk:]):
                 if val is None:
                     continue
                 # A SCALAR observable is a one-feature vector. Wrapping it here
