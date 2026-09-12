@@ -2337,7 +2337,14 @@ def baseline(
         import sys, os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__),
                                         "..", "..", "scripts"))
-        from scripts._compare.inject import (
+        # SEAM CUTOVER (DRAFT — UNVERIFIED for CD2 parity): resolve injections via
+        # the wheel-shipped, registry-based resolver in v2ecoli.library.inject
+        # instead of the vendored scripts/_compare/inject.py. Native process classes
+        # must be registered with register_native_injection (sms-ecoli #219 covers
+        # the CD2 native set). The library resolve_injections diverges ~269 lines
+        # from the vendored copy, so this needs a CD2-run behavior-parity check
+        # before it can land (see PR).
+        from v2ecoli.library.inject import (
             resolve_injections, apply_injected_processes, remove_processes)
         # Add half: convert + inject the new processes (add_processes plus the
         # TARGETS of swap_processes). resolve_injections needs the fork repo only
