@@ -301,7 +301,7 @@ def main() -> None:
     if schema_ver != 2:
         _fail(
             f"workspace.yaml is schema v{schema_ver}; "
-            "run `python3 scripts/_migrate_v1_to_v2.py` to migrate to v2 before linting."
+            "this linter requires schema_version: 2 (see .pbg/schemas/workspace.schema.json)."
         )
 
     Draft7Validator(_schema("workspace.schema.json"), format_checker=FormatChecker()).validate(ws)

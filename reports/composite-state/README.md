@@ -60,29 +60,12 @@ The pruning truncates the multi-MB bulk store and other large arrays (the
 explorer only needs the **topology** — process/store nodes + wiring — not the
 data values), keeping the committed file a few MB.
 
-## Regenerating `v2ecoli.composites.biological.biological.json`
+## `v2ecoli.composites.biological.biological.json` (historical)
 
-The **`biological`** composite is `baseline` with a pure path-remap of the store
-hierarchy (`v2ecoli.composites._remap.remap_cell_state` — same simulation, just
-relabeled). Its `baseline()` call needs the ParCa cache too, so it likewise
-can't resolve at publish time and ships a committed state.
-
-Because it's a pure relabel, its committed state is **derived from the baseline
-file** — no ParCa cache needed. Refresh it whenever the baseline file changes:
-
-```python
-import json, importlib.util
-spec = importlib.util.spec_from_file_location("_remap", "v2ecoli/composites/_remap.py")
-rm = importlib.util.module_from_spec(spec); spec.loader.exec_module(rm)
-
-d = json.load(open("reports/composite-state/v2ecoli.composites.ecoli_baseline.ecoli_baseline.json"))
-d["id"] = "v2ecoli.composites.biological.biological"
-d["name"] = "biological"
-d["module"] = "v2ecoli.composites.biological"
-d["description"] = "Biologically-organized whole-cell E. coli model. …"  # match the decorator
-agents = d["state"]["agents"]
-for aid, cell in list(agents.items()):
-    agents[aid] = rm.remap_cell_state(cell)       # exactly what biological() does
-json.dump(d, open("reports/composite-state/v2ecoli.composites.biological.biological.json", "w"),
-          allow_nan=False)
-```
+The **`biological`** composite was `baseline` with a pure path-remap of the
+store hierarchy (same simulation, just relabeled). The composite module and its
+`_remap` helper were removed from the package in #362; the committed state file
+here remains as a static viewer artifact and can no longer be regenerated from
+this repo. If the baseline state file is refreshed and this one is wanted too,
+recover the remap recipe from the pre-#362 history of this README
+(`git log -- reports/composite-state/README.md`).

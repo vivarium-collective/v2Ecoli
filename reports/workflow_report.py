@@ -643,7 +643,7 @@ def step_single_cell():
 
     # Plasmid mode: full_plasmid array seeded with active entries means the
     # plasmid-aware cache (out/cache_plasmid) was used. Captured snapshots
-    # feed scripts/plasmid_report.py via out/plasmid/timeseries.json.
+    # are written to out/plasmid/timeseries.json.
     has_plasmids = False
     fp = cell.get('unique', {}).get('full_plasmid')
     if fp is not None and hasattr(fp, 'dtype') and '_entryState' in fp.dtype.names:

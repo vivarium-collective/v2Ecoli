@@ -956,3 +956,165 @@ def test_partition_bookkeeping_roots_are_never_carried():
     apply_carry_state(fresh, carry)
     assert fresh["request"] == {} and fresh["allocate"] == {}
     assert fresh["fields"] == {"drug": 1.0}
+
+
+# --- cross-path dose-onset equivalence (#769/#771/#773) ----------------------
+#
+# The per-PR unit tests above pin each fix in isolation (a single generation's
+# _run_until_division / _elapsed_after_run). The bug they kept missing was a
+# CROSS-PATH one: the chain-dispatch path (tick-driven, the runner stepped one
+# second at a time, interval=1) and the single-window LineageStep / Nextflow
+# path (one big update() per generation, division found by polling every
+# division_poll_interval seconds) implemented DIFFERENT lineage/generation time
+# semantics. A field-timeline dose scheduled at an ABSOLUTE cumulative lineage
+# time (Run 3's onset at 10,000 s) fired on the chain path but never on the
+# single-window path, because the two paths booked different per-generation
+# durations into lineage_time_offset. These tests drive a whole multi-generation
+# lineage through update() under BOTH drive modes against the same scripted
+# division times and assert the cumulative booked time (hence the generation a
+# cumulative-time dose lands in) is identical.
+
+
+class _ScriptedDivider:
+    """A composite whose single mother cell divides at a fixed ABSOLUTE time.
+
+    Mother is keyed by ``mother_id`` (the phylogeny id LineageProcess hands the
+    build). At the first slice that reaches ``divide_at`` the mother is replaced
+    by two daughters (``mother_id+"0"`` / ``mother_id+"1"``) whose OWN clocks
+    restart at 0 and keep advancing -- the exact shape the real Division step
+    produces (daughters rebuilt from ``baseline()`` at ``global_time`` 0). The
+    composite's own ``global_time`` clock advances monotonically and stops where
+    the run stopped, which is what ``_elapsed_after_run`` reads as the division
+    time on every path.
+    """
+
+    def __init__(self, divide_at, mother_id="0"):
+        self.divide_at = float(divide_at)
+        self.mother_id = mother_id
+        self.state = {
+            "global_time": 0.0,
+            "agents": {mother_id: self._cell(0.0)},
+        }
+        self.divided_at = None
+
+    @staticmethod
+    def _cell(global_time):
+        return {
+            "bulk": "M", "unique": {}, "environment": {}, "boundary": {},
+            "global_time": float(global_time),
+            "listeners": {"mass": {"dry_mass": 350.0}},
+        }
+
+    def run(self, dt):
+        dt = float(dt)
+        t1 = self.state["global_time"] + dt
+        self.state["global_time"] = t1
+        agents = self.state["agents"]
+        if self.divided_at is None and t1 >= self.divide_at:
+            self.divided_at = t1
+            agents.pop(self.mother_id, None)
+            for d in (self.mother_id + "0", self.mother_id + "1"):
+                agents[d] = self._cell(0.0)
+        elif self.divided_at is not None:
+            for d in (self.mother_id + "0", self.mother_id + "1"):
+                agents[d]["global_time"] += dt
+        else:
+            agents[self.mother_id]["global_time"] = t1
+
+
+def _drive_generations(monkeypatch, divide_times, *, interval, poll):
+    """Run a LineageProcess through ``len(divide_times)`` generations under one
+    drive mode and return ``(per_generation_durations, cumulative_offset)``.
+
+    ``interval`` is what each ``update()`` is called with -- 1.0 reproduces the
+    tick-driven chain path, a big window reproduces the single-window path.
+    ``poll`` is ``division_poll_interval``. Each generation installs a FRESH
+    ``_ScriptedDivider`` scripted to divide at its own time (this is where the
+    real lineage rebuilds the composite), keyed by the current phylogeny id.
+    """
+    lp, _ = _make(monkeypatch, generations=len(divide_times))
+    _real_run_until_division(monkeypatch, lp)
+    lp.config["division_poll_interval"] = poll
+    lp.config["max_duration_per_gen"] = max(divide_times) + 100_000.0
+    # Parquet finalize / emitted-output checks are not what this test exercises
+    # (there is no real emitter behind the scripted composite); the time
+    # bookkeeping is. Neutralize them so the drive is clean on both paths.
+    monkeypatch.setattr(lp, "_finalize_parquet", lambda: None)
+    monkeypatch.setattr(lp, "_assert_generation_emitted", lambda: None)
+
+    def fresh_build():
+        lp._composite = _ScriptedDivider(
+            divide_at=divide_times[lp._generation], mother_id=lp._agent_id)
+        lp._gen_elapsed = 0.0
+
+    monkeypatch.setattr(lp, "_build_generation", fresh_build)
+
+    out = {}
+    for _ in range(10_000):
+        out = lp.update({}, interval)
+        if out.get("complete"):
+            break
+    assert out.get("complete") is True, "lineage did not complete"
+    durations = [s["duration"] for s in lp._summaries]
+    return durations, lp._lineage_offset
+
+
+def _generation_of_dose(durations, dose_time):
+    """The generation index a dose scheduled at absolute cumulative lineage time
+    ``dose_time`` lands in, given the per-generation durations booked."""
+    cumulative = 0.0
+    for gen, dur in enumerate(durations):
+        cumulative += dur
+        if dose_time < cumulative:
+            return gen
+    return len(durations)  # after the lineage ends
+
+
+def test_cumulative_elapsed_matches_across_drive_modes(monkeypatch):
+    """The cross-path INVARIANT the per-PR unit tests missed: for the SAME
+    scripted division times, the tick-driven chain path (interval=1) and the
+    single-window path (one big update() per generation) book the SAME
+    per-generation duration and therefore the SAME cumulative lineage-time
+    offset. Division times chosen on the poll grid so both paths land the
+    division exactly, making the equivalence exact rather than within-a-slice.
+    """
+    poll = 10.0
+    divide_times = [2530.0, 1800.0, 2000.0, 2650.0]
+
+    tick_durations, tick_offset = _drive_generations(
+        monkeypatch, divide_times, interval=1.0, poll=poll)
+    window_durations, window_offset = _drive_generations(
+        monkeypatch, divide_times, interval=50_000.0, poll=poll)
+
+    # Both paths book the real division time each generation ...
+    assert tick_durations == divide_times
+    assert window_durations == divide_times
+    # ... hence identical per-generation and cumulative time on both paths.
+    assert tick_durations == window_durations
+    assert tick_offset == window_offset == sum(divide_times)
+    # And crucially NEITHER path books the WINDOW (50,000 s) as a generation's
+    # duration -- the pre-#773 single-window bug that fired the dose ~2,900 s
+    # early / never.
+    assert all(d < 50_000.0 for d in window_durations)
+
+
+def test_scheduled_dose_lands_in_same_generation_on_both_paths(monkeypatch):
+    """The consequence that actually bit Run 3: a field-timeline dose scheduled
+    at an absolute cumulative lineage time must fire in the SAME generation
+    whichever drive mode runs the lineage. Under the old single-window
+    semantics the cumulative clock advanced differently, so the 10,000 s dose
+    fired on the chain path but never on the single-window path."""
+    poll = 10.0
+    divide_times = [2530.0, 1800.0, 2000.0, 2650.0]  # cumulative: 2530,4330,6330,8980
+    tick_durations, _ = _drive_generations(
+        monkeypatch, divide_times, interval=1.0, poll=poll)
+    window_durations, _ = _drive_generations(
+        monkeypatch, divide_times, interval=50_000.0, poll=poll)
+
+    # Probe doses spanning every generation boundary, including one past the
+    # last division.
+    for dose_time in (1000.0, 2530.0, 4000.0, 6330.0, 7000.0, 8900.0):
+        assert (
+            _generation_of_dose(tick_durations, dose_time)
+            == _generation_of_dose(window_durations, dose_time)
+        ), f"dose at {dose_time}s lands in different generations across paths"

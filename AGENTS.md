@@ -107,12 +107,14 @@ The IDs are scattered across many places. Search in roughly this order:
 
 2. **Existing process modules.** Many processes hardcode the IDs they
    touch as module-level constants — `grep -rn 'PD0\|MONOMER0\|CPLX0\|RXN0' v2ecoli/processes/` finds them fast.
-   Examples: `v2ecoli/processes/dnaa_box_binding.py` has
-   `DNAA_ATP_ID = "MONOMER0-160[c]"` + `DNAA_ADP_ID = "MONOMER0-4565[c]"`.
+   (Example from the DnaA investigation branch — not on `main`:
+   `v2ecoli/processes/dnaa_box_binding.py` has
+   `DNAA_ATP_ID = "MONOMER0-160[c]"` + `DNAA_ADP_ID = "MONOMER0-4565[c]"`.)
 
-3. **The dnaa-box catalog** (`v2ecoli/data/dnaa_box_catalog.py`) defines
-   the 307 consensus chromosomal boxes + their region partition + per-box
-   affinity / form-preference. Authoritative for any DnaA-binding question.
+3. **The dnaa-box catalog** (`v2ecoli/data/dnaa_box_catalog.py`, on the DnaA
+   investigation branch, not `main`) defines the 307 consensus chromosomal
+   boxes + their region partition + per-box affinity / form-preference.
+   Authoritative for any DnaA-binding question.
 
 4. **A real `runs.db` state blob.** Every history row is a JSON snapshot
    of the live cell state; `state.bulk` is a list of `[id, count, ...]`

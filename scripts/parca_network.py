@@ -6,9 +6,9 @@ the HTML side-by-side with ``network.json`` under ``docs/``, and opens
 it in the default browser.
 
 Usage:
-    python scripts/network_report.py
-    python scripts/network_report.py --output docs/network.html
-    python scripts/network_report.py --no-open
+    python scripts/parca_network.py
+    python scripts/parca_network.py --output docs/network.html
+    python scripts/parca_network.py --no-open
 """
 
 from __future__ import annotations
