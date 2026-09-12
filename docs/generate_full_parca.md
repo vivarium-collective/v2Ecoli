@@ -6,14 +6,22 @@ testing).
 
 ## Context
 
-The shipped `models/parca/parca_state.pkl.gz` was built with `--mode fast`
-(debug=True, reduced TF condition set).  This is sufficient for comparison
+> **Corrected 2026-08-18 — this document described the pre-regeneration world.**
+> The shipped fixture was replaced with a **full-mode** build by `71442761`
+> (2026-06-03), which updated `parca_state.pkl.gz` and `runtimes.json` but not
+> the prose here or in `models/parca/README.md`.  Both files therefore still
+> called a full-mode artifact `--mode fast`.  Measured on the shipped state:
+> **51 `cell_specs`** (a `--mode fast` build has 7).  The runtime figures below
+> were also stale by 1–2 orders of magnitude; they are now measurements.
+
+The shipped `models/parca/parca_state.pkl.gz` is a **`--mode full`** state
+(all TF conditions fitted; 51 `cell_specs`).  A `--mode fast` build
+(debug=True) fits a reduced TF condition set — sufficient for comparison
 testing and the ParCa comparison report, but the online simulation's
 equilibrium solver crashes on it because some metabolite concentrations are
 left unpopulated when only a subset of TF conditions are fitted.
 
-A `--mode full` run produces a complete sim_data with all ~300 TF conditions
-fitted.  This takes several hours but the result supports end-to-end
+A `--mode full` run produces a complete sim_data supporting end-to-end
 simulation (single cell → division → daughters).
 
 ## Steps
@@ -34,9 +42,14 @@ the current Python.  Only needed once per Python version.
 python scripts/parca_run.py --mode full --cpus 8 -o out/sim_data
 ```
 
-**Expected runtime:** 4–8 hours depending on CPU count.  Step 5
-(fit_condition) dominates — it solves a fixed-point iteration for each of
-~300 conditions.  Steps 1–4 take ~10 min; steps 6–9 take ~2 min.
+**Expected runtime: ~5 minutes** — measured 2026-08-18, `--mode full --cpus 8`
+on an Apple-silicon laptop: **287.6 s wall / 268.3 s summed over steps** (the
+~19 s difference is imports, Cython load and writing the 657 MB state).  Steps
+4 and 5 dominate at ~100 s each; every other step is under 35 s.  A KO variant
+build measured 183 s.  Runtime scales with CPU count, so treat this as an
+order-of-magnitude reference rather than a guarantee — but the previous
+"4–8 hours" figure was wrong by ~60×, and the condition count is **51**, not
+the "~300" this document claimed twice.
 
 The script emits per-step checkpoints at `out/sim_data/checkpoint_step_N.pkl`
 and a final `out/sim_data/parca_state.pkl`.  If step 5 succeeds but a later
@@ -101,7 +114,7 @@ git add models/parca/parca_state.pkl.gz models/parca/runtimes.json
 git commit -m "models/parca: full-mode ParCa fixture (all TF conditions)
 
 Replaces the fast-mode fixture (debug=True, 7 conditions) with a
-full-mode run (all ~300 TF conditions, X hours on N cores).  The
+full-mode run (all 51 conditions, XXXs on N cores).  The
 full fixture supports end-to-end simulation — the equilibrium solver
 no longer crashes on unpopulated metabolite concentrations.
 

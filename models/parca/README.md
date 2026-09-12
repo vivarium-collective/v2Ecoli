@@ -1,10 +1,20 @@
 # ParCa state — pre-computed
 
 `parca_state.pkl.gz` is the final composite state of the full ParCa
-pipeline (`v2ecoli/processes/parca/`) in `--mode fast` (debug=True,
-reduced TF condition set).  Produced by `scripts/parca_run.py` and
-gzipped for the repo.  Consumers can use this as a drop-in
-`sim_data`-shaped dict without re-running the 70-minute step 5.
+pipeline (`v2ecoli/processes/parca/`) in **`--mode full`** (all TF
+conditions; **51 `cell_specs`**, measured 2026-08-18 — a `--mode fast`
+build has 7).  Produced by `scripts/parca_run.py` and gzipped for the
+repo.  Consumers can use it as a drop-in `sim_data`-shaped dict without
+re-running ParCa (~5 min; see the Provenance note).
+
+> ⚠ **This file described a `--mode fast` fixture until 2026-08-18.** The
+> full-mode replacement (`71442761`, 2026-06-03) updated the artifact and
+> `runtimes.json` but not this prose, so the label was wrong for ~2.5
+> months. Consequence worth knowing: anything comparing a current build
+> against this state is comparing **code vintages, not run modes** — the
+> state also predates the `#275` `balance_translation_efficiencies` fix
+> (`e8d61b1d`, 2026-06-18), which shifts 27 r-protein monomers in
+> `translation_efficiencies_by_monomer` by up to 0.24.
 
 **Format note.**  This is currently a gzipped Python pickle.  The
 planned migration to a bigraph-schema JSON bundle (a true `.pbg`
@@ -48,12 +58,21 @@ artifacts deserialize cleanly under the merged package name.
 
 ## Provenance
 
-- Pipeline: `scripts/parca_run.py --mode fast --cpus 2`
-- Duration: 71.6 min end-to-end (step 5: 70 min; steps 1-4 + 6-9: ~1.5 min)
-- `debug=True`, `operons_on=True`, `remove_rrna_operons=False`, `stable_rrna=False`
+- Pipeline: `scripts/parca_run.py --mode full`
+- `operons_on=True`, `remove_rrna_operons=False`, `stable_rrna=False`
+- Per-step timings for the shipped state: **`runtimes.json`, 153.5 s total**
+  (regenerated with the artifact by `71442761`)
 
-To regenerate from scratch (~70 minutes), first build the Cython
-extensions:
+⚠ **Historical note.** This block previously read *"`--mode fast --cpus 2` ·
+Duration: 71.6 min end-to-end (step 5: 70 min)"*, which contradicted its own
+sibling `runtimes.json` (step 5 = **52.0 s**, total **153.5 s**) by a factor of
+~28, and described a mode the artifact does not have. It appears to describe a
+superseded fast-mode fixture. The prose is corrected here; the historical
+duration is not recoverable and is **not** restated.
+
+To regenerate from scratch, first build the Cython extensions. **Reference
+cost, measured 2026-08-18** (`--mode full --cpus 8`, Apple silicon): **287.6 s
+wall**, steps 4 and 5 ~100 s each. Scales with CPU count.
 
 ```bash
 bash scripts/parca_cython_build.sh
