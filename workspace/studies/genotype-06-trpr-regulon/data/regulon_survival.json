@@ -1,0 +1,47 @@
+{
+  "dropped_targets": [
+    "trpR"
+  ],
+  "genotype_id": "1a96738a807a51cd",
+  "ko_regulon": {
+    "aroH": 0.289172,
+    "aroL": 0.381565,
+    "aroM": 0.360982,
+    "mtr": 0.257028,
+    "trpA": 0.25349,
+    "trpB": 0.264255,
+    "trpC": 0.257028,
+    "trpD": 0.269807,
+    "trpE": 0.293209,
+    "trpL": 0.271684,
+    "yaiA": 0.248273
+  },
+  "ko_rows": 11,
+  "mechanism": "the Target-keyed coordinate guard at simulation_data.py:219 (rna_ids_with_coordinates); a knockout nulls its gene's coordinates",
+  "method": "SimulationDataEcoli._add_condition_data run against WT and KO raw_data; tf_to_fold_change[<trpR activeId>] read off each",
+  "positive_control": {
+    "frame_id": "EG10527",
+    "gene": "lacZ",
+    "guard_fires": true,
+    "incoming_edges_after_deletion": 0,
+    "incoming_edges_wt": 2
+  },
+  "question": "does a chromosome-level trpR deletion prune trpR's fold_changes rows?",
+  "trpr_active_id": "CPLX-125",
+  "trpr_gene_id": "EG11029",
+  "wt_regulon": {
+    "aroH": 0.289172,
+    "aroL": 0.381565,
+    "aroM": 0.360982,
+    "mtr": 0.257028,
+    "trpA": 0.25349,
+    "trpB": 0.264255,
+    "trpC": 0.257028,
+    "trpD": 0.269807,
+    "trpE": 0.293209,
+    "trpL": 0.271684,
+    "trpR": 0.267943,
+    "yaiA": 0.248273
+  },
+  "wt_rows": 12
+}

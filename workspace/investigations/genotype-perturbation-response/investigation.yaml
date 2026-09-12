@@ -73,13 +73,20 @@ executive:
         translation-level knockout's outcome.
     - question: "Does a ParCa-level TF knockout prune that TF's regulon entries?"
       status: >-
-        OPEN - the BEHAVIOUR is now measured (it does NOT prune; all 7 trpR fold_changes
-        rows survive a trpR deletion, because the transform never touches fold_changes).
+        OPEN - the BEHAVIOUR is measured and it does NOT prune, but the COUNT here was wrong
+        twice over. It read "all 7 trpR fold_changes rows survive"; the regulon is 12 rows
+        (the model loads fold_changes AND fold_changes_nca) and 11 of the 12 survive. The
+        one that drops is trpR's own autoregulation, because the loader's single guard on
+        this path keys on the TARGET and a knockout nulls its gene's coordinates. Measured
+        with a positive control (lacZ loses its 2 incoming edges) by genotype-06's
+        sims/measure_regulon_survival.py.
         What stays open is the JUDGEMENT - defect or defensible modelling choice - which
         genotype-06-trpr-regulon carries as design_pivot_required GENO06-EQ-01.
       context: >-
-        fold_changes.tsv is keyed by TF COMMON NAME (trpR has 7 target entries: trpA -1.83,
-        trpB -1.77, trpC -1.63, ...), and the chromosome-deletion transform touches only
+        The fold-change tables are keyed by TF COMMON NAME. This previously said "trpR has 7
+        target entries", counted from fold_changes.tsv alone; the model also loads
+        fold_changes_nca.tsv, so the regulon is 12 - trpA, trpB, trpC, trpD, trpE, trpL,
+        aroH, aroL, aroM, mtr, yaiA and trpR itself. Additionally the chromosome-deletion transform touches only
         genes, transcription_units, dna_sites and the genome sequence. So a ParCa-level
         knockout of a transcription factor deletes the gene while ParCa continues to fit
         delta_prob entries for a regulator that no longer exists in the genome. Whether

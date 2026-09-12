@@ -22,6 +22,17 @@
       "trpR_monomer_min": 0.0,
       "wall_seconds": 1819.3
     },
+    "trpR_withtrp": {
+      "arm": "trpR_withtrp",
+      "fraction_repressed": 0.0,
+      "generations": 3,
+      "level_when_active": 0.0006019596842844848,
+      "n_samples": 33,
+      "time_mean": 0.0006019596842844848,
+      "trpR_monomer_max": 0.0,
+      "trpR_monomer_min": 0.0,
+      "wall_seconds": 1447.6
+    },
     "trpRtnaA": {
       "arm": "trpRtnaA",
       "fraction_repressed": 0.0,
@@ -54,12 +65,110 @@
       "trpR_monomer_max": 111.0,
       "trpR_monomer_min": 23.0,
       "wall_seconds": 2068.0
+    },
+    "wt_withtrp": {
+      "arm": "wt_withtrp",
+      "fraction_repressed": 1.0,
+      "generations": 3,
+      "level_when_active": null,
+      "n_samples": 33,
+      "time_mean": 9.835629392301332e-12,
+      "trpR_monomer_max": 96.0,
+      "trpR_monomer_min": 17.0,
+      "wall_seconds": 1545.2
     }
+  },
+  "dose_response": {
+    "arms": {
+      "trpR_trpinf": {
+        "arm": "trpR_trpinf",
+        "dry_mass_fg_mean": 572.754309426226,
+        "fraction_repressed": 0.0,
+        "implied_occupancy_at_mean": 0.9951594949837452,
+        "label": "KO,  TRP inf",
+        "mean_implied_occupancy": 0.995138108535745,
+        "n_samples": 33,
+        "time_mean_synth_prob": 0.0006019596842844848,
+        "trpR_apo_free_mean": 0.0,
+        "trpR_binding_events_per_s": 0.0,
+        "trpR_holo_free_mean": 0.0,
+        "trp_c_molar_max": 0.005181560730304313,
+        "trp_c_molar_mean": 0.004461303307946248,
+        "trp_c_molar_min": 0.003966315819295036
+      },
+      "trpR_trpzero": {
+        "arm": "trpR_trpzero",
+        "dry_mass_fg_mean": 479.06810843013403,
+        "fraction_repressed": 0.0,
+        "implied_occupancy_at_mean": 0.2796855841946048,
+        "label": "KO,  TRP 0.0",
+        "mean_implied_occupancy": 0.1673841717206177,
+        "n_samples": 33,
+        "time_mean_synth_prob": 0.0006347828027756986,
+        "trpR_apo_free_mean": 0.0,
+        "trpR_binding_events_per_s": 0.0,
+        "trpR_holo_free_mean": 0.0,
+        "trp_c_molar_max": 0.00010734441183405367,
+        "trp_c_molar_mean": 8.425733324019177e-06,
+        "trp_c_molar_min": 1.0483906382980797e-06
+      },
+      "wt_trpinf": {
+        "arm": "wt_trpinf",
+        "dry_mass_fg_mean": 617.9399498195326,
+        "fraction_repressed": 1.0,
+        "implied_occupancy_at_mean": 0.9966097293493641,
+        "label": "WT,  TRP inf",
+        "mean_implied_occupancy": 0.9965943767403058,
+        "n_samples": 33,
+        "time_mean_synth_prob": 9.626905133232023e-12,
+        "trpR_apo_free_mean": 0.8484848484848485,
+        "trpR_binding_events_per_s": 3.9594135802469137,
+        "trpR_holo_free_mean": 12.181818181818182,
+        "trp_c_molar_max": 0.007359328826011017,
+        "trp_c_molar_mean": 0.006378968924744935,
+        "trp_c_molar_min": 0.0055044104021703295
+      },
+      "wt_trplow": {
+        "arm": "wt_trplow",
+        "dry_mass_fg_mean": 617.9399498195326,
+        "fraction_repressed": 1.0,
+        "implied_occupancy_at_mean": 0.9966097293493641,
+        "label": "WT,  TRP 0.1 (= with_aa)",
+        "mean_implied_occupancy": 0.9965943767403058,
+        "n_samples": 33,
+        "time_mean_synth_prob": 9.626905133232023e-12,
+        "trpR_apo_free_mean": 0.8484848484848485,
+        "trpR_binding_events_per_s": 3.9594135802469137,
+        "trpR_holo_free_mean": 12.181818181818182,
+        "trp_c_molar_max": 0.007359328826011017,
+        "trp_c_molar_mean": 0.006378968924744935,
+        "trp_c_molar_min": 0.0055044104021703295
+      },
+      "wt_trpzero": {
+        "arm": "wt_trpzero",
+        "dry_mass_fg_mean": 511.03633453154896,
+        "fraction_repressed": 0.4242424242424242,
+        "implied_occupancy_at_mean": 0.6518627065657615,
+        "label": "WT,  TRP 0.0",
+        "mean_implied_occupancy": 0.4794017079568308,
+        "n_samples": 33,
+        "time_mean_synth_prob": 0.00028039250720656654,
+        "trpR_apo_free_mean": 0.6060606060606061,
+        "trpR_binding_events_per_s": 2.269598765432099,
+        "trpR_holo_free_mean": 25.12121212121212,
+        "trp_c_molar_max": 0.00011095121155296167,
+        "trp_c_molar_mean": 4.063173063976562e-05,
+        "trp_c_molar_min": 3.0444171530538115e-06
+      }
+    },
+    "axis_note": "graded against INTRACELLULAR [TRP] (mol/L), not medium composition -- a minimal-medium cell makes its own tryptophan through the operon under study",
+    "design": "one full-mode ParCa state; one condition (basal_with_trp); the only variable is the external tryptophan the run sees",
+    "trpR_kd_M": 2.17e-05
   },
   "pairs": {
     "aa_replete": {
       "ko": "trpR_withaa",
-      "note": "TrpR is declared ACTIVE in this condition (condition_defs.tsv)",
+      "note": "TrpR is declared ACTIVE in this condition (condition_defs.tsv). \u26a0 30 species and the doubling time (44->25 min) also change, so this pair cannot separate tryptophan from growth rate -- that is what plus_trp is for",
       "ratio_ko_over_wt": 6.288028536636688,
       "wt": "wt_withaa"
     },
@@ -74,6 +183,12 @@
       "note": "trpR + tnaA, basal; same inactive-TrpR caveat",
       "ratio_ko_over_wt": 1.1793506691052713,
       "wt": "wt"
+    },
+    "plus_trp": {
+      "ko": "trpR_withtrp",
+      "note": "TrpR is declared ACTIVE; TRP is the ONLY nutrient difference from basal and the doubling time is unchanged at 44.0 min",
+      "ratio_ko_over_wt": 61201948.57643358,
+      "wt": "wt_withtrp"
     }
   },
   "repressed_threshold": 1e-08,
