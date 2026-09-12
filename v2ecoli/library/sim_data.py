@@ -1341,6 +1341,9 @@ class LoadSimData:
                     "rates_jac_fn_dill": __import__('base64').b64encode(
                         __import__('dill').dumps(self.sim_data.process.equilibrium._rates_jacobian)
                     ).decode('ascii'),
+                    # Names for the negative-steady-state guard's message, so a
+                    # failure says WHICH molecule went negative (v2ecoli#784).
+                    "molecule_names": list(self.sim_data.process.equilibrium.molecule_names),
                 },
             },
             "moleculeNames": self.sim_data.process.equilibrium.molecule_names,

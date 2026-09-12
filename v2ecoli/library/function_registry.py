@@ -295,11 +295,33 @@ def get_attenuation_stop_probabilities_factory(aa_from_trna, attenuation_k):
     return get_attenuation_stop_probabilities
 
 
+def _negative_ss_detail(mols, molecule_names=None, k=5):
+    """Human-readable detail for the equilibrium negative-steady-state guard.
+
+    ``mols`` is the steady-state endpoint in MOLECULE counts. Returns a string
+    naming the worst offenders (most negative first) with their magnitudes, so
+    the guard says WHICH species went negative and by how much — the difference
+    between numerical round-off (a few molecules) and a real infeasibility. Falls
+    back to positional indices when ``molecule_names`` is not available.
+    """
+    mols = np.asarray(mols)
+    neg = np.nonzero(mols <= -1)[0]
+    order = neg[np.argsort(mols[neg])]  # most negative first
+    parts = []
+    for i in order[:k]:
+        name = (molecule_names[i]
+                if molecule_names is not None and i < len(molecule_names)
+                else f"index {i}")
+        parts.append(f"{name}={mols[i]:.1f}")
+    extra = "" if len(neg) <= k else f" (+{len(neg) - k} more)"
+    return f"{len(neg)} species < -1 molecule; worst: " + ", ".join(parts) + extra
+
+
 @register("equilibrium.ode_solver")
 def equilibrium_ode_solver_factory(stoich_matrix, rates_fwd, rates_rev,
                                     mets_to_rxn_fluxes, Rp, Pp,
                                     rates_fn_dill, rates_jac_fn_dill,
-                                    integrate_dt_mask=None):
+                                    integrate_dt_mask=None, molecule_names=None):
     """Factory: equilibrium ODE solver.
 
     Closure data from sim_data.process.equilibrium:
@@ -325,6 +347,7 @@ def equilibrium_ode_solver_factory(stoich_matrix, rates_fwd, rates_rev,
     _mets_to_rxn_fluxes = np.asarray(mets_to_rxn_fluxes)
     _Rp = np.asarray(Rp)
     _Pp = np.asarray(Pp)
+    _molecule_names = list(molecule_names) if molecule_names is not None else None
     if integrate_dt_mask is None:
         _integrate_dt_mask = np.zeros(_rates_fwd.shape, dtype=bool)
     else:
@@ -413,7 +436,10 @@ def equilibrium_ode_solver_factory(stoich_matrix, rates_fwd, rates_rev,
 
         y = sol.y.T
         if np.any(y[-1, :] * (cellVolume * nAvogadro) <= -1):
-            raise ValueError("Negative values at equilibrium steady state.")
+            mols = y[-1, :] * (cellVolume * nAvogadro)
+            raise ValueError(
+                "Negative values at equilibrium steady state: "
+                + _negative_ss_detail(mols, _molecule_names))
         if np.linalg.norm(deriv_ss(0, y[-1, :]), np.inf) * (cellVolume * nAvogadro) > 1:
             raise RuntimeError("Did not reach steady state for equilibrium.")
 
