@@ -139,7 +139,7 @@ the framework** — it requires the structural PDMP / compiled-runtime reformula
 ## GovCloud/Ray-on-Batch: the "3x slowdown" is real, and it's the hardware, not a bug
 
 Backlog task #18 asked whether sms-ecoli/v2ecoli simulations dispatched via
-sms-api on GovCloud (AWS Batch MNP + Ray, `r5.4xlarge` nodes) run ~3x slower
+viva-api on GovCloud (AWS Batch MNP + Ray, `r5.4xlarge` nodes) run ~3x slower
 than this doc's `83.8 ms/step` baseline. Investigated with a real, confirmed
 timing sample (simulation #115, 2 seeds, 600 steps each, GovCloud): **146.9s
 and 150.2s per seed** — 244.8–250.3 ms/step, a genuine **2.9–3.0x** slowdown

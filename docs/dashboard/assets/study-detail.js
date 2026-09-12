@@ -57,7 +57,7 @@
     // Show a neutral placeholder instead of attempting the fetch.
     var _cfg = window.__DASH_CONFIG__ || {};
     if (_cfg.mode === 'snapshot') {
-      panel.innerHTML = '<p class="muted" style="margin:0">Results are served by sms-api — coming in a later update.</p>';
+      panel.innerHTML = '<p class="muted" style="margin:0">Results are served by viva-api — coming in a later update.</p>';
       return;
     }
     panel.innerHTML = '<p class="muted" style="margin:0">Loading charts…</p>';

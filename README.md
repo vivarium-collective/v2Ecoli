@@ -609,7 +609,7 @@ Prereqs (one-time per session):
 
 ```bash
 aws sso login --profile stanford-sso
-# SSM tunnel to sms-api on localhost:8080 (run in its own terminal — flaky under a harness)
+# SSM tunnel to viva-api on localhost:8080 (run in its own terminal — flaky under a harness)
 nohup bash ~/code/sms-cdk/scripts/ptools-proxy.sh -s smsvpctest >/tmp/ptools.log 2>&1 &
 ```
 
@@ -625,7 +625,7 @@ bash scripts/comparison_harness.sh launch --v2-sim <ID> --seeds 4 --gens 2
 bash scripts/comparison_harness.sh report --only all
 ```
 
-`launch` POSTs each run to sms-api — v2ecoli via **Ray** (`composite=v2ecoli`,
+`launch` POSTs each run to viva-api — v2ecoli via **Ray** (`composite=v2ecoli`,
 `condition=<c>`), vEcoli via **Nextflow** (`simulation_config_filename=cond_<c>.json`,
 clearing the stale `nf-cond-<c>` K8s job/configmap first) — and writes the
 per-condition experiment ids it created to `out/full_compare/experiments.json`.

@@ -9,7 +9,7 @@ This document records what the native-analyses effort delivered, what was delibe
 
 ## TL;DR
 
-vEcoli's DuckDB/`sim_data` analyses now run **natively inside v2ecoli** as process-bigraph `Analysis` steps — no vEcoli `Analysis`/`plot()` wrapper, no sms-api/HPC. **24 analyses are ported and tested.** The **ptools omics data pipeline works end-to-end** (v2ecoli sim → EcoCyc-frame-ID × timepoint TSVs in the exact Pathway-Tools format). The **ptools Cellular-Overview visualization is now wired** via the `ptools_overview` step, which turns those TSVs into upload-ready Omics Viewer datasets and launches the painted EcoCyc map against a running `sms-ptools` server (see Roadmap Tier 3 + the appendix on running the server).
+vEcoli's DuckDB/`sim_data` analyses now run **natively inside v2ecoli** as process-bigraph `Analysis` steps — no vEcoli `Analysis`/`plot()` wrapper, no viva-api/HPC. **24 analyses are ported and tested.** The **ptools omics data pipeline works end-to-end** (v2ecoli sim → EcoCyc-frame-ID × timepoint TSVs in the exact Pathway-Tools format). The **ptools Cellular-Overview visualization is now wired** via the `ptools_overview` step, which turns those TSVs into upload-ready Omics Viewer datasets and launches the painted EcoCyc map against a running `sms-ptools` server (see Roadmap Tier 3 + the appendix on running the server).
 
 ---
 
@@ -39,7 +39,7 @@ Output types: the **ptools** modules emit **data** (frame-ID × timepoint TSV); 
 - **Validation data** — Schmidt 2015 / Wisniewski 2014 copied from vEcoli into `v2ecoli/validation/ecoli/flat/`; minimal loader `v2ecoli/library/validation_data.py`; `resolve_validation_data()` wired into the runner.
 
 ### Verified correctness (highlights)
-- `ptools_rna` output matches the sms-api oracle format (`EG#####` frame IDs; EG10002 anchored at 1.0).
+- `ptools_rna` output matches the viva-api oracle format (`EG#####` frame IDs; EG10002 anchored at 1.0).
 - Reaction analyses align FBA fluxes **1:1** with `base_reaction_ids` and **assert** on mismatch (no silent truncation — caught a real ~2687-reaction mislabel in review).
 - Cross-seed sums verified exact against a real 2-seed sweep (e.g. active_ribosome 12801+12802=25603; array length stays 16321, no concatenation artifact).
 - `protein_counts_validation`: log10 Pearson r = **0.74** (Schmidt) / **0.61** (Wisniewski) vs proteomics — a real, sensible validation.
@@ -236,9 +236,9 @@ timepoint TSV the ptools analyses already emit (`<sweep>/ptools/*.tsv`); see
 `htdocs/time-series.txt` / `htdocs/sample.dat` in the container for the canonical
 omics-viewer example format.
 
-> **Note:** As of 2026-06, neither vEcoli (`ptools_viz` branch) nor sms-api
+> **Note:** As of 2026-06, neither vEcoli (`ptools_viz` branch) nor viva-api
 > contains code that actually feeds the TSVs to this server — both only *emit*
-> the TSVs. sms-api orchestrates SLURM jobs and delegates painting to vEcoli,
+> the TSVs. viva-api orchestrates SLURM jobs and delegates painting to vEcoli,
 > but the painting client was never written. The v2ecoli integration is net-new.
 
 ---

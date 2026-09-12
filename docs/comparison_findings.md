@@ -48,7 +48,7 @@ fluxes propagate through metabolism/elongation) — the concrete thing to invest
    condition-specific initial state via `save_sim_input(condition=…)` →
    `LoadSimData(condition=…)` (reads `condition_to_doubling_time`/saved media — no refit).
    It is NOT a `build_composite("ecoli_baseline")` parameter (that raises "unknown parameter").
-   The sms-api ParCa builds a basal cache, so non-basal v2ecoli runs must regenerate a
+   The viva-api ParCa builds a basal cache, so non-basal v2ecoli runs must regenerate a
    condition-specific bundle from the raw `simData.cPickle`.
 
 4. **Configs live in disjoint namespaces.** Where the two engines' configs share a key
@@ -64,7 +64,7 @@ Running it on real infra surfaced a chain of issues — each invisible until exe
 - **vEcoli-as-native-Ray-composite is dead** — its process API migration to `interface()`
   is ~1/3 done (36/103); `build_composite_native` yields an incomplete composite that
   `KeyError`s at the first tick. Use vEcoli's **native Nextflow** path instead.
-- **Nextflow submit bugs (sms-api 0.9.10/0.9.11):** a leaked basal `sim_data_path` default
+- **Nextflow submit bugs (viva-api 0.9.10/0.9.11):** a leaked basal `sim_data_path` default
   made `generate_code` hash a nonexistent file (set it `None` to signal run-parca; popping
   it lets the config.template default win); plus config-name-keyed stale K8s
   job/configmap collisions on re-submit.

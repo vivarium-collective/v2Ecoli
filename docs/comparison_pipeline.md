@@ -101,13 +101,13 @@ v2ecoli's full run. A real fix means basis refactorization/perturbation in the
 shared GLPK solver, which would shift the reference baseline for *every*
 condition — out of scope; the reference is kept pristine.
 
-## Cloud run (sms-api / Ray on GovCloud)
+## Cloud run (viva-api / Ray on GovCloud)
 
 The cloud orchestration (`scripts/comparison_harness.sh all --spec ...`:
 register → launch → wait → report) submits `composite=v2ecoli` and
 `composite=vecoli` Ray jobs that run the SAME `run_comparison_ensemble.py`.
 Because `vivarium-process` is now the default `vecoli_source`, the vEcoli jobs
-use it automatically. `--match-initial-state` is threaded through sms-api (router
+use it automatically. `--match-initial-state` is threaded through viva-api (router
 query param → config → `_sim_command`), staging the upstream ParCa as a 2nd
 input (`stage_inputs_2`) so the v2 job can build vEcoli's reference initial state;
 it requires the upstream cache to exist in S3 for the commit.
