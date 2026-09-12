@@ -139,7 +139,19 @@ def analysis_memory_class(analysis_options: dict, *,
     scale and the sweep size (``n_generations`` drives the per-lineage peak;
     ``n_seeds`` is accepted for interface completeness but the chunked readers
     make it a non-factor in the peak). The maximum class over every named
-    analysis wins, so one heavy module routes the whole job to the large box."""
+    analysis wins, so one heavy module routes the whole job to the large box.
+
+    Wiring note: this function (and ``scale_memory_class`` /
+    ``_declared_memory_class``) is the canonical sizing definition, kept in step
+    with sms-api's own copy in ``viva_api.simulation.simulation_service_ray``.
+    The LIVE Batch queue routing today is that sms-api copy, which picks the
+    queue before the model image runs. sms-api does not import v2ecoli at
+    runtime and has no ANALYSIS_REGISTRY, so it derives purely from scale x
+    generations and does NOT honor a ``memory_class = "large"`` declaration. So a
+    declared override affects only in-image reasoning here, not the queue
+    sms-api actually submits to -- until the declared class is threaded through
+    the submission (analysis_options / task_env), do not rely on a declaration
+    to route a job to the large instance."""
     rank = 0
     for scale, names in (analysis_options or {}).items():
         for name in (names or {}):
