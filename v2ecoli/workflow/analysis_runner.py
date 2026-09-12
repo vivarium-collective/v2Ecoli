@@ -70,6 +70,86 @@ def _default_analysis_workers() -> int:
 DEFAULT_ANALYSIS_MAX_WORKERS = _default_analysis_workers()
 
 
+# --- Memory-class routing (#788) ---------------------------------------------
+#
+# An analysis job runs on one of two instance classes. "standard" is the
+# m5.4xlarge (60 GB) the analysis containers default to -- the box that OOMed on
+# CD2 (v2ecoli#786). "large" is the 200 GB r7i route. The class is picked at
+# SUBMISSION time (before the container runs), from the analyses named and the
+# sweep's scale, so a heavy gather goes to the big box by declaration instead of
+# OOM-then-hand-rerun.
+#
+# Sizing, from the CD2 measurements in #786: a multigeneration group peaked at
+# ~78 GB over 10 generations with one worker, and the worst founder at 112.8 GB
+# -- both past 60 GB. The readers are per-lineage chunked (the multiseed reader
+# streams one seed at a time; see ptools_multiscale._MultiseedMixin and
+# _MultiseedCollapseMixin), so the peak scales with a lineage's GENERATION count,
+# not the seed count. ~78 GB / 10 generations rounds to ~8 GB per generation.
+
+MEMORY_CLASSES = ("standard", "large")
+_STANDARD_INSTANCE_GB = 60
+_GB_PER_GENERATION = 8.0
+# Scales that span more than one cell, so their peak grows with generations;
+# "single"/"multidaughter" read one cell and stay standard.
+_MULTI_CELL_SCALES = frozenset({"multigeneration", "multiseed"})
+
+
+def _memory_class_rank(memory_class: str) -> int:
+    try:
+        return MEMORY_CLASSES.index(memory_class)
+    except ValueError:
+        return 0
+
+
+def _declared_memory_class(name: str) -> str | None:
+    """A concrete analysis may set ``memory_class = "large"`` on its class when it
+    is heavy regardless of scale. Best-effort: returns None when the analysis is
+    not registered in this process or declares nothing recognisable, so a caller
+    that has not imported the analysis suite (e.g. the API) still gets the
+    scale-derived class."""
+    try:
+        from v2ecoli.workflow.analysis import ANALYSIS_REGISTRY
+    except Exception:
+        return None
+    cls = ANALYSIS_REGISTRY.get(name)
+    declared = getattr(cls, "memory_class", None) if cls is not None else None
+    return declared if declared in MEMORY_CLASSES else None
+
+
+def scale_memory_class(scale: str | None, *, n_generations: int | None) -> str:
+    """The memory class a single ``scale`` needs at ``n_generations``, from the
+    per-generation sizing above. Multi-cell scales route to "large" once a
+    lineage's projected peak exceeds the standard instance; everything else stays
+    "standard"."""
+    if scale not in _MULTI_CELL_SCALES or not n_generations:
+        return "standard"
+    projected_gb = _GB_PER_GENERATION * int(n_generations)
+    return "large" if projected_gb > _STANDARD_INSTANCE_GB else "standard"
+
+
+def analysis_memory_class(analysis_options: dict, *,
+                          n_seeds: int | None = None,
+                          n_generations: int | None = None) -> str:
+    """The instance memory class an analysis submission should request:
+    ``"standard"`` or ``"large"``.
+
+    ``analysis_options`` is the ``{scale: {name: params}}`` mapping
+    :func:`run_analyses` takes. An analysis that declares ``memory_class =
+    "large"`` forces the large instance; otherwise the class is derived from the
+    scale and the sweep size (``n_generations`` drives the per-lineage peak;
+    ``n_seeds`` is accepted for interface completeness but the chunked readers
+    make it a non-factor in the peak). The maximum class over every named
+    analysis wins, so one heavy module routes the whole job to the large box."""
+    rank = 0
+    for scale, names in (analysis_options or {}).items():
+        for name in (names or {}):
+            memory_class = _declared_memory_class(name) or scale_memory_class(
+                scale, n_generations=n_generations
+            )
+            rank = max(rank, _memory_class_rank(memory_class))
+    return MEMORY_CLASSES[rank]
+
+
 def localize(uri: str, cache_dir: str | None = None) -> str:
     """Fetch an ``s3://`` object to a local file and return its path (cached).
 
