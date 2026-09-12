@@ -197,3 +197,69 @@ def test_one_invoke_drives_every_generation_through_composite_run(core, monkeypa
     # and each tick advanced a GENERATION, not a second: with interval=1.0 this
     # would have been 3 * 600 = 1800 calls
     assert set(_CountingLineage.intervals) == {600.0}
+
+
+# ---------------------------------------------------------------------------
+# Observability (docs/plan-observability.md, runner layer): the task boundary
+# ---------------------------------------------------------------------------
+
+
+class _Raising(LineageStep):
+    def _run_lineage(self, config, interval):  # type: ignore[override]
+        exc = ValueError("boom in generation 1")
+        exc.pbg_context = {"path": "agents/0/poison", "global_time": 100.0,
+                           "state_summary": {"bulk": {"shape": [3]}}}
+        raise exc
+
+
+def test_failure_writes_failure_json_emits_failure_record_and_reraises(core, tmp_path, monkeypatch, capsys):
+    import json
+
+    pbg_events = pytest.importorskip("process_bigraph.events")
+    for key in ("PBG_EVENT_SINKS", "PBG_TRACEPARENT", "PBG_TRACE_BAGGAGE"):
+        monkeypatch.delenv(key, raising=False)
+    pbg_events.set_emitter(None)  # let LineageStep configure (stdout default)
+    out_dir = tmp_path / "sweep"
+    step = _Raising(config={"cache_dir": "c", "out_dir": str(out_dir), "generations": 2,
+                            "variant_index": 1, "lineage_seed": 4, "experiment_id": "exp-x"}, core=core)
+    with pytest.raises(ValueError, match="boom in generation 1"):
+        step.update({"cache_dir": "c"})
+    pbg_events.set_emitter(None)
+
+    record = json.loads((out_dir / "failure.json").read_text())
+    assert record["exc_type"] == "ValueError"
+    assert record["pbg_context"]["path"] == "agents/0/poison"
+    assert record["pbg_context"]["global_time"] == 100.0
+    assert "boom in generation 1" in record["traceback_tail"]
+    assert record["variant"] == 1 and record["lineage_seed"] == 4
+
+    events = [json.loads(ln) for ln in capsys.readouterr().out.splitlines() if ln.startswith("{")]
+    kinds = [e["event"] for e in events]
+    assert "lineage.failure" in kinds
+    fr = [e for e in events if e["event"] == "lineage.failure"][0]
+    assert fr["level"] == "error" and (fr.get("component") or fr.get("layer")) == "v2ecoli.lineage"
+    assert fr["payload"]["failure_json"] == str(out_dir / "failure.json")
+    # the lineage span was closed with status=error
+    ends = [e for e in events if e["event"] in ("span_end", "span.end") and e["payload"]["name"] == "lineage"]
+    assert ends and ends[-1]["payload"]["status"] == "error"
+    # and the per-task file sink got the same stream
+    lines = (out_dir / "events.jsonl").read_text().splitlines()
+    assert any(json.loads(ln)["event"] == "lineage.failure" for ln in lines)
+
+
+def test_success_closes_the_lineage_span_ok(core, tmp_path, monkeypatch, capsys):
+    import json
+
+    pbg_events = pytest.importorskip("process_bigraph.events")
+    monkeypatch.delenv("PBG_EVENT_SINKS", raising=False)
+    pbg_events.set_emitter(None)
+    out_dir = tmp_path / "sweep"
+    out_dir.mkdir()
+    (out_dir / "h.pq").write_bytes(b"x" * 10)
+    step = _step(core, cache_dir="c", out_dir=str(out_dir), generations=1)
+    step.update({"cache_dir": "c"})
+    pbg_events.set_emitter(None)
+    events = [json.loads(ln) for ln in capsys.readouterr().out.splitlines() if ln.startswith("{")]
+    ends = [e for e in events if e["event"] in ("span_end", "span.end") and e["payload"]["name"] == "lineage"]
+    assert ends and ends[-1]["payload"]["status"] == "ok"
+    assert not (out_dir / "failure.json").exists()

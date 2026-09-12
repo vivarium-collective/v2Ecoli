@@ -334,6 +334,54 @@ NON_CARRIED_ROOT_KEYS = frozenset({
     'request', 'allocate',
 })
 
+#: Agent-root stores the carry policy copies into the daughter ON PURPOSE (no
+#: divider registered, so mother and daughter both get an independent deepcopy).
+#: This is the explicit ALLOW-list that makes the policy auditable: every root
+#: store a step/process declares must be in CORE_DIVISIBLE_KEYS, here, in
+#: NON_CARRIED_ROOT_KEYS, or have a registered divider --
+#: ``tests/test_root_store_classification.py`` enforces it, and the lineage
+#: runner's ``division`` event reports any root that reaches a division without
+#: a classification (the class of bug #765 was: ``request``/``allocate`` were
+#: neither listed nor excluded, and were silently copied).
+#: One line of reason each:
+CARRIED_BY_COPY = frozenset({
+    # injected environment / dose fields (sms-ecoli field_timeline, well-mixed
+    # fields): the daughter lives in the mother's medium; the runner's fire-once
+    # timeline re-fires from the cumulative offset, so a copy is the intent
+    'fields',
+    # injected FBA bound overrides -- pure config-shaped state, valid for both
+    'imposed_flux_bounds',
+    # cell_geometry feature: per-compartment volumes, re-derived every tick from
+    # the daughter's own mass; copying only seeds the first tick sensibly
+    'periplasm', 'cytoplasm',
+    # ecoli_millard / fba_flux_coupler: per-tick derived flux vectors, re-written
+    # each tick by their owning step; a stale copy is harmless for one tick
+    'central_fluxes', 'pinned_flux_targets', 'bridge_diagnostics',
+    # cell_shape.py: the flat shape dict (mass, density, width, volume ...),
+    # ``map[overwrite[float]]`` re-derived every step from the daughter's mass
+    'shape',
+})
+
+#: Downstream-registered copied roots (an injected composite's own stores --
+#: sms-ecoli's ``fields``, ``kinetic_parameters``, ``<drug>_env`` ... -- are
+#: unknown to this module). Same shape as the divider registry: the module that
+#: declares the store registers its classification, and the lineage runner's
+#: ``lineage.division`` report stops flagging it as unclassified.
+CARRIED_BY_COPY_REGISTERED: set = set()
+
+
+def register_carried_by_copy(*store_names: str) -> None:
+    """Declare agent-root store(s) the carry policy copies ON PURPOSE."""
+    for name in store_names:
+        if not isinstance(name, str) or not name:
+            raise TypeError(f'store name must be a non-empty str, got {name!r}')
+        CARRIED_BY_COPY_REGISTERED.add(name)
+
+
+def carried_by_copy_keys() -> frozenset:
+    """Built-in allow-list plus everything registered downstream."""
+    return frozenset(CARRIED_BY_COPY) | frozenset(CARRIED_BY_COPY_REGISTERED)
+
 _EDGE_TYPES = frozenset({'process', 'step', 'composite', 'edge'})
 
 

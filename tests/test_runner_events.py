@@ -1,0 +1,651 @@
+"""Runner-layer observability (docs/plan-observability.md, D3).
+
+Every test here reads the JSON-lines event stream the runner emits and asserts
+on the *events* -- the contract a consumer (viva-api's ingester, `atlantis
+simulation events`) will read -- not on log text. Events go to a stdout sink and
+are parsed from ``capsys``.
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+
+pytestmark = pytest.mark.fast
+
+pbg_events = pytest.importorskip(
+    "process_bigraph.events", reason="process-bigraph >= 1.9 (feat/events) required"
+)
+
+from v2ecoli.workflow import events as revents  # noqa: E402
+from v2ecoli.workflow.lineage import LineageProcess, _derive_generation_seed  # noqa: E402
+
+
+def _ident(e, key):
+    """Domain identity lives in the engine's opaque ``baggage`` map (the engine
+    schema has no v2ecoli fields); older engine builds carried the same keys at
+    the top level. Read either."""
+    bag = e.get("baggage")
+    if isinstance(bag, dict) and key in bag:
+        return str(bag[key])            # strings on the wire, by design
+    v = e.get(key)
+    return None if v is None else str(v)
+
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def stdout_events(monkeypatch, capsys):
+    """Configure a stdout-only emitter for the test and return a reader that
+    parses every JSON line printed so far."""
+    for key in ("PBG_EVENT_SINKS", "PBG_TRACEPARENT", "PBG_TRACE_BAGGAGE", "PBG_EVENT_TAGS"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("PBG_EVENT_HEARTBEAT_S", "0")
+    pbg_events.configure("stdout")
+
+    def read():
+        out = capsys.readouterr().out
+        events = []
+        for line in out.splitlines():
+            line = line.strip()
+            if line.startswith("{"):
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+        return events
+
+    yield read
+    pbg_events.set_emitter(None)
+
+
+def _make(monkeypatch, generations, divide_after=2, **cfg):
+    lp = LineageProcess.__new__(LineageProcess)
+    lp.config = {
+        "cache_dir": "x", "seed": 3, "lineage_seed": 7, "variant_index": 2,
+        "variant_name": "baseline", "config_overrides": {}, "generations": generations,
+        "single_daughters": True, "experiment_id": "exp-t", "out_dir": "out/t",
+        "max_duration_per_gen": 100.0, "initial_carry_state_path": "",
+        "initial_generation_index": 0, "daughter_state_out_path": "",
+        "checkpoint_dir": "", "require_output": False,
+    }
+    lp.config.update(cfg)
+    lp.initialize(lp.config)
+
+    def fake_build():
+        # what the real _build_generation does at its seam boundaries
+        revents.bind_generation(lp)
+        lp._gen_span = revents.generation_span(lp)
+        lp._gen_elapsed = 0.0
+        gen_seed = _derive_generation_seed(lp.config["seed"], lp.config["lineage_seed"], lp._generation)
+        revents.emit("lineage.generation.start", generation=lp._generation, gen_seed=gen_seed,
+                     lineage_offset=float(lp._lineage_offset))
+
+    def fake_run(interval):
+        lp._gen_elapsed += interval
+        divided = lp._gen_elapsed >= divide_after
+        daughter = {"bulk": {}, "unique": {}} if divided else None
+        return divided, daughter, 100.0 + lp._generation
+
+    monkeypatch.setattr(lp, "_build_generation", fake_build)
+    monkeypatch.setattr(lp, "_run_until_division", fake_run)
+    return lp
+
+
+# ---------------------------------------------------------------------------
+# generation_start / generation_end
+# ---------------------------------------------------------------------------
+
+
+def test_one_generation_start_and_end_per_generation(monkeypatch, stdout_events):
+    lp = _make(monkeypatch, generations=3, divide_after=2)
+    for _ in range(20):
+        out = lp.update({}, 1.0)
+        if out.get("complete"):
+            break
+    events = stdout_events()
+    starts = [e for e in events if e["event"] == "lineage.generation.start"]
+    ends = [e for e in events if e["event"] == "lineage.generation.end"]
+    assert [e["payload"]["generation"] for e in starts] == [0, 1, 2]
+    assert [e["payload"]["generation"] for e in ends] == [0, 1, 2]
+    # identity bound by the runner, not by any dispatcher env
+    assert all((e.get("component") or e.get("layer")) == "v2ecoli.lineage" for e in starts + ends)
+    assert all(_ident(e, "variant") == "2" and _ident(e, "lineage_seed") == "7" for e in starts + ends)
+    assert all(_ident(e, "experiment_id") == "exp-t" for e in starts + ends)
+    # the seed is the real one (#766's combiner), not the base seed
+    for e in starts:
+        g = e["payload"]["generation"]
+        assert e["payload"]["gen_seed"] == _derive_generation_seed(3, 7, g)
+    # duration is the booked elapsed time (the #767/#771 number), never 0
+    assert [e["payload"]["duration"] for e in ends] == [2.0, 2.0, 2.0]
+    assert [round(e["payload"]["lineage_offset_after"]) for e in ends] == [2, 4, 6]
+    # the generation spans opened and closed, nested under a common trace
+    span_ends = [e for e in events if e["event"] in ("span_end", "span.end") and e["payload"]["name"] == "generation"]
+    assert len(span_ends) == 3
+    assert len({e["trace_id"] for e in events}) == 1
+
+
+def test_events_off_keeps_the_legacy_log_lines(monkeypatch, capsys):
+    pbg_events.set_emitter(None)
+    monkeypatch.delenv("PBG_EVENT_SINKS", raising=False)
+    lp = _make(monkeypatch, generations=1, divide_after=1)
+    lp.update({}, 1.0)
+    out = capsys.readouterr().out
+    assert "[LineageProcess] gen 0: end" in out
+    assert "emitters flushed" in out
+    assert not [ln for ln in out.splitlines() if ln.startswith("{")]
+
+
+# ---------------------------------------------------------------------------
+# the division event and its carry report
+# ---------------------------------------------------------------------------
+
+
+def test_carry_report_classifies_every_root():
+    from v2ecoli.library.division import NON_CARRIED_ROOT_KEYS
+
+    mother = {
+        "bulk": "M", "unique": {}, "environment": {}, "boundary": {},
+        "request": {"p": {"bulk": [[1, 2]]}},          # non-carried (the #765 class)
+        "listeners": {"mass": {}},                     # never wholesale
+        "lineage.division": {"address": "local:Division"},     # an edge
+        "fields": {"drug": 1.0},                       # carried by copy
+        "mystery_root": {"x": 1},                      # nobody classified this
+    }
+    carry = {"bulk": "D0", "unique": {}, "environment": {}, "boundary": {}, "fields": {"drug": 1.0}}
+    report = revents.carry_report(mother, carry)
+    assert "request" in NON_CARRIED_ROOT_KEYS
+    assert report["carried"] == ["boundary", "bulk", "environment", "fields", "unique"]
+    assert report["dropped"]["non_carried"] == ["listeners", "request"]
+    assert report["dropped"]["edges"] == ["lineage.division"]
+    assert report["dropped"]["unclassified"] == ["mystery_root"]
+    assert report["carried_unclassified"] == []
+
+
+def test_division_event_reports_signal_and_report(monkeypatch, stdout_events):
+    """Drive the REAL _run_until_division with a fake inner composite whose
+    agents map changes (structural division)."""
+    lp = LineageProcess.__new__(LineageProcess)
+    lp.config = {
+        "cache_dir": "x", "seed": 0, "lineage_seed": 1, "variant_index": 0,
+        "variant_name": "b", "config_overrides": {}, "generations": 2,
+        "single_daughters": True, "experiment_id": "t", "out_dir": "out/t",
+        "max_duration_per_gen": 100.0, "initial_carry_state_path": "",
+        "initial_generation_index": 0, "daughter_state_out_path": "",
+        "checkpoint_dir": "", "require_output": False, "emitter": "parquet",
+    }
+    lp.initialize(lp.config)
+
+    mother = {
+        "bulk": "M", "unique": {}, "environment": {}, "boundary": {},
+        "request": {"p": {"bulk": []}}, "fields": {"drug": 2.0},
+        "listeners": {"mass": {"dry_mass": 500.0}},
+        "lineage.division": {"address": "local:Division"},
+    }
+
+    class _FakeComposite:
+        def __init__(self):
+            self.state = {"global_time": 0.0, "agents": {"0": mother}}
+
+        def run(self, interval):
+            # NB: no ``global_time`` stamp on the daughters -- the real Division
+            # step rebuilds them from baseline() with 0.0, which #767 mistook for
+            # a division time (#771 ignores a non-advancing stamp). Leaving it
+            # out makes this test valid on both sides of #771.
+            d = {"bulk": "D0", "unique": {}, "environment": {}, "boundary": {},
+                 "request": {}, "fields": {"drug": 0.0},
+                 "listeners": {"mass": {"dry_mass": 250.0}}}
+            self.state = {"global_time": 42.0, "agents": {"00": d, "01": dict(d)}}
+
+    lp._composite = _FakeComposite()
+    lp._gen_elapsed = 0.0
+    divided, daughter, _ = lp._run_until_division(100.0)
+    assert divided and daughter is not None
+    assert "request" not in daughter and daughter["fields"] == {"drug": 2.0}
+
+    events = stdout_events()
+    div = [e for e in events if e["event"] == "lineage.division"]
+    assert len(div) == 1
+    p = div[0]["payload"]
+    assert p["signal"] == "structural"
+    assert p["t_division"] == 42.0            # the inner clock (#771), not the window
+    assert p["carried"] == ["boundary", "bulk", "environment", "fields", "unique"]
+    assert p["dropped"]["non_carried"] == ["listeners", "request"]
+    assert p["dropped"]["edges"] == ["lineage.division"]
+    assert p["dropped"]["unclassified"] == []
+    assert div[0]["level"] == "info"
+    assert lp._last_carry_report["carried"] == p["carried"]
+
+
+def test_division_with_an_unclassified_root_is_a_warning(monkeypatch, stdout_events):
+    lp = LineageProcess.__new__(LineageProcess)
+    lp.config = {
+        "cache_dir": "x", "seed": 0, "lineage_seed": 0, "variant_index": 0,
+        "variant_name": "b", "config_overrides": {}, "generations": 2,
+        "single_daughters": True, "experiment_id": "t", "out_dir": "out/t",
+        "max_duration_per_gen": 100.0, "initial_carry_state_path": "",
+        "initial_generation_index": 0, "daughter_state_out_path": "",
+        "checkpoint_dir": "", "require_output": False,
+    }
+    lp.initialize(lp.config)
+    mother = {"bulk": "M", "unique": {}, "environment": {}, "boundary": {},
+              "not_a_known_root": {"x": 1}, "listeners": {"mass": {"dry_mass": 1.0}}}
+
+    class _C:
+        state = {"global_time": 0.0, "agents": {"0": mother}}
+
+        def run(self, interval):
+            self.state = {"global_time": 5.0, "agents": {"00": {"bulk": "D", "unique": {},
+                          "environment": {}, "boundary": {}, "listeners": {"mass": {"dry_mass": 1.0}}}}}
+
+    lp._composite = _C()
+    lp._gen_elapsed = 0.0
+    lp._run_until_division(100.0)
+    div = [e for e in stdout_events() if e["event"] == "lineage.division"][0]
+    # the policy COPIED it (extras are copied by default) but nothing classified it
+    assert div["level"] == "warning"
+    assert div["payload"]["carried_unclassified"] == ["not_a_known_root"]
+
+
+# ---------------------------------------------------------------------------
+# chunk_flushed from outside the third-party emitter
+# ---------------------------------------------------------------------------
+
+
+def test_observed_emitter_emits_chunk_flushed_on_batch_boundaries(stdout_events):
+    class _Stub:
+        batch_size = 4
+        num_emits = 0
+        out_uri = "x"
+
+        def update(self, state):
+            self.num_emits += 1
+            return {}
+
+    inner = _Stub()
+    wrapped = revents._ObservedEmitter(inner, batch_size=4)
+    for _ in range(9):
+        inner.update({})          # the composite calls the INNER instance's update
+    assert wrapped.num_emits == 9  # delegation
+    chunks = [e for e in stdout_events() if e["event"] == "lineage.chunk.flushed"]
+    assert [c["payload"]["chunk"] for c in chunks] == [1, 2]
+    assert [c["payload"]["num_emits"] for c in chunks] == [4, 8]
+
+
+# ---------------------------------------------------------------------------
+# the S3 sink plugin, on a local fsspec target
+# ---------------------------------------------------------------------------
+
+
+def test_s3_jsonl_sink_rewrites_one_object_per_writer(tmp_path):
+    from v2ecoli.workflow.event_sinks import S3JsonlSink
+
+    sink = S3JsonlSink(f"file://{tmp_path}/events", flush_s=0, source="host-1")
+    sink.emit({"event": "a", "trace_id": "abc123"})
+    sink.emit({"event": "b", "trace_id": "abc123"})
+    assert sink.key == f"file://{tmp_path}/events/abc123/host-1.jsonl"
+    sink.flush()
+    path = tmp_path / "events" / "abc123" / "host-1.jsonl"
+    assert [json.loads(line)["event"] for line in path.read_text().splitlines()] == ["a", "b"]
+    sink.emit({"event": "c", "trace_id": "abc123"})
+    sink.close()
+    assert [json.loads(line)["event"] for line in path.read_text().splitlines()] == ["a", "b", "c"]
+    assert sink.flush_count == 2 and sink.last_error is None
+
+
+def test_two_writers_in_one_batch_task_do_not_share_an_object_key(monkeypatch, tmp_path):
+    """The Ray/multi-node case: one Batch job id, many Python processes.
+
+    A multi-node child node gets ``AWS_BATCH_JOB_ID = <mainJobId>#<nodeIndex>``
+    -- per NODE, not per process -- and every Ray worker on that node runs its
+    own cell composites through the engine's tick path, so every one of them
+    emits. The sink rewrites a whole object per writer, so a shared key means
+    each flush replaces the object with only that writer's buffer and the rest
+    of the node's events are lost. The pid is what keeps them apart.
+    """
+    from v2ecoli.workflow import event_sinks
+
+    monkeypatch.delenv("PBG_EVENT_SOURCE", raising=False)
+    monkeypatch.setenv("AWS_BATCH_JOB_ID", "job-abc#3")
+
+    monkeypatch.setattr(event_sinks.os, "getpid", lambda: 111)
+    driver = event_sinks._default_source()
+    monkeypatch.setattr(event_sinks.os, "getpid", lambda: 222)
+    worker = event_sinks._default_source()
+
+    assert driver != worker
+    assert driver.startswith("job-abc#3-") and worker.startswith("job-abc#3-")
+
+    a = event_sinks.S3JsonlSink(f"file://{tmp_path}/events", flush_s=0, source=driver)
+    b = event_sinks.S3JsonlSink(f"file://{tmp_path}/events", flush_s=0, source=worker)
+    a.emit({"event": "from-driver", "trace_id": "t1"})
+    b.emit({"event": "from-worker", "trace_id": "t1"})
+    a.close()
+    b.close()
+
+    written = sorted((tmp_path / "events" / "t1").iterdir())
+    assert len(written) == 2, "one object per writer, not one per task"
+    seen = set()
+    for f in written:
+        seen.update(json.loads(line)["event"] for line in f.read_text().splitlines())
+    assert seen == {"from-driver", "from-worker"}
+
+
+def test_an_explicit_source_override_is_used_verbatim(monkeypatch):
+    """Whoever sets PBG_EVENT_SOURCE owns uniqueness; we must not decorate it."""
+    from v2ecoli.workflow import event_sinks
+
+    monkeypatch.setenv("AWS_BATCH_JOB_ID", "job-abc")
+    monkeypatch.setenv("PBG_EVENT_SOURCE", "my-writer")
+    assert event_sinks._default_source() == "my-writer"
+
+
+def test_source_is_still_unique_with_no_batch_job_id(monkeypatch):
+    """A laptop run: no Batch id, still one key per process."""
+    from v2ecoli.workflow import event_sinks
+
+    monkeypatch.delenv("PBG_EVENT_SOURCE", raising=False)
+    monkeypatch.delenv("AWS_BATCH_JOB_ID", raising=False)
+    monkeypatch.setattr(event_sinks.socket, "gethostname", lambda: "laptop")
+    monkeypatch.setattr(event_sinks.os, "getpid", lambda: 7)
+    assert event_sinks._default_source() == "laptop-7"
+
+
+def test_the_sink_buffer_is_capped_and_says_what_it_dropped(monkeypatch, tmp_path):
+    """A whole-object rewrite cannot carry an unbounded buffer.
+
+    Keep the head (setup and early decisions) and a rolling tail (where a
+    failure lands), and make the gap explicit rather than silent.
+    """
+    monkeypatch.setenv("PBG_EVENT_MAX_HEAD_LINES", "2")
+    monkeypatch.setenv("PBG_EVENT_MAX_TAIL_LINES", "3")
+    from v2ecoli.workflow.event_sinks import S3JsonlSink
+
+    sink = S3JsonlSink(f"file://{tmp_path}/events", flush_s=0, source="w1")
+    for i in range(10):
+        sink.emit({"event": f"e{i}", "trace_id": "t9"})
+    sink.close()
+
+    lines = [json.loads(x) for x in
+             (tmp_path / "events" / "t9" / "w1.jsonl").read_text().splitlines()]
+    assert [x["event"] for x in lines[:2]] == ["e0", "e1"], "head kept"
+    assert [x["event"] for x in lines[-3:]] == ["e7", "e8", "e9"], "tail kept"
+
+    marker = lines[2]
+    assert marker["event"] == "sink.truncated" and marker["level"] == "warning"
+    assert marker["payload"]["dropped"] == 5
+    assert len(lines) == 2 + 1 + 3
+    assert sink.dropped == 5
+
+
+def test_an_uncapped_run_writes_every_line_and_no_marker(tmp_path):
+    """Below the cap nothing changes: no marker, no drops."""
+    from v2ecoli.workflow.event_sinks import S3JsonlSink
+
+    sink = S3JsonlSink(f"file://{tmp_path}/events", flush_s=0, source="w2")
+    for i in range(5):
+        sink.emit({"event": f"e{i}", "trace_id": "t8"})
+    sink.close()
+
+    lines = [json.loads(x) for x in
+             (tmp_path / "events" / "t8" / "w2.jsonl").read_text().splitlines()]
+    assert [x["event"] for x in lines] == [f"e{i}" for i in range(5)]
+    assert sink.dropped == 0
+
+
+def test_s3_sink_resolves_from_the_engine_registry(tmp_path):
+    import v2ecoli.workflow.events  # noqa: F401 -- registers the factory
+
+    sink = pbg_events.resolve_sink(f"file://{tmp_path}/x")  # engine's own file: handles file:
+    assert sink is not None
+    s3 = pbg_events.resolve_sink("s3://bucket/prefix/")
+    from v2ecoli.workflow.event_sinks import S3JsonlSink
+
+    assert isinstance(s3, S3JsonlSink)
+    assert s3.uri == "s3://bucket/prefix"
+
+
+def test_s3_sink_write_failure_never_raises(tmp_path):
+    from v2ecoli.workflow.event_sinks import S3JsonlSink
+
+    sink = S3JsonlSink("bogus-scheme://nowhere/x", flush_s=0)
+    sink.emit({"event": "a", "trace_id": "t"})
+    sink.flush()          # unknown protocol -> recorded, not raised
+    assert sink.last_error is not None
+    assert sink.flush_count == 0
+
+
+# ---------------------------------------------------------------------------
+# time_step reaches the inner baseline
+# ---------------------------------------------------------------------------
+
+
+def test_time_step_is_forwarded_to_the_inner_baseline(monkeypatch):
+    import v2ecoli.composites.ecoli_baseline as eb
+
+    captured = {}
+
+    def fake_baseline(core=None, seed=None, **kwargs):
+        captured.update(kwargs)
+        return {"state": {"agents": {"0": {"listeners": {"mass": {}}}}}}
+
+    class _FakeComposite:
+        def __init__(self, doc, core=None):
+            self.state = doc["state"]
+
+    monkeypatch.setattr(eb, "baseline", fake_baseline)
+    monkeypatch.setattr(eb, "seed_mass_listener", lambda agent, core: None)
+    import process_bigraph
+
+    monkeypatch.setattr(process_bigraph, "Composite", _FakeComposite)
+    from v2ecoli.composites import _helpers
+
+    monkeypatch.setattr(_helpers, "set_null_emitter_override", lambda v: None)
+
+    lp = LineageProcess.__new__(LineageProcess)
+    lp.config = {
+        "cache_dir": "x", "seed": 0, "lineage_seed": 0, "variant_index": 0,
+        "variant_name": "b", "config_overrides": {}, "generations": 1,
+        "single_daughters": True, "experiment_id": "t", "out_dir": "out/t",
+        "max_duration_per_gen": 100.0, "initial_carry_state_path": "",
+        "initial_generation_index": 0, "daughter_state_out_path": "",
+        "checkpoint_dir": "", "require_output": False, "emitter": "xarray",
+        "time_step": 2.5,
+    }
+    lp.initialize(lp.config)
+    monkeypatch.setattr("v2ecoli.core.build_core", lambda: object())
+    lp._build_generation()
+    assert captured["time_step"] == 2.5
+
+
+# ---------------------------------------------------------------------------
+# no engine: everything degrades to a no-op
+# ---------------------------------------------------------------------------
+
+
+def test_runner_helpers_are_noops_without_the_engine(monkeypatch):
+    monkeypatch.setattr(revents, "_pbg_events", None)
+    em = revents.get_emitter()
+    assert em.enabled is False
+    em.bind(generation=1)
+    span = em.start_span("x")
+    span.end()
+    revents.emit("anything", a=1)
+    assert revents.events_enabled() is False
+    assert revents.configure_for_task("/tmp/does-not-matter").enabled is False
+
+
+def test_report_never_names_agent_ids_on_a_real_shaped_agents_map(monkeypatch, stdout_events):
+    """The report is computed on the CELL (mother node / carry dict), never on
+    the agents map: with agents {"0"} -> {"00", "01"} no agent id may appear
+    anywhere in it (sim 956 review question)."""
+    lp = LineageProcess.__new__(LineageProcess)
+    lp.config = {
+        "cache_dir": "x", "seed": 0, "lineage_seed": 0, "variant_index": 0,
+        "variant_name": "b", "config_overrides": {}, "generations": 2,
+        "single_daughters": True, "experiment_id": "t", "out_dir": "out/t",
+        "max_duration_per_gen": 100.0, "initial_carry_state_path": "",
+        "initial_generation_index": 0, "daughter_state_out_path": "",
+        "checkpoint_dir": "", "require_output": False,
+    }
+    lp.initialize(lp.config)
+    cell = {"bulk": "M", "unique": {}, "environment": {}, "boundary": {}, "fields": {"d": 1.0},
+            "listeners": {"mass": {"dry_mass": 1.0}}, "division": {"address": "local:Division"}}
+
+    class _C:
+        state = {"global_time": 0.0, "agents": {"0": cell}}
+
+        def run(self, interval):
+            d = {"bulk": "D", "unique": {}, "environment": {}, "boundary": {},
+                 "listeners": {"mass": {"dry_mass": 0.5}}}
+            self.state = {"global_time": 7.0, "agents": {"00": d, "01": dict(d)}}
+
+    lp._composite = _C()
+    lp._gen_elapsed = 0.0
+    lp._run_until_division(100.0)
+    div = [e for e in stdout_events() if e["event"] == "lineage.division"][0]["payload"]
+    named = set(div["carried"]) | set(div["carried_unclassified"]) | set(div["daughter_keys"])
+    for bucket in div["dropped"].values():
+        named |= set(bucket)
+    assert not named & {"0", "00", "01"}, named
+    assert div["carried"] == ["boundary", "bulk", "environment", "fields", "unique"]
+
+
+def test_a_root_store_literally_named_0_is_reported_with_a_summary():
+    """sim 956 (2026-09-10): an injected composite carried an agent-root store
+    named "0". That is a finding about the composite, not a bug in the report --
+    the report says so and describes what the store is."""
+    mother = {"bulk": "M", "unique": {}, "environment": {}, "boundary": {},
+              "0": {"volume": 1.0, "counts": {}}, "listeners": {}}
+    carry = {"bulk": "D", "unique": {}, "environment": {}, "boundary": {}, "0": {"volume": 1.0, "counts": {}}}
+    report = revents.carry_report(mother, carry)
+    assert report["carried_unclassified"] == ["0"]
+    assert report["unclassified_summary"]["0"] == {"type": "dict", "n_keys": 2, "keys": ["volume", "counts"], "is_edge": False}
+
+
+def test_downstream_can_register_its_copied_roots(monkeypatch):
+    from v2ecoli.library import division as div
+
+    monkeypatch.setattr(div, "CARRIED_BY_COPY_REGISTERED", set())
+    mother = {"bulk": "M", "unique": {}, "environment": {}, "boundary": {}, "kinetic_parameters": {"k": 1}}
+    carry = dict(mother)
+    assert revents.carry_report(mother, carry)["carried_unclassified"] == ["kinetic_parameters"]
+    div.register_carried_by_copy("kinetic_parameters")
+    assert revents.carry_report(mother, carry)["carried_unclassified"] == []
+    with pytest.raises(TypeError):
+        div.register_carried_by_copy("")
+
+
+def _make_with_emits(monkeypatch, emits, elapsed, time_step=1.0):
+    lp = _make(monkeypatch, generations=1, divide_after=1, time_step=time_step)
+
+    class _Em:
+        num_emits = emits
+        batch_size = 400
+
+    lp._parquet_em = _Em()
+
+    def fake_run(interval):
+        lp._gen_elapsed = elapsed
+        return True, {"bulk": {}, "unique": {}}, 100.0
+
+    monkeypatch.setattr(lp, "_run_until_division", fake_run)
+    monkeypatch.setattr(lp, "_assert_generation_emitted", lambda: None)
+    monkeypatch.setattr(lp, "_finalize_parquet", lambda: None)
+    return lp
+
+
+def test_generation_end_warns_when_duration_disagrees_with_emits(monkeypatch, stdout_events):
+    """sim 956, gen 0: booked 1,072 s against 2,529 one-second emits. The stream
+    must carry the invariant itself, every generation, until v2ecoli#773."""
+    lp = _make_with_emits(monkeypatch, emits=2529, elapsed=1072.0)
+    with pytest.warns(UserWarning, match="duration 1072.0s"):
+        lp.update({}, 1.0)
+    events = stdout_events()
+    w = [e for e in events if e["event"] == "lineage.warning" and e["payload"].get("check") == "duration_vs_emits"]
+    assert len(w) == 1 and w[0]["level"] == "warning"
+    assert w[0]["payload"]["duration"] == 1072.0 and w[0]["payload"]["emits"] == 2529
+    assert w[0]["payload"]["time_step"] == 1.0
+    end = [e for e in events if e["event"] == "lineage.generation.end"][0]["payload"]
+    assert end["duration"] == 1072.0 and end["emits"] == 2529  # reported, not corrected
+
+
+def test_generation_end_is_silent_when_duration_matches_emits(monkeypatch, stdout_events):
+    lp = _make_with_emits(monkeypatch, emits=2529, elapsed=2528.0)
+    lp.update({}, 1.0)
+    events = stdout_events()
+    assert not [e for e in events if e["event"] == "lineage.warning" and e["payload"].get("check") == "duration_vs_emits"]
+    assert [e for e in events if e["event"] == "lineage.generation.end"]
+
+
+def test_duration_check_scales_with_time_step(monkeypatch, stdout_events):
+    lp = _make_with_emits(monkeypatch, emits=100, elapsed=200.0, time_step=2.0)   # 100 x 2 s = 200 s
+    lp.update({}, 1.0)
+    assert not [e for e in stdout_events() if e["payload"].get("check") == "duration_vs_emits"]
+
+
+def test_the_null_emitter_answers_the_whole_engine_surface(monkeypatch):
+    """An image whose process-bigraph pin predates #209 gets ``_pbg_events is
+    None``. Every call the runner makes must still work -- with arguments, and
+    including the error paths -- because the runner does not check first."""
+    monkeypatch.setattr(revents, "_pbg_events", None)
+    assert revents.engine_available() is False
+    em = revents.get_emitter()
+
+    assert em.bind(experiment_id="exp-t", variant=2, lineage_seed=7, generation=3) is em
+    assert em.enabled is False and em.trace_id is None
+    assert em.event("lineage.generation.start", level="info", component="v2ecoli.lineage", generation=0) is None
+    assert em.heartbeat(global_time=12.0) is False
+    assert em.exception(RuntimeError("boom"), path="/agents/0", cls="X") is None
+    assert em.flush() is None
+    assert em.current_traceparent() == ""
+
+    span = em.start_span("generation", generation=0, agent_id="0")
+    assert span.end("error", "boom") is None          # the failure path closes too
+    with em.span("generation", generation=1) as inner:
+        assert inner.end() is None
+
+    # and the module-level helpers the runner actually calls
+    assert revents.current_baggage() == {}
+    assert revents.events_enabled() is False
+    assert revents.configure_for_task("/tmp/does-not-matter", default="stdout").enabled is False
+    assert revents.generation_span(_stub_lp()).end() is None
+    assert revents.bind_generation(_stub_lp()) is em
+    revents.emit("lineage.warning", level="warning", check="duration_vs_emits")
+
+    # failure_record still produces a usable record without the engine
+    try:
+        raise ValueError("nope")
+    except ValueError as exc:
+        record = revents.failure_record(exc, generation=0)
+    assert record["exc_type"] == "ValueError" and record["generation"] == 0
+    assert "nope" in record["traceback_tail"]
+
+
+def _stub_lp():
+    lp = LineageProcess.__new__(LineageProcess)
+    lp.config = {"experiment_id": "exp-t", "variant_index": 2, "lineage_seed": 7}
+    lp._generation = 0
+    lp._agent_id = "0"
+    return lp
+
+
+def test_a_generation_runs_to_completion_with_no_engine_at_all(monkeypatch, capsys):
+    """The legacy-image case end to end: run three generations with the events
+    module absent. No JSON is written, no call raises, and the legacy stdout
+    log lines are exactly what a pre-observability image printed."""
+    monkeypatch.setattr(revents, "_pbg_events", None)
+    lp = _make(monkeypatch, generations=3, divide_after=2)
+    for _ in range(20):
+        out = lp.update({}, 1.0)
+        if out.get("complete"):
+            break
+    assert out.get("complete") is True
+    text = capsys.readouterr().out
+    assert not [ln for ln in text.splitlines() if ln.strip().startswith("{")]
+    for g in (0, 1, 2):
+        assert f"[LineageProcess] gen {g}: end" in text
