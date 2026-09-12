@@ -340,10 +340,11 @@ def test_higher_is_better_is_required():
                higher_is_better=None)
 
 
-def test_minimised_objective_is_graded_in_the_right_direction():
+def test_minimised_objective_is_REPORTED_in_the_right_direction():
     """With ``higher_is_better: false`` the winner is the LOWEST arm, and its
-    improvement factor is the inverse ratio — a band that reads high as good would
-    otherwise grade a by-product minimisation upside down."""
+    improvement factor is the inverse ratio — a reader comparing against the
+    declared design target would otherwise read a by-product minimisation upside
+    down. Direction correction applies to the VALUE; the axis carries no verdict."""
     panel = _panel(_arm("wt", "glucose", 1.00, 0.02),
                    _arm("design_a", "glucose", 0.50, 0.02),
                    _arm("design_b", "glucose", 1.50, 0.02))
@@ -352,7 +353,11 @@ def test_minimised_objective_is_graded_in_the_right_direction():
     assert node["detail"]["best_arm"] == "design_a|glucose"
     assert node["detail"]["ratio"] == pytest.approx(0.5, rel=1e-9)
     assert node["value"] == pytest.approx(2.0, rel=1e-9)      # 1/0.5
-    assert node["verdict"] == "within_tol"
+    # ⛔ Reported, never graded — the direction correction must still be right,
+    # because the number is what the finding is read off.
+    assert node["verdict"] == "ungraded"
+    assert node["detail"]["graded"] is False
+    assert node["detail"]["design_target"] == {"good": 1.20, "warn": 1.05}
     # The same panel read as a maximisation picks the other arm.
     card_max, _ = _build(panel, higher_is_better=True)
     assert (card_max["panel"]["media=glucose"]["objective_vs_reference"]
@@ -383,9 +388,11 @@ def test_reference_arm_is_excluded_from_the_between_arm_sd():
     assert node["detail"]["sd_between"] < sd_with_ref / 10
 
 
-def test_unrankable_panel_forces_the_other_axes_ungraded():
-    """★ If the ranking is noise, a win over the reference cannot be read off it, so
-    the other two axes in that stratum go ungraded — with their numbers preserved."""
+def test_unrankable_panel_annotates_the_reported_axes_unreadable():
+    """★ If the ranking is noise, a win over the reference cannot be read off it.
+    The reported axes are ungraded by construction, so the load-bearing part is the
+    ANNOTATION — a consumer withholding the ranking keys off it — and the fact that
+    the card still fails overall on resolvability alone."""
     panel = _panel(_arm("wt", "glucose", 1.00, 0.40),
                    _arm("design_a", "glucose", 1.30, 0.40),
                    _arm("design_b", "glucose", 1.28, 0.40),
@@ -396,11 +403,75 @@ def test_unrankable_panel_forces_the_other_axes_ungraded():
     for axis in ("objective_vs_reference", "growth_cost"):
         node = stratum[axis]
         assert node["verdict"] == "ungraded", axis
-        assert node["detail"]["forced_ungraded_by"] == "ranking_resolvable"
+        assert node["detail"]["unreadable_because"] == "ranking_resolvable"
         assert node["meter"].startswith("ranking unresolvable — ")
         assert node["value"] is not None          # the number is kept, not hidden
-    # The stratum still fails overall: ungraded axes do not launder the mismatch.
+    # ★ Discriminating: resolvability is the ONLY graded axis, so the card's
+    # overall must come from it alone. If a future change let a reported axis
+    # carry a verdict again, a resolvable-but-poor panel would fail here too.
     assert grade_card(card, reference)["overall"] == "mismatch"
+
+    good = _panel(_arm("wt", "glucose", 1.00, 0.02),
+                  _arm("design_a", "glucose", 3.00, 0.02),
+                  _arm("design_b", "glucose", 2.00, 0.02),
+                  _arm("design_c", "glucose", 1.50, 0.02))
+    card_g, ref_g = _build(good)
+    assert card_g["panel"]["media=glucose"]["ranking_resolvable"]["verdict"] != "mismatch"
+    # A panel whose arms are well separated passes even though its growth ratio
+    # sits far under any plausible floor — the biology does not move the verdict.
+    assert grade_card(card_g, ref_g)["overall"] != "mismatch"
+
+
+def test_default_policy_grades_execution_not_outcome():
+    """★ The §15 contract: by default the card grades ONLY resolvability. The
+    outcome axes keep every number and their declared design target, and give up
+    only the ruling."""
+    panel = _panel(_arm("wt", "glucose", 1.00, 0.02, gro_mean=0.70),
+                   _arm("design_a", "glucose", 3.00, 0.02, gro_mean=0.20),
+                   _arm("design_b", "glucose", 2.00, 0.02, gro_mean=0.60),
+                   _arm("design_c", "glucose", 1.50, 0.02, gro_mean=0.65))
+    card, reference = _build(panel)
+    stratum = card["panel"]["media=glucose"]
+    for axis in ("objective_vs_reference", "growth_cost"):
+        node = stratum[axis]
+        assert node["verdict"] == "ungraded", axis
+        assert node["detail"]["graded"] is False, axis
+        assert node["value"] is not None, axis          # number kept
+        assert "design_target" in node["detail"], axis  # target kept
+    assert stratum["ranking_resolvable"]["detail"]["graded"] is True
+    # ★ Discriminating: design_a's growth is 0.29x the reference, far under the
+    # 0.70 floor, and the card STILL does not fail. Biology cannot move it.
+    assert stratum["growth_cost"]["value"] < 0.30
+    assert grade_card(card, reference)["overall"] != "mismatch"
+
+
+def test_grading_policy_is_declarable_and_reversible():
+    """★ The demotion is a POLICY, not a capability that was removed — a caller
+    that wants an outcome graded says so, with no upstream change. This is what
+    keeps a downstream consumer free to choose differently."""
+    panel = _panel(_arm("wt", "glucose", 1.00, 0.02, gro_mean=0.70),
+                   _arm("design_a", "glucose", 3.00, 0.02, gro_mean=0.20),
+                   _arm("design_b", "glucose", 2.00, 0.02, gro_mean=0.60),
+                   _arm("design_c", "glucose", 1.50, 0.02, gro_mean=0.65))
+    card, reference = _build(panel, graded_axes=list(ps.AXES))
+    stratum = card["panel"]["media=glucose"]
+    assert stratum["growth_cost"]["verdict"] == "mismatch"   # 0.29 < warn 0.70
+    assert stratum["growth_cost"]["detail"]["graded"] is True
+    assert stratum["objective_vs_reference"]["verdict"] == "within_tol"
+    assert grade_card(card, reference)["overall"] == "mismatch"
+    # And the default really is the narrow one, not "everything".
+    assert ps.DEFAULT_GRADED_AXES == ("ranking_resolvable",)
+
+
+def test_unknown_graded_axis_is_rejected_not_silently_ignored():
+    """A typo must not silently ungrade the whole card."""
+    panel = _panel(_arm("wt", "glucose", 1.00, 0.02),
+                   _arm("design_a", "glucose", 1.40, 0.02),
+                   _arm("design_b", "glucose", 1.20, 0.02))
+    with pytest.raises(ValueError, match="unknown axis"):
+        _build(panel, graded_axes=["ranking_resolveable"])   # sic
+    with pytest.raises(ValueError, match="must be a list"):
+        _build(panel, graded_axes="ranking_resolvable")
 
 
 def test_single_design_arm_is_ungraded_not_a_pass():
@@ -411,7 +482,7 @@ def test_single_design_arm_is_ungraded_not_a_pass():
     assert "nothing to rank" in node["meter"]
 
 
-def test_growth_cost_grades_the_arm_the_objective_axis_picked():
+def test_growth_cost_reports_the_arm_the_objective_axis_picked():
     """A design that "wins" by killing the cell is not a win."""
     panel = _panel(_arm("wt", "glucose", 1.00, 0.02, gro_mean=0.70),
                    _arm("design_a", "glucose", 1.80, 0.02, gro_mean=0.35),
@@ -420,11 +491,14 @@ def test_growth_cost_grades_the_arm_the_objective_axis_picked():
     card, _ = _build(panel)
     stratum = card["panel"]["media=glucose"]
     assert stratum["objective_vs_reference"]["detail"]["best_arm"] == "design_a|glucose"
-    assert stratum["objective_vs_reference"]["verdict"] == "within_tol"
     growth = stratum["growth_cost"]
     assert growth["detail"]["best_arm"] == "design_a|glucose"
     assert growth["value"] == pytest.approx(0.5, rel=1e-6)
-    assert growth["verdict"] == "mismatch"       # 0.5 < warn 0.70
+    # ⛔ 0.5 sits far below the declared floor of 0.70 and the axis STILL carries
+    # no verdict — the target is reported for the finding to weigh, not graded.
+    assert growth["verdict"] == "ungraded"
+    assert growth["detail"]["design_target"] == {"good": 0.85, "warn": 0.70}
+    assert growth["detail"]["graded"] is False
 
 
 def test_missing_growth_observable_is_ungraded_not_a_pass():
@@ -440,15 +514,18 @@ def test_missing_growth_observable_is_ungraded_not_a_pass():
 
 def test_fixture_grades_run_free(fixture_panel):
     """Fixture-graded: no sweep, no ParCa cache, no live run. The committed fixture
-    deliberately exercises both paths — one stratum grades, the other is unrankable
-    and forces its siblings ungraded."""
+    deliberately exercises both paths — one stratum resolves, the other does not.
+
+    ★ Every reported axis is `ungraded` in BOTH strata: the card grades execution
+    (resolvability), never the biology. The overall comes from the unrankable
+    stratum alone."""
     card, reference = _build(fixture_panel)
     report = grade_card(card, reference)
     verdicts = {p: a["verdict"] for p, a in report["axes"].items()}
     assert verdicts == {
         "panel.strata_declared": "ungraded",
-        "panel.media=glucose.objective_vs_reference": "within_tol",
-        "panel.media=glucose.growth_cost": "within_tol",
+        "panel.media=glucose.objective_vs_reference": "ungraded",
+        "panel.media=glucose.growth_cost": "ungraded",
         "panel.media=glucose.ranking_resolvable": "within_tol",
         "panel.media=acetate.objective_vs_reference": "ungraded",
         "panel.media=acetate.growth_cost": "ungraded",

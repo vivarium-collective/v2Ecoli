@@ -1,0 +1,27 @@
+{
+  "_comment": [
+    "Computed by sims/check_acceptance.py from data/panel_accounting.json",
+    "and viz/report_card/panel_screen.verdict.json.",
+    "Each value is a COUNT OF VIOLATIONS; zero is the passing state.",
+    "No criterion requires a design to succeed."
+  ],
+  "card_overall": "within_tol",
+  "criteria": {
+    "every-declared-arm-is-accounted-for": {
+      "violations": 0,
+      "detail": "8 declared arms; 6 in panel, 2 recorded as terminated before the graded window"
+    },
+    "declared-perturbations-land-within-tolerance": {
+      "violations": 0,
+      "detail": "10 (arm, target) pairs checked at tolerance 0.3; 0 outside"
+    },
+    "reference-arm-resolves-in-every-stratum": {
+      "violations": 0,
+      "detail": "2 strata graded (medium_a, medium_b); reference arm present in 2"
+    },
+    "ranking-claims-do-not-exceed-resolvability": {
+      "violations": 0,
+      "detail": "2 strata; 0 not resolvable; 0 presented a ranking anyway"
+    }
+  }
+}

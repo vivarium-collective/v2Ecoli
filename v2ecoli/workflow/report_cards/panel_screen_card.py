@@ -73,6 +73,7 @@ class PanelScreenCard(ReportCardStep):
             strata=cfg.get("strata"),
             higher_is_better=cfg.get("higher_is_better"),
             bands=cfg.get("bands"),
+            graded_axes=cfg.get("graded_axes"),
             title=cfg.get("title"),
         )
         report = grade_card(card, reference)

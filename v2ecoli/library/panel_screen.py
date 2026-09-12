@@ -51,6 +51,22 @@ GROUP = "Panel screen"
 #: future study.
 AXES = ("objective_vs_reference", "growth_cost", "ranking_resolvable")
 
+# ★ WHICH AXES CARRY A VERDICT — declarable, defaulted to the defensible policy.
+#
+# A design screen's report card grades whether the screen was EXECUTED and
+# RECORDED faithfully; which design wins is a scientific FINDING. A verdict
+# computed from the biology makes the card's overall a function of the result,
+# so a screen that ran perfectly and found nothing good reads as FAILED — the
+# instrument becomes uninterpretable exactly when it is working. Resolvability
+# is the exception and therefore the default: it is a property of the screen's
+# replicate count and separation, not of whether the designs were any good.
+#
+# Ungraded axes still carry value, meter, p/q and their declared `design_target`,
+# so nothing is hidden — only the ruling is withheld. A caller that genuinely
+# wants an outcome graded can say so via `graded_axes` rather than patching this
+# module; the default is a policy, not a constraint.
+DEFAULT_GRADED_AXES = ("ranking_resolvable",)
+
 
 # ---------------------------------------------------------------------------
 # BH-FDR: the family is ours, the arithmetic is scipy's
@@ -309,6 +325,9 @@ def _objective_node(members: list, ref: str, bands: dict, family_size: int,
                      {"family_size": family_size, "excluded_arms": excluded}), None
     # Ties broken by arm id so the card is byte-deterministic across re-renders.
     best = sorted(gradeable, key=lambda m: (-m["improvement"], m["arm"]))[0]
+    # The band verdict is computed here; whether it SURVIVES is the caller's
+    # policy, applied centrally in `build` via `graded_axes`. By default this
+    # axis is reported, not graded — see DEFAULT_GRADED_AXES.
     verdict = _band(best["improvement"], good, warn, higher_is_better=True)
     qtxt = f"q = {best['q']:.3g}" if best["q"] is not None else "q = n/a"
     raw = "" if higher_is_better else f" (raw {best['ratio']:.3g}×)"
@@ -321,6 +340,7 @@ def _objective_node(members: list, ref: str, bands: dict, family_size: int,
         "reference_arm": ref, "reference_mean": best["ref_mean"],
         "reference_n": best["ref_n"], "p": best["p"], "q": best["q"],
         "higher_is_better": higher_is_better,
+        "design_target": {"good": good, "warn": warn},
         # `family_size` is the m BH actually corrected over, and `excluded_arms`
         # says who was too small to test: without both, a pass here is unauditable.
         "family_size": family_size, "excluded_arms": excluded,
@@ -343,13 +363,17 @@ def _growth_node(best, ref: str, bands: dict) -> dict:
                      "growth observable absent or reference growth 0",
                      {"reference_arm": ref})
     value = best["growth_ratio"]
+    # Band verdict computed here; `graded_axes` decides whether it survives.
+    # By default it does not: a growth floor is a biology/design decision, not
+    # execution correctness.
     return _node(_band(value, good, warn, higher_is_better=True), value,
                  f"{best['arm']}: {value:.3g}× {ref} growth "
                  f"({best['growth']['mean']:.3g} vs {best['growth']['mean'] / value:.3g})",
                  {"best_arm": best["arm"], "growth_ratio": value,
                   "growth_mean": best["growth"]["mean"],
                   "growth_sem": best["growth"]["sem"],
-                  "growth_n": best["growth"]["n"], "reference_arm": ref})
+                  "growth_n": best["growth"]["n"], "reference_arm": ref,
+                  "design_target": {"good": good, "warn": warn}})
 
 
 def _ranking_node(members: list, ref: str, bands: dict) -> dict:
@@ -393,6 +417,22 @@ def _ranking_node(members: list, ref: str, bands: dict) -> dict:
 # Card + reference assembly
 # ---------------------------------------------------------------------------
 
+def _graded_axes(raw) -> frozenset:
+    """Validate `graded_axes`. ``None`` -> the default policy; anything else must
+    name only known axes, so a typo cannot silently ungrade the whole card."""
+    if raw is None:
+        return frozenset(DEFAULT_GRADED_AXES)
+    if isinstance(raw, str) or not hasattr(raw, "__iter__"):
+        raise ValueError("panel_screen: `graded_axes` must be a list of axis names")
+    names = tuple(raw)
+    unknown = [n for n in names if n not in AXES]
+    if unknown:
+        raise ValueError(
+            f"panel_screen: graded_axes names unknown axis/axes {unknown!r} — "
+            f"valid names are {list(AXES)}")
+    return frozenset(names)
+
+
 def _bands(raw) -> dict:
     """Validate the three REQUIRED bands. No defaults: a default band is an
     unexamined number baked into every future study."""
@@ -421,17 +461,24 @@ _AXIS_HOW = {
         "Best design arm's objective observable as a direction-corrected factor of "
         "the reference arm's, both as cell-level means within this stratum. Welch "
         "p vs the reference arm, BH-FDR q over the arms of THIS stratum only "
-        "(m reported). Graded against a band supplied by the study."),
+        "(m reported). REPORTED against the design target the study declared, "
+        "never graded: which design wins is a scientific finding, and a card "
+        "verdict computed from it would fail a screen that ran perfectly and "
+        "found nothing good."),
     "growth_cost": (
         "The best arm's growth observable as a fraction of the reference arm's, "
-        "cell-level means within this stratum, graded against a floor supplied by "
-        "the study. Reported for the arm the objective axis selected."),
+        "cell-level means within this stratum, REPORTED against the design target "
+        "the study declared. Never graded: a growth floor is a biology/design "
+        "decision, not execution correctness. Reported for the arm the objective "
+        "axis selected."),
     "ranking_resolvable": (
         "Between-arm SD of the design arms' objective means divided by the median "
         "within-arm SEM, within this stratum; the reference arm is excluded. "
-        "Graded against a floor supplied by the study. When this axis is a "
-        "mismatch the other two axes in the stratum are forced to ungraded — the "
-        "ranking is noise, so a win over the reference cannot be read off it."),
+        "Graded against a floor supplied by the study — the ONLY graded axis on "
+        "this card, because resolvability is a property of the screen's execution "
+        "and replicate count, not of the biology. When it is a mismatch the other "
+        "two axes are annotated unreadable: the ranking is noise, so a win over "
+        "the reference cannot be read off it."),
 }
 
 
@@ -472,7 +519,7 @@ def _strata_missing(reason: str) -> tuple:
 
 def build(panel: dict, *, objective_observable: str, growth_observable: str,
           reference_arm: str, strata, higher_is_better, bands,
-          title: "str | None" = None) -> tuple:
+          graded_axes=None, title: "str | None" = None) -> tuple:
     """``(card, reference)`` — the gradeable inputs for one panel screen.
 
     Emits the three axes **once per stratum** (paths
@@ -496,6 +543,7 @@ def build(panel: dict, *, objective_observable: str, growth_observable: str,
                          "objective is not always maximised, and a silently "
                          "wrong-direction grade is the worst outcome)")
     band = _bands(bands)
+    graded = _graded_axes(graded_axes)
 
     records = assemble(panel, objective_observable=objective_observable,
                        growth_observable=growth_observable,
@@ -540,14 +588,24 @@ def build(panel: dict, *, objective_observable: str, growth_observable: str,
                  "growth_cost": _growth_node(best, ref, band),
                  "ranking_resolvable": _ranking_node(members, ref, band)}
         if nodes["ranking_resolvable"]["verdict"] == "mismatch":
-            # The load-bearing coupling: an unresolvable ranking makes the other two
-            # axes unreadable, so they go `ungraded` — the honest state — with their
-            # numbers preserved in `detail` rather than hidden.
+            # The reported axes are ungraded by construction, so this no longer
+            # changes a verdict — but the ANNOTATION is still load-bearing: an
+            # unresolvable ranking makes those numbers unreadable, and a reader
+            # (or a consumer withholding the ranking) has to be told so.
             for name in ("objective_vs_reference", "growth_cost"):
                 node = nodes[name]
-                node["verdict"] = "ungraded"
                 node["meter"] = f"ranking unresolvable — {node['meter']}"
-                node["detail"]["forced_ungraded_by"] = "ranking_resolvable"
+                node["detail"]["unreadable_because"] = "ranking_resolvable"
+        # ★ THE POLICY, applied in ONE place. An axis the caller did not name as
+        # graded keeps its number, its meter and its declared design target, and
+        # gives up only the ruling. Recorded per node so a reader of the verdict
+        # JSON can tell "not graded by policy" from "could not be computed".
+        for name in AXES:
+            node = nodes[name]
+            node["detail"]["graded"] = name in graded
+            if name not in graded and node["verdict"] != "ungraded":
+                node["detail"]["reported_verdict"] = node["verdict"]
+                node["verdict"] = "ungraded"
         cnode[stratum] = nodes
         for name in AXES:
             good, warn = band[name]

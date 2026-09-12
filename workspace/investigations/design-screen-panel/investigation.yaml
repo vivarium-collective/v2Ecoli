@@ -1,0 +1,94 @@
+schema_version: 2
+name: design-screen-panel
+title: "Design screens as a graded instrument"
+created: '2026-08-21'
+status: planning
+runtime:
+  default_emitter: sqlite
+question: >-
+  When a screen ranks many engineered designs against a reference, what has to be
+  true before the ranking may be reported as a result?
+object_of_evaluation: method
+executive:
+  what_is_this: >-
+    A design screen runs many genotype/expression variants against a common
+    reference and ranks them by a production objective. This investigation treats
+    that screen as an instrument and asks what makes its output trustworthy —
+    separately from whether any particular design turns out to be good.
+  verdict: ""
+scientific_argument:
+  main_claim: >-
+    A design screen's acceptance belongs on its execution and its readout, not on
+    its findings. A screen over a design space where nothing helps is a successful
+    screen; a screen that silently drops arms, ranks designs it did not build, or
+    reports a ranking indistinguishable from noise is a failed one, however good
+    its numbers look.
+  reasoning: >-
+    Three failure modes make a screen's output wrong while leaving it plausible.
+    An arm can disappear — a lethal design contributes no cells inside the graded
+    window and vanishes from the panel, so a reader sees fewer arms than were
+    declared and cannot tell. A perturbation can miss its target — translation
+    efficiency is renormalised in-process, so a declared 10x is not a 10x protein
+    change, and the screen then ranks designs nobody built. And a ranking can be
+    noise — with few replicates, between-arm spread can sit inside within-arm
+    variation, which no amount of sorting reveals.
+  implications: >-
+    Each of the three is checkable from artifacts the screen already produces, and
+    none of the checks requires a design to succeed. That makes the acceptance
+    criteria writable before the screen runs, which is what separates a screen
+    from a search for a favourable subset.
+biological_story: >-
+  Engineering a pathway into a cell competes with the cell's own economy. A
+  construct driven harder consumes transcription and translation capacity, and a
+  native gene knocked out to redirect flux may be needed elsewhere. So the useful
+  question is never "which design makes the most product" alone — it is which
+  designs improve the objective at a growth cost the organism can carry, and
+  whether the differences between them are larger than the variation between
+  genetically identical cells.
+acceptance_criteria:
+  - study: design-screen-panel-01-grading
+    behavior: every-declared-arm-is-accounted-for
+    could_fail_if: >-
+      An arm produces no cells inside the graded window — whether because it was
+      never dispatched or because the design does not grow — and is absent from
+      the panel rather than recorded with the generation it reached.
+    independent: false
+  - study: design-screen-panel-01-grading
+    behavior: declared-perturbations-land-within-tolerance
+    could_fail_if: >-
+      Observed protein fold-change departs from the configured fold-change by more
+      than the declared tolerance, so the ranked designs are not the designs built.
+    independent: false
+  - study: design-screen-panel-01-grading
+    behavior: reference-arm-resolves-in-every-stratum
+    could_fail_if: >-
+      A stratum lacks the named reference arm, making every contrast in it a
+      comparison against the wrong baseline.
+    independent: false
+  - study: design-screen-panel-01-grading
+    behavior: ranking-claims-do-not-exceed-resolvability
+    could_fail_if: >-
+      A ranking is reported as a result while between-arm separation sits inside
+      within-arm noise.
+    independent: false
+members:
+  - design-screen-panel-01-grading
+glossary:
+  - term: arm
+    definition: >-
+      One design in the screen — a declared combination of perturbations, run as
+      its own set of replicate lineages.
+  - term: stratum
+    definition: >-
+      A grouping within which arms are compared and multiple-testing correction is
+      applied — typically a growth condition. Comparing or correcting across strata
+      attributes the stratum's effect to the design.
+  - term: resolvability
+    definition: >-
+      Whether between-arm separation exceeds within-arm noise. A ranking that is
+      not resolvable is an ordering of noise.
+  - term: accounted for
+    definition: >-
+      An arm is accounted for when it appears in the panel, or is explicitly
+      recorded as having terminated before the graded window with the generation it
+      reached. Absent-without-record is the failure; dying is not.

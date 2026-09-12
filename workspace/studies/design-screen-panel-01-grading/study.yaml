@@ -1,0 +1,368 @@
+schema_version: 4
+name: design-screen-panel-01-grading
+investigation: design-screen-panel
+title: "Grading a design panel: accounting, landing, reference, resolvability"
+created: '2026-08-21'
+study_type: diagnostic
+design_status: designed
+implementation_status: implemented
+expert_review_status: not-requested
+claim: >-
+  A design screen can be graded on its execution and readout alone — every
+  declared arm accounted for, perturbations landed within tolerance, a reference
+  arm resolved per stratum, and no ranking claim beyond what resolvability
+  supports — without any criterion requiring a design to succeed.
+question: >-
+  What must hold before a design screen's ranking may be reported as a result,
+  and can each of those conditions be checked from the artifacts the screen
+  already produces?
+assumptions:
+  - text: >-
+      The screen's per-cell table is the seam. Grading consumes one row per
+      (arm x replicate lineage x generation x cell), aggregating within cell then
+      across cells, and never over raw timepoints.
+    verified_in_v2ecoli: true
+  - text: >-
+      Arms are compared within a stratum and multiple-testing families are built
+      within stratum. Correcting across strata attributes the stratum's effect to
+      the design.
+    verified_in_v2ecoli: true
+  - text: >-
+      A declared translation-efficiency multiplier is a weight, not an achieved
+      protein ratio — the efficiency array is renormalised in-process, so landing
+      must be measured on observed protein rather than assumed from the
+      declaration.
+    verified_in_v2ecoli: true
+  - text: >-
+      An arm that terminates before the graded window is a phenotype, not a
+      missing datum. Grading must distinguish "absent" from "absent and recorded".
+    verified_in_v2ecoli: false
+conditions:
+  baseline:
+    composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+    params:
+      seed: 0
+      cache_dir: out/design-screen-panel-01/reference/cache
+  variants:
+    - name: design-a-moderate
+      role: perturbation
+      composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+      params:
+        seed: 0
+        cache_dir: out/design-screen-panel-01/design-a/cache
+      perturbation: >-
+        Representative arm: construct driven at a moderate level, native targets
+        unchanged.
+      expected_contrast: >-
+        Objective above reference; growth cost small enough to stay inside the
+        declared floor.
+    - name: design-b-strong
+      role: perturbation
+      composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+      params:
+        seed: 0
+        cache_dir: out/design-screen-panel-01/design-b/cache
+      perturbation: >-
+        Representative arm: construct driven hard, to exercise the growth-cost
+        axis rather than the objective axis.
+      expected_contrast: >-
+        Objective higher than design-a or saturating; growth cost large enough
+        that the growth axis, not the objective axis, decides the verdict.
+    - name: design-c-nonviable
+      role: perturbation
+      composite: v2ecoli.composites.ecoli_baseline.ecoli_baseline
+      params:
+        seed: 0
+        cache_dir: out/design-screen-panel-01/design-c/cache
+      perturbation: >-
+        Representative arm: a design that does not sustain growth to the graded
+        window.
+      expected_contrast: >-
+        Contributes no cells inside the graded window. Must appear in the
+        accounting with the generation it reached — never silently absent.
+  model_settings:
+    - name: graded-generation-window
+      gate: required-before-run
+      detail: >-
+        Early generations are excluded so the graded cells are past the transient
+        that follows a cache-resident perturbation. The window must be declared
+        before the run, because it determines which arms have any gradeable cells
+        at all.
+    - name: stratum-keys
+      gate: required-before-run
+      detail: >-
+        The keys within which arms are compared and q-value families are built.
+        The panel card refuses to grade without them; that refusal is the point.
+    - name: named-reference-arm
+      gate: required-before-run
+      detail: >-
+        The arm every other arm is contrasted against. Resolved per stratum, not
+        once globally.
+enforced_params:
+  - name: replicate-count
+    detail: >-
+      Replicate lineages per arm. Fixed across arms, because an arm with fewer
+      replicates gets a wider interval and sinks in a resolvability comparison for
+      a reason that has nothing to do with its design.
+tests:
+  - name: every-declared-arm-is-accounted-for
+    classification: primary
+    question: >-
+      Is every arm named in the declaration either present in the panel, or
+      explicitly recorded as having terminated before the graded window with the
+      generation it reached?
+    measure:
+      kind: derived
+      detail: >-
+        Count of declared arms that appear in neither the panel's arm list nor the
+        accounting record in data/panel_accounting.json. An arm that died and was
+        recorded counts as accounted for; an arm that is simply missing does not.
+    pass_if:
+      op: '=='
+      value: 0
+      provenance:
+        kind: theory
+        detail: >-
+          Zero is the only defensible threshold: any unaccounted arm means the
+          panel misrepresents what was run, and a reader cannot detect it from the
+          panel alone.
+  - name: declared-perturbations-land-within-tolerance
+    classification: primary
+    question: >-
+      For every arm and every declared target, does the observed protein
+      fold-change relative to the reference fall within tolerance of the
+      configured fold-change?
+    measure:
+      kind: derived
+      detail: >-
+        Count of (arm, target) pairs whose observed/expected protein ratio falls
+        outside the declared tolerance, from data/panel_accounting.json. Measured
+        on observed protein, never inferred from the declaration, because the
+        efficiency array is renormalised in-process.
+    pass_if:
+      op: '=='
+      value: 0
+      provenance:
+        kind: expert
+        detail: >-
+          Tolerance is inherited from the screen configuration rather than chosen
+          here, so this criterion adopts a threshold the screen's authors already
+          committed to.
+  - name: reference-arm-resolves-in-every-stratum
+    classification: primary
+    question: >-
+      Does the named reference arm resolve within each stratum, so that every
+      contrast is against the right baseline?
+    measure:
+      kind: derived
+      detail: >-
+        Count of strata in viz/report_card/panel_screen.verdict.json whose
+        strata_declared axis does not name a resolved reference arm. Read as a
+        derived count rather than through report_card_axis deliberately: that
+        evaluator grades a GROUP, and this card emits every axis into a single
+        group, so it would aggregate the whole card's worst axis instead of this
+        property.
+    pass_if:
+      op: '=='
+      value: 0
+      provenance:
+        kind: theory
+        detail: >-
+          A missing per-stratum reference makes every arm in that stratum read as
+          a large effect against the wrong comparator. There is no tolerance to
+          set: the reference is present or it is not.
+  - name: ranking-claims-do-not-exceed-resolvability
+    classification: primary
+    question: >-
+      When between-arm separation does not exceed within-arm noise, does the
+      FIGURE withhold the ranking rather than presenting an ordering of noise?
+    measure:
+      kind: derived
+      detail: >-
+        Count of strata in data/panel_presentation.json that are not resolvable
+        and for which sims/render_panel.py nonetheless presented a ranking
+        (ordered rows and a named top arm). What is measured is the COUPLING, not
+        the resolvability: an unresolvable panel that correctly withholds its
+        ranking scores zero here and passes.
+        ⚠ THIS CHECK MOVED, and the move is the point. It previously read the
+        card's verdicts — "where resolvability fails, no ranking axis may carry a
+        verdict." Once the outcome axes became ungraded by policy they can never
+        carry one, so that formulation could not fail: vacuous while still
+        reporting PASS. The ranking claim lives in the FINDING, so the check reads
+        what the figure actually presented.
+        ⚠ Still not expressible through report_card_axis — that evaluator
+        aggregates a group to its worst axis, so a failing resolvability would
+        read as FAIL, reintroducing exactly the outcome-dependence this criterion
+        set avoids.
+    pass_if:
+      op: '=='
+      value: 0
+      provenance:
+        kind: theory
+        detail: >-
+          Zero is the only threshold that grades the discipline rather than the
+          result. A screen may legitimately find its design space unresolvable;
+          what it may not do is draw a ranked panel anyway. Verified discriminating
+          in both directions: marking a stratum unresolvable while still presenting
+          its ranking raises this to 1 violation; marking it unresolvable with the
+          ranking withheld leaves it at 0.
+# Gen-2 card allowlist. ⚠ NAME membership, not a path — several studies list
+# HTML paths here, which silently disables every Gen-2 card on them.
+report_cards:
+  - panel_screen
+report_card_refs:
+  panel_screen:
+    panel_json: workspace/studies/design-screen-panel-01-grading/data/panel.json
+    objective_observable: objective_titer
+    growth_observable: growth_rate
+    reference_arm: reference
+    higher_is_better: true
+    strata:
+      - medium
+    # ⚠ These bands are DEMONSTRATION values for a synthetic panel, not thresholds
+    # carried over from any measurement. They are stated here rather than defaulted
+    # because the card requires all three, and a default would bake an unexamined
+    # number into every study that reused it. An instantiation of this pattern
+    # against real data must replace them with cited values and say what they were
+    # chosen against — a band's meaning comes from the measure it is graded on.
+    bands:
+      objective_vs_reference: {good: 1.20, warn: 1.05}
+      growth_cost: {good: 0.85, warn: 0.70}
+      ranking_resolvable: {good: 3.0, warn: 2.0}
+# ⚠ `address: image:` deliberately, and SVG deliberately. Four independent
+# consumers each carry their own address-scheme set; `image:` is the only scheme
+# all four accept. `html:` does not survive into the published report, and
+# `file:` + `.html` renders NOTHING while passing both the linter and the audit —
+# an unrecognised scheme vanishes silently from the charts payload. Both
+# `address:` (what makes it display) and `chart:`/`render:` (what drives
+# freshness) are declared, per the house pattern.
+visualizations:
+  - name: design-panel
+    address: image:charts/panel.svg
+    chart: charts/panel.svg
+    render: python workspace/studies/design-screen-panel-01-grading/sims/render_panel.py --out {chart}
+    description: >-
+      The screen's readout: arms ranked by objective within each stratum, with
+      the graded arm carrying the card's verdict and the others shown as ranked
+      but not graded. Arms that never reached the graded window appear in the
+      same frame with the generation they reached — a ranking alone would show
+      six rows where eight were declared, and a reader could not tell.
+readouts:
+  - name: panel-per-cell
+    status: available
+    store_path: data/panel_per_cell.tsv
+    detail: >-
+      One row per (arm x replicate lineage x generation x cell), objective and
+      growth observables as columns. The engine-agnostic seam: whatever produces
+      it, everything downstream of it is written once.
+  - name: panel-accounting
+    status: available
+    store_path: data/panel_accounting.json
+    detail: >-
+      data/panel_accounting.json - per arm: declared status, cells contributed vs
+      expected, generations reached, and per-target observed/expected protein
+      ratio with its within-tolerance flag. The evidence behind the first two
+      tests, and the record that turns a dead arm from a gap into a datum.
+  - name: panel-card-verdict
+    status: available
+    store_path: viz/report_card/panel_screen.verdict.json
+    detail: >-
+      viz/report_card/panel_screen.verdict.json - the panel card's per-axis
+      verdicts and the resolved reference arm per stratum.
+limitations:
+  - >-
+    Execution completeness and biological non-viability are not cleanly separable
+    from the artifacts a screen currently produces: a lineage that stopped because
+    the design is lethal and one that stopped because its task failed can present
+    identically. This study therefore gates on accounting - nothing goes missing
+    silently - and reports completeness rather than gating on it. A sharper
+    discriminator that reads task exit status is future work, not a prerequisite.
+  - >-
+    The representative arms declared here are a deliberate subset. A full screen's
+    grid is expanded by the run configuration, not by this study, because one
+    subprocess per declared variant does not scale to a full panel and the grid is
+    already expanded upstream.
+  - >-
+    Resolvability is assessed at the replicate count the screen was run with. An
+    unresolvable panel is a statement about this screen, not about the design
+    space - more replicates may resolve it.
+canonical_runs:
+  - name: synthetic-panel
+    default: true
+    label: >-
+      Synthetic panel -> card -> figure -> acceptance check. No simulation: the
+      grading layer consumes a per-cell table and is engine-agnostic by
+      construction. Every downstream artifact is REGENERATED here, so none of the
+      committed outputs is hand-carried — a card-library change that would alter
+      the verdict shows up as a diff rather than silently disagreeing with the
+      committed file.
+    script: workspace/studies/design-screen-panel-01-grading/sims/run_chain.py
+    args: []
+runs:
+  - name: synthetic-panel-2026-08-21
+    canonical_run: synthetic-panel
+    status: completed
+    completed_at: '2026-08-21'
+    command: >-
+      python workspace/studies/design-screen-panel-01-grading/sims/make_synthetic_panel.py
+      && python workspace/studies/design-screen-panel-01-grading/sims/render_card.py
+      && python workspace/studies/design-screen-panel-01-grading/sims/render_panel.py
+      && python workspace/studies/design-screen-panel-01-grading/sims/check_acceptance.py
+    artifacts:
+      per_cell: data/panel_per_cell.tsv
+      panel: data/panel.json
+      accounting: data/panel_accounting.json
+      acceptance: data/acceptance.json
+      presentation: data/panel_presentation.json
+      card: viz/report_card/panel_screen.verdict.json
+    note: >-
+      8 declared arms across 2 strata; 6 reached the graded window and 2 did not,
+      both recorded with the generation they reached.
+
+      The card grades overall = within_tol, because the only graded axis is
+      ranking_resolvable and both strata resolve. That is the separation this
+      study exists to demonstrate: the card rules on whether the screen was
+      EXECUTED and RECORDED faithfully, and says nothing about whether the
+      designs were any good.
+
+      The scientific result is a FINDING, reported and not graded: the
+      highest-objective design reaches 1.73x the reference on the objective and
+      costs growth, landing at 0.63x against a declared design target of 0.70x.
+      Whether that trade is acceptable is a decision for a reader of the finding,
+      not a verdict for the card — a growth floor is a biology/design choice, not
+      execution correctness. All four acceptance criteria pass.
+    outcomes:
+      every-declared-arm-is-accounted-for:
+        result: PASS
+        detail: >-
+          8 declared arms; 6 in panel, 2 recorded as terminated before the graded window.
+          Computed by sims/check_acceptance.py into data/acceptance.json.
+          Verified discriminating: clearing the termination record on the
+          non-viable arms raises this to 2 violations.
+      declared-perturbations-land-within-tolerance:
+        result: PASS
+        detail: >-
+          10 (arm, target) pairs checked at tolerance 0.3; 0 outside.
+          Measured on observed protein, never inferred from the declaration.
+          Verified discriminating: flagging one target out of tolerance raises
+          this to 1 violation.
+      reference-arm-resolves-in-every-stratum:
+        result: PASS
+        detail: >-
+          2 strata graded (medium_a, medium_b); reference arm present in 2.
+          Read from the accounting rather than the card, because a stratum whose
+          reference never ran produces no axis at all and an absent axis is not a
+          failing one. Verified discriminating: removing the reference from one
+          stratum raises this to 1 violation.
+      ranking-claims-do-not-exceed-resolvability:
+        result: PASS
+        detail: >-
+          2 strata; 0 not resolvable; 0 presented a ranking anyway. Grades the
+          coupling, not the resolvability, and reads the FIGURE rather than the
+          card verdicts — the ranking claim lives in the finding. Verified
+          discriminating in BOTH directions: marking a stratum unresolvable while
+          still presenting its ranking raises this to 1 violation; marking it
+          unresolvable with the ranking withheld leaves it at 0. The withhold path
+          was exercised end to end, not only asserted: the rendered figure orders
+          those rows by arm id, names no top arm, and says "ranking withheld".
+findings: []

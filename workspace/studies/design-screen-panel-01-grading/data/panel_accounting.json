@@ -1,0 +1,172 @@
+{
+  "_comment": [
+    "Per-arm accounting for design-screen-panel-01-grading.",
+    "An arm is ACCOUNTED FOR when in_panel is true, or when",
+    "terminated_before_graded_window is true and generations_reached is",
+    "recorded. Absent-without-record is the failure; dying is not."
+  ],
+  "landing_tolerance": 0.3,
+  "cells_expected_per_arm": 16,
+  "arms": [
+    {
+      "arm": "reference|medium_a",
+      "design": "reference",
+      "stratum": "medium_a",
+      "declared": true,
+      "in_panel": true,
+      "cells_observed": 16,
+      "cells_expected": 16,
+      "generations_reached": 8,
+      "terminated_before_graded_window": false,
+      "termination_note": null,
+      "targets": {}
+    },
+    {
+      "arm": "moderate|medium_a",
+      "design": "moderate",
+      "stratum": "medium_a",
+      "declared": true,
+      "in_panel": true,
+      "cells_observed": 16,
+      "cells_expected": 16,
+      "generations_reached": 8,
+      "terminated_before_graded_window": false,
+      "termination_note": null,
+      "targets": {
+        "target_gene_1": {
+          "expected": 2.0,
+          "observed": 1.86,
+          "within_tolerance": true
+        },
+        "target_gene_2": {
+          "expected": 0.0,
+          "observed": 0.0,
+          "within_tolerance": true
+        }
+      }
+    },
+    {
+      "arm": "strong|medium_a",
+      "design": "strong",
+      "stratum": "medium_a",
+      "declared": true,
+      "in_panel": true,
+      "cells_observed": 16,
+      "cells_expected": 16,
+      "generations_reached": 8,
+      "terminated_before_graded_window": false,
+      "termination_note": null,
+      "targets": {
+        "target_gene_1": {
+          "expected": 8.0,
+          "observed": 7.1,
+          "within_tolerance": true
+        },
+        "target_gene_2": {
+          "expected": 0.0,
+          "observed": 0.0,
+          "within_tolerance": true
+        }
+      }
+    },
+    {
+      "arm": "nonviable|medium_a",
+      "design": "nonviable",
+      "stratum": "medium_a",
+      "declared": true,
+      "in_panel": false,
+      "cells_observed": 0,
+      "cells_expected": 16,
+      "generations_reached": 2,
+      "terminated_before_graded_window": true,
+      "termination_note": "Lineage did not sustain growth to the graded window. Recorded rather than dropped: a design that does not grow is a screen result, not a missing measurement.",
+      "targets": {
+        "target_gene_3": {
+          "expected": 0.0,
+          "observed": 0.0,
+          "within_tolerance": true
+        }
+      }
+    },
+    {
+      "arm": "reference|medium_b",
+      "design": "reference",
+      "stratum": "medium_b",
+      "declared": true,
+      "in_panel": true,
+      "cells_observed": 16,
+      "cells_expected": 16,
+      "generations_reached": 8,
+      "terminated_before_graded_window": false,
+      "termination_note": null,
+      "targets": {}
+    },
+    {
+      "arm": "moderate|medium_b",
+      "design": "moderate",
+      "stratum": "medium_b",
+      "declared": true,
+      "in_panel": true,
+      "cells_observed": 16,
+      "cells_expected": 16,
+      "generations_reached": 8,
+      "terminated_before_graded_window": false,
+      "termination_note": null,
+      "targets": {
+        "target_gene_1": {
+          "expected": 2.0,
+          "observed": 1.86,
+          "within_tolerance": true
+        },
+        "target_gene_2": {
+          "expected": 0.0,
+          "observed": 0.0,
+          "within_tolerance": true
+        }
+      }
+    },
+    {
+      "arm": "strong|medium_b",
+      "design": "strong",
+      "stratum": "medium_b",
+      "declared": true,
+      "in_panel": true,
+      "cells_observed": 16,
+      "cells_expected": 16,
+      "generations_reached": 8,
+      "terminated_before_graded_window": false,
+      "termination_note": null,
+      "targets": {
+        "target_gene_1": {
+          "expected": 8.0,
+          "observed": 7.1,
+          "within_tolerance": true
+        },
+        "target_gene_2": {
+          "expected": 0.0,
+          "observed": 0.0,
+          "within_tolerance": true
+        }
+      }
+    },
+    {
+      "arm": "nonviable|medium_b",
+      "design": "nonviable",
+      "stratum": "medium_b",
+      "declared": true,
+      "in_panel": false,
+      "cells_observed": 0,
+      "cells_expected": 16,
+      "generations_reached": 2,
+      "terminated_before_graded_window": true,
+      "termination_note": "Lineage did not sustain growth to the graded window. Recorded rather than dropped: a design that does not grow is a screen result, not a missing measurement.",
+      "targets": {
+        "target_gene_3": {
+          "expected": 0.0,
+          "observed": 0.0,
+          "within_tolerance": true
+        }
+      }
+    }
+  ]
+}

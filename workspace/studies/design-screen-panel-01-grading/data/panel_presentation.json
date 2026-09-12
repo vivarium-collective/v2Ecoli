@@ -1,0 +1,22 @@
+{
+ "_comment": [
+  "Written by sims/render_panel.py.",
+  "Per stratum: was a ranking actually presented?"
+ ],
+ "strata": {
+  "medium_a": {
+   "resolvable": true,
+   "ranking_presented": true,
+   "resolvability_verdict": "within_tol",
+   "n_present": 3,
+   "n_absent": 1
+  },
+  "medium_b": {
+   "resolvable": true,
+   "ranking_presented": true,
+   "resolvability_verdict": "within_tol",
+   "n_present": 3,
+   "n_absent": 1
+  }
+ }
+}

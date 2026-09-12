@@ -1,0 +1,72 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel screen — designs ranked against a reference arm — report card</title><style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1a1d21;--muted:#6b7280;--line:#e5e7eb;}
+*{box-sizing:border-box} body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:var(--bg);color:var(--ink);line-height:1.45}
+header.top{background:linear-gradient(135deg,#1f2937,#111827);color:#fff;padding:22px 28px}
+header.top h1{margin:0;font-size:20px;font-weight:650} header.top .sub{margin-top:4px;color:#cbd5e1;font-size:13px}
+.obadge{display:inline-block;margin-top:12px;padding:4px 12px;border-radius:999px;font-weight:700;background:#1a7f37;color:#fff}
+nav.sticky{position:sticky;top:0;z-index:5;background:rgba(255,255,255,.95);backdrop-filter:saturate(1.4) blur(6px);border-bottom:1px solid var(--line);padding:10px 28px;display:flex;gap:8px;flex-wrap:wrap}
+nav.sticky a{text-decoration:none;color:var(--ink);font-size:13px;padding:5px 10px;border-radius:999px;border:1px solid var(--line)}
+nav.sticky a:hover{background:var(--bg)}
+main{padding:24px 28px 64px;max-width:1100px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;margin:0 0 22px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.card>.head{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.card>.head h2{margin:0;font-size:16px;font-weight:620}
+.chips{display:flex;gap:7px;flex-wrap:wrap} .chip{font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;color:#fff}
+table{border-collapse:collapse;width:100%} thead th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:9px 18px;border-bottom:1px solid var(--line);background:#fafbfc}
+tbody td{padding:11px 18px;border-bottom:1px solid #f1f3f5;vertical-align:top;font-size:13px}
+.axhd{display:flex;align-items:center;gap:8px;flex-wrap:wrap} .metric{font-weight:600}
+.badge{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:6px;color:#fff;white-space:nowrap}
+.how{color:var(--muted);font-size:11.5px;margin-top:4px;max-width:560px} .crit{font-size:12px;margin-top:4px;color:#374151}
+.val{font-family:"SF Mono",ui-monospace,Menlo,monospace;font-size:13px;color:#374151;white-space:nowrap;width:1%} .spread{color:var(--muted);font-size:11px;margin-top:2px}
+.meter{font-family:"SF Mono",ui-monospace,Menlo,monospace;font-size:12px;color:var(--muted);white-space:nowrap;width:1%}
+tbody td:first-child{min-width:420px}
+.verdict-within_tol td:first-child{box-shadow:inset 3px 0 0 #1a7f37} .verdict-drift td:first-child{box-shadow:inset 3px 0 0 #ef6c00}
+.verdict-mismatch td:first-child{box-shadow:inset 3px 0 0 #c62828} .verdict-ungraded td:first-child{box-shadow:inset 3px 0 0 #757575}
+details{margin-top:8px} summary{cursor:pointer;font-size:12px;color:#1f6feb} .plotwrap{margin-top:8px} .plotwrap svg{max-width:100%;height:auto}
+.fluxwrap{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap} .fluxwrap svg{flex:0 0 auto;max-width:420px}
+.ftbl{flex:1 1 100%;overflow-x:auto} .ftbl table{width:auto} .ftbl thead th{padding:5px 10px;font-size:10px}
+.ftbl tbody td{padding:4px 10px;border-bottom:1px solid #f1f3f5;font-size:11.5px} .ftbl .fid{font-family:"SF Mono",ui-monospace,Menlo,monospace;font-size:11px}
+.ftbl .fnum{font-family:"SF Mono",ui-monospace,Menlo,monospace;text-align:right;white-space:nowrap}
+.ftbl tr.flux-appeared{background:#fdecea} .ftbl tr.flux-appeared .fid{color:#c62828;font-weight:600}
+.ftbl tr.flux-lost{background:#fff3e0} .ftbl tr.flux-lost .fid{color:#ef6c00;font-weight:600}
+.ftbl tr.flux-subfloor .fid{color:#9aa3af;font-style:italic}
+.ftnote{color:var(--muted);font-size:10.5px;margin-top:6px;max-width:340px;line-height:1.35}
+.omicswrap{display:flex;flex-direction:column;gap:14px} .omicswrap svg{max-width:400px}
+.otbl{width:100%}
+.otgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:22px}
+.otcol{min-width:0}
+.oth{font-size:11.5px;font-weight:600;margin-bottom:3px} .otn{color:var(--muted);font-weight:400}
+.otbl table{width:100%;table-layout:fixed} .otbl thead th{padding:4px 8px;font-size:9.5px}
+.otbl tbody td{padding:3px 8px;border-bottom:1px solid #f4f5f7;font-size:11px}
+.otbl th.ohgene,.ogene{width:auto} .otbl th.ohnum,.onum,.ofc{width:62px}
+.ogene{overflow:hidden} .ogene b{font-family:"SF Mono",ui-monospace,Menlo,monospace;font-size:11px}
+.odesc{display:block;color:var(--muted);font-size:9.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.onum{font-family:"SF Mono",ui-monospace,Menlo,monospace;text-align:right;white-space:nowrap;color:#374151}
+.ofc{font-family:"SF Mono",ui-monospace,Menlo,monospace;text-align:right;white-space:nowrap;font-weight:600}
+.otmore,.otnone{color:var(--muted);font-size:10px;margin-top:3px} .otnone{font-style:italic}
+.ploterr{color:var(--muted);font-size:11px} dl{display:grid;grid-template-columns:max-content 1fr;gap:.2rem 1rem;margin:0} dt{color:#cbd5e1}
+.var{font-size:11px;color:var(--muted);margin-top:4px} .var.varflag{color:#ef6c00;font-weight:600}
+.simhealth .shbody{padding:12px 18px;font-size:13.5px}
+.simhealth.ok{border-left:4px solid #1a7f37} .simhealth.ok .shbody{color:#14532d}
+.simhealth.warn{border-left:4px solid #ef6c00;background:#fff8f0} .simhealth.warn .shbody{color:#7c4a03}
+.stat-callout{border-left:4px solid #ef6c00} .stat-callout .statbody{padding:12px 18px;font-size:13px;color:#374151;line-height:1.5}
+.statbody code{background:#fff3e0;padding:1px 5px;border-radius:4px;font-size:12px}
+.findings{margin:0;padding:14px 34px;color:#374151;font-size:13px} footer{color:var(--muted);font-size:12px;padding:0 28px 40px;max-width:1100px;margin:0 auto}
+.coverage{border-left:4px solid #6b7280} .covbody{padding:14px 18px}
+.cov-lede{margin:0 0 12px;font-size:13px;color:#374151;line-height:1.5}
+.covlist{list-style:none;margin:0;padding:0} .covlist li{display:grid;grid-template-columns:20px 220px 1fr;gap:8px;align-items:baseline;padding:6px 0;border-bottom:1px solid #f1f3f5;font-size:12.5px}
+.cov-mark{font-weight:700;text-align:center} .cov-yes .cov-mark{color:#1a7f37} .cov-no .cov-mark{color:#b0b6bd}
+.cov-cat{font-weight:600;color:#1a1d21} .cov-no .cov-cat{color:#6b7280} .cov-detail{color:var(--muted)}
+.cov-tag{margin-left:7px;font-size:10px;font-weight:600;color:#8a93a0;background:#eef0f2;padding:1px 6px;border-radius:999px;vertical-align:middle}
+.cov-fit{color:#7c5a00;background:#fdf3da}
+.cov-invite{margin:12px 0 0;font-size:12.5px;color:#374151;background:#f6f8fa;border:1px dashed var(--line);border-radius:8px;padding:10px 12px;line-height:1.5}
+</style></head><body>
+<header class="top"><h1>Panel screen — designs ranked against a reference arm — report card</h1>
+<div class="sub">model <b>panel of 6 arms · objective objective_titer</b> · 2 stratum(a) over ['medium'] · BH-FDR family per stratum (m = [2, 2]) · reference populated</div>
+<div class="obadge">PASS (partial) &nbsp;·&nbsp; 2 ✓ &nbsp; 0 ≈ &nbsp; 0 ✗ &nbsp; 5 –</div></header>
+<nav class="sticky"><a href='#panel-screen'>Panel screen</a></nav>
+<main><section class='card' id='panel-screen'><div class='head'><h2>Panel screen</h2><div class='chips'><span class='chip' style='background:#1a7f37'>✓ 2 within tol</span><span class='chip' style='background:#ef6c00'>≈ 0 drift</span><span class='chip' style='background:#c62828'>✗ 0 mismatch</span><span class='chip' style='background:#757575'>– 5 ungraded</span></div></div><table><thead><tr><th>axis</th><th>value</th><th>summary</th></tr></thead><tbody><tr class='verdict-ungraded'><td><div class='axhd'><span class='metric'>Stratification declared</span><span class='badge' style='background:#757575'>– ungraded</span></div><div class='how'>The keys defining the testing family. Required, and reported so a reader can see which family each q-value was corrected over (one BH family per stratum, never one across the panel). Informational: this axis never grades.</div><div class='crit'><b>criterion:</b> `strata` keys declared (required)</div></td><td class='val'>1<div class='spread'></div></td><td class='meter'>strata ['medium'] · 2 stratum(a) · 6 arms · reference design 'reference' → medium=medium_a: reference|medium_a, medium=medium_b: reference|medium_b</td></tr><tr class='verdict-ungraded'><td><div class='axhd'><span class='metric'>Objective vs reference arm — medium=medium_a</span><span class='badge' style='background:#757575'>– ungraded</span></div><div class='how'>Best design arm's objective observable as a direction-corrected factor of the reference arm's, both as cell-level means within this stratum. Welch p vs the reference arm, BH-FDR q over the arms of THIS stratum only (m reported). REPORTED against the design target the study declared, never graded: which design wins is a scientific finding, and a card verdict computed from it would fail a screen that ran perfectly and found nothing good.</div><div class='crit'><b>criterion:</b> best arm ≥ 1.2× reference (drift ≥ 1.05×)</div></td><td class='val'>1.731<div class='spread'></div></td><td class='meter'>best strong|medium_a: 1.73× vs reference|medium_a · q = 1.99e-24 · m = 2</td></tr><tr class='verdict-ungraded'><td><div class='axhd'><span class='metric'>Growth cost of the best arm — medium=medium_a</span><span class='badge' style='background:#757575'>– ungraded</span></div><div class='how'>The best arm's growth observable as a fraction of the reference arm's, cell-level means within this stratum, REPORTED against the design target the study declared. Never graded: a growth floor is a biology/design decision, not execution correctness. Reported for the arm the objective axis selected.</div><div class='crit'><b>criterion:</b> growth ≥ 0.85× reference (drift ≥ 0.7×)</div></td><td class='val'>0.6286<div class='spread'></div></td><td class='meter'>strong|medium_a: 0.629× reference|medium_a growth (0.641 vs 1.02)</td></tr><tr class='verdict-within_tol'><td><div class='axhd'><span class='metric'>Ranking resolvable above noise — medium=medium_a</span><span class='badge' style='background:#1a7f37'>✓ within tol</span></div><div class='how'>Between-arm SD of the design arms' objective means divided by the median within-arm SEM, within this stratum; the reference arm is excluded. Graded against a floor supplied by the study — the ONLY graded axis on this card, because resolvability is a property of the screen's execution and replicate count, not of the biology. When it is a mismatch the other two axes are annotated unreadable: the ranking is noise, so a win over the reference cannot be read off it.</div><div class='crit'><b>criterion:</b> between-arm SD ÷ median within-arm SEM ≥ 3 (drift ≥ 2)</div></td><td class='val'>14.05<div class='spread'></div></td><td class='meter'>SD 0.228 ÷ median SEM 0.0162 = 14.05 (2 design arms)</td></tr><tr class='verdict-ungraded'><td><div class='axhd'><span class='metric'>Objective vs reference arm — medium=medium_b</span><span class='badge' style='background:#757575'>– ungraded</span></div><div class='how'>Best design arm's objective observable as a direction-corrected factor of the reference arm's, both as cell-level means within this stratum. Welch p vs the reference arm, BH-FDR q over the arms of THIS stratum only (m reported). REPORTED against the design target the study declared, never graded: which design wins is a scientific finding, and a card verdict computed from it would fail a screen that ran perfectly and found nothing good.</div><div class='crit'><b>criterion:</b> best arm ≥ 1.2× reference (drift ≥ 1.05×)</div></td><td class='val'>1.694<div class='spread'></div></td><td class='meter'>best strong|medium_b: 1.69× vs reference|medium_b · q = 1.02e-15 · m = 2</td></tr><tr class='verdict-ungraded'><td><div class='axhd'><span class='metric'>Growth cost of the best arm — medium=medium_b</span><span class='badge' style='background:#757575'>– ungraded</span></div><div class='how'>The best arm's growth observable as a fraction of the reference arm's, cell-level means within this stratum, REPORTED against the design target the study declared. Never graded: a growth floor is a biology/design decision, not execution correctness. Reported for the arm the objective axis selected.</div><div class='crit'><b>criterion:</b> growth ≥ 0.85× reference (drift ≥ 0.7×)</div></td><td class='val'>0.62<div class='spread'></div></td><td class='meter'>strong|medium_b: 0.62× reference|medium_b growth (0.618 vs 0.997)</td></tr><tr class='verdict-within_tol'><td><div class='axhd'><span class='metric'>Ranking resolvable above noise — medium=medium_b</span><span class='badge' style='background:#1a7f37'>✓ within tol</span></div><div class='how'>Between-arm SD of the design arms' objective means divided by the median within-arm SEM, within this stratum; the reference arm is excluded. Graded against a floor supplied by the study — the ONLY graded axis on this card, because resolvability is a property of the screen's execution and replicate count, not of the biology. When it is a mismatch the other two axes are annotated unreadable: the ranking is noise, so a win over the reference cannot be read off it.</div><div class='crit'><b>criterion:</b> between-arm SD ÷ median within-arm SEM ≥ 3 (drift ≥ 2)</div></td><td class='val'>8.847<div class='spread'></div></td><td class='meter'>SD 0.179 ÷ median SEM 0.0202 = 8.85 (2 design arms)</td></tr></tbody></table></section><section class='card'><div class='head'><h2>Findings</h2></div><ul class='findings'><li>Each stratum is graded on its own: the reference arm is resolved inside the stratum and the BH-FDR family is the arms of that stratum only. Pooling either one across conditions attributes the condition's effect to the design.</li><li>`ranking_resolvable` gates the stratum: if between-arm separation does not exceed within-arm noise, the ranking is noise and the other two axes are reported but ungraded.</li></ul></section></main>
+<footer>Behavioral report card · panel screen (per-stratum ranking).</footer>
+</body></html>

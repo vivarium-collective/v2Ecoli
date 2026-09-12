@@ -1,0 +1,264 @@
+{
+ "schema": "report_card_verdict/v1",
+ "model_ref": "panel of 6 arms \u00b7 objective objective_titer",
+ "reference_model": "reference arm 'reference' (resolved per stratum)",
+ "generated": "",
+ "overall": "within_tol",
+ "groups": {
+  "panel_screen": {
+   "verdict": "within_tol",
+   "axes": [
+    {
+     "id": "panel.strata_declared",
+     "label": "Stratification declared",
+     "verdict": "ungraded",
+     "value": 1,
+     "meter": "strata ['medium'] \u00b7 2 stratum(a) \u00b7 6 arms \u00b7 reference design 'reference' \u2192 medium=medium_a: reference|medium_a, medium=medium_b: reference|medium_b",
+     "detail": {
+      "strata": [
+       "medium"
+      ],
+      "n_strata": 2,
+      "n_arms": 6,
+      "reference_design": "reference",
+      "reference_arms": {
+       "medium=medium_a": "reference|medium_a",
+       "medium=medium_b": "reference|medium_b"
+      },
+      "family_sizes": {
+       "medium=medium_a": 2,
+       "medium=medium_b": 2
+      }
+     }
+    },
+    {
+     "id": "panel.medium=medium_a.objective_vs_reference",
+     "label": "Objective vs reference arm \u2014 medium=medium_a",
+     "verdict": "ungraded",
+     "value": 1.7312451447831816,
+     "meter": "best strong|medium_a: 1.73\u00d7 vs reference|medium_a \u00b7 q = 1.99e-24 \u00b7 m = 2",
+     "detail": {
+      "best_arm": "strong|medium_a",
+      "best_design": "strong",
+      "improvement": 1.7312451447831816,
+      "ratio": 1.7312451447831816,
+      "mean": 1.73426,
+      "sem": 0.015580701435857542,
+      "n": 16,
+      "reference_arm": "reference|medium_a",
+      "reference_mean": 1.0017414375,
+      "reference_n": 16,
+      "p": 9.973201837124207e-25,
+      "q": 1.9946403674248413e-24,
+      "higher_is_better": true,
+      "design_target": {
+       "good": 1.2,
+       "warn": 1.05
+      },
+      "family_size": 2,
+      "excluded_arms": [],
+      "arms": [
+       {
+        "arm": "reference|medium_a",
+        "design": "reference",
+        "mean": 1.0017414375,
+        "sem": 0.010388657431693126,
+        "n": 16,
+        "ratio": 1.0,
+        "improvement": 1.0,
+        "p": null,
+        "q": null,
+        "in_family": false,
+        "is_reference": true
+       },
+       {
+        "arm": "moderate|medium_a",
+        "design": "moderate",
+        "mean": 1.412178875,
+        "sem": 0.016844165196954457,
+        "n": 16,
+        "ratio": 1.4097239288855912,
+        "improvement": 1.4097239288855912,
+        "p": 2.9578763901625246e-17,
+        "q": 2.9578763901625246e-17,
+        "in_family": true,
+        "is_reference": false
+       },
+       {
+        "arm": "strong|medium_a",
+        "design": "strong",
+        "mean": 1.73426,
+        "sem": 0.015580701435857542,
+        "n": 16,
+        "ratio": 1.7312451447831816,
+        "improvement": 1.7312451447831816,
+        "p": 9.973201837124207e-25,
+        "q": 1.9946403674248413e-24,
+        "in_family": true,
+        "is_reference": false
+       }
+      ],
+      "graded": false,
+      "reported_verdict": "within_tol"
+     }
+    },
+    {
+     "id": "panel.medium=medium_a.growth_cost",
+     "label": "Growth cost of the best arm \u2014 medium=medium_a",
+     "verdict": "ungraded",
+     "value": 0.628590135172893,
+     "meter": "strong|medium_a: 0.629\u00d7 reference|medium_a growth (0.641 vs 1.02)",
+     "detail": {
+      "best_arm": "strong|medium_a",
+      "growth_ratio": 0.628590135172893,
+      "growth_mean": 0.64060925,
+      "growth_sem": 0.008868289046512864,
+      "growth_n": 16,
+      "reference_arm": "reference|medium_a",
+      "design_target": {
+       "good": 0.85,
+       "warn": 0.7
+      },
+      "graded": false,
+      "reported_verdict": "mismatch"
+     }
+    },
+    {
+     "id": "panel.medium=medium_a.ranking_resolvable",
+     "label": "Ranking resolvable above noise \u2014 medium=medium_a",
+     "verdict": "within_tol",
+     "value": 14.047598107881013,
+     "meter": "SD 0.228 \u00f7 median SEM 0.0162 = 14.05 (2 design arms)",
+     "detail": {
+      "n_design_arms": 2,
+      "reference_arm": "reference|medium_a",
+      "reference_excluded": true,
+      "arms": [
+       "moderate|medium_a",
+       "strong|medium_a"
+      ],
+      "sd_between": 0.22774574757969204,
+      "median_sem": 0.016212433316406,
+      "n_ranked": 2,
+      "ratio": 14.047598107881013,
+      "graded": true
+     }
+    },
+    {
+     "id": "panel.medium=medium_b.objective_vs_reference",
+     "label": "Objective vs reference arm \u2014 medium=medium_b",
+     "verdict": "ungraded",
+     "value": 1.6938497492740925,
+     "meter": "best strong|medium_b: 1.69\u00d7 vs reference|medium_b \u00b7 q = 1.02e-15 \u00b7 m = 2",
+     "detail": {
+      "best_arm": "strong|medium_b",
+      "best_design": "strong",
+      "improvement": 1.6938497492740925,
+      "ratio": 1.6938497492740925,
+      "mean": 1.6909301875,
+      "sem": 0.02529615636320709,
+      "n": 16,
+      "reference_arm": "reference|medium_b",
+      "reference_mean": 0.998276375,
+      "reference_n": 16,
+      "p": 1.0219758631767672e-15,
+      "q": 1.0219758631767672e-15,
+      "higher_is_better": true,
+      "design_target": {
+       "good": 1.2,
+       "warn": 1.05
+      },
+      "family_size": 2,
+      "excluded_arms": [],
+      "arms": [
+       {
+        "arm": "reference|medium_b",
+        "design": "reference",
+        "mean": 0.998276375,
+        "sem": 0.007928140512795234,
+        "n": 16,
+        "ratio": 1.0,
+        "improvement": 1.0,
+        "p": null,
+        "q": null,
+        "in_family": false,
+        "is_reference": true
+       },
+       {
+        "arm": "moderate|medium_b",
+        "design": "moderate",
+        "mean": 1.4383275625,
+        "sem": 0.015084007415960103,
+        "n": 16,
+        "ratio": 1.4408109803259643,
+        "improvement": 1.4408109803259643,
+        "p": 2.505589127462579e-18,
+        "q": 5.011178254925158e-18,
+        "in_family": true,
+        "is_reference": false
+       },
+       {
+        "arm": "strong|medium_b",
+        "design": "strong",
+        "mean": 1.6909301875,
+        "sem": 0.02529615636320709,
+        "n": 16,
+        "ratio": 1.6938497492740925,
+        "improvement": 1.6938497492740925,
+        "p": 1.0219758631767672e-15,
+        "q": 1.0219758631767672e-15,
+        "in_family": true,
+        "is_reference": false
+       }
+      ],
+      "graded": false,
+      "reported_verdict": "within_tol"
+     }
+    },
+    {
+     "id": "panel.medium=medium_b.growth_cost",
+     "label": "Growth cost of the best arm \u2014 medium=medium_b",
+     "verdict": "ungraded",
+     "value": 0.6200455585435309,
+     "meter": "strong|medium_b: 0.62\u00d7 reference|medium_b growth (0.618 vs 0.997)",
+     "detail": {
+      "best_arm": "strong|medium_b",
+      "growth_ratio": 0.6200455585435309,
+      "growth_mean": 0.61816,
+      "growth_sem": 0.00913192154523534,
+      "growth_n": 16,
+      "reference_arm": "reference|medium_b",
+      "design_target": {
+       "good": 0.85,
+       "warn": 0.7
+      },
+      "graded": false,
+      "reported_verdict": "mismatch"
+     }
+    },
+    {
+     "id": "panel.medium=medium_b.ranking_resolvable",
+     "label": "Ranking resolvable above noise \u2014 medium=medium_b",
+     "verdict": "within_tol",
+     "value": 8.846770907609544,
+     "meter": "SD 0.179 \u00f7 median SEM 0.0202 = 8.85 (2 design arms)",
+     "detail": {
+      "n_design_arms": 2,
+      "reference_arm": "reference|medium_b",
+      "reference_excluded": true,
+      "arms": [
+       "moderate|medium_b",
+       "strong|medium_b"
+      ],
+      "sd_between": 0.1786170290830225,
+      "median_sem": 0.020190081889583596,
+      "n_ranked": 2,
+      "ratio": 8.846770907609544,
+      "graded": true
+     }
+    }
+   ]
+  }
+ },
+ "title": "Panel screen \u2014 designs ranked against a reference arm"
+}
