@@ -33,6 +33,7 @@ Outputs:
 """
 
 import time
+import warnings
 
 import numpy as np
 
@@ -87,23 +88,160 @@ def balance_translation_efficiencies(monomer_ids, efficiencies, groups):
     return efficiencies
 
 
+def _combine_geometric(factors):
+    """Geometric mean — the default. Several cistrons of one operon are repeated
+    observations of ONE transcript on a multiplicative scale, so the natural
+    pooling is the mean of their logs. Direction-symmetric, and a zero factor
+    (a knockout) survives: gm(0, x) == 0.
+    """
+    factors = np.asarray(factors, dtype=float)
+    if np.any(factors == 0.0):
+        return 0.0
+    if np.any(factors < 0.0):
+        raise ValueError(f"negative adjustment factor in {list(factors)}")
+    return float(np.exp(np.mean(np.log(factors))))
+
+
+def _combine_max_guarded(factors):
+    """`max`, refusing the inputs on which `max` is not meaningful.
+
+    Provided for faithful reproduction of upstream work that used a plain
+    ``max``. ⛔ Bare ``max`` is directionally asymmetric — for up-regulation it
+    takes the most extreme observation, for down-regulation the LEAST, and a
+    knockout is erased outright by any co-located up-regulation
+    (``max(0.0, 3.0) == 3.0``). This raises on exactly those inputs instead of
+    silently returning one, so "faithful" cannot quietly become "wrong".
+    """
+    factors = np.asarray(factors, dtype=float)
+    if np.any(factors < 0.0):
+        raise ValueError(f"negative adjustment factor in {list(factors)}")
+    up, down = np.any(factors > 1.0), np.any(factors < 1.0)
+    if up and down:
+        raise ValueError(
+            f"max_guarded refuses a direction-discordant transcription unit: "
+            f"{list(factors)}. `max` would return the up-regulated factor and "
+            f"discard the down-regulated one (a 0.0 knockout included). Use the "
+            f"default 'geometric' combiner, or resolve the disagreement upstream."
+        )
+    return float(np.max(factors))
+
+
+#: How several adjusted cistrons on ONE transcription unit are combined into the
+#: single factor that TU's expression is multiplied by. This is a modelling
+#: choice, not an implementation detail — see the two functions above.
+COMBINERS = {
+    "geometric": _combine_geometric,
+    "max_guarded": _combine_max_guarded,
+}
+DEFAULT_COMBINER = "geometric"
+
+
 def adjust_rna_expression(
     rna_ids, cistron_ids, rna_expression, adjustments, cistron_to_rna_indexes,
+    combine=DEFAULT_COMBINER,
 ):
-    """Apply per-cistron adjustments to RNA expression, renormalize.
+    """Apply adjustments to RNA expression, renormalize.
+
+    Each key is a cistron id, or a transcription-unit id. Every adjusted cistron
+    resolves to the TU(s) carrying it, the factors landing on one TU are combined
+    ONCE, and the whole vector is renormalized to sum to 1.
+
+    ⛔ **Several adjusted cistrons on one TU are combined, not compounded.** The
+    cistrons of an operon are carried by the *same molecule*, so several large
+    measurements across one operon are several observations of one transcript,
+    not several multiplicative ones. Multiplying per cistron — what this function
+    used to do — takes the product, which on a differential-expression-derived
+    table can exceed the intended factor by many orders of magnitude. Because the
+    vector is renormalized immediately afterwards it stays a valid distribution
+    and **raises nothing**: the result is a silently different organism, not an
+    error.
+
+    ``combine`` selects how (see :data:`COMBINERS`); the default geometric mean
+    is direction-symmetric and preserves a knockout.
+
+    ⚠ Scoped claim: the stock ``rna_expression_adjustments`` table is ~10
+    hand-curated single-cistron entries with no shared TU, so for THAT table
+    every combiner agrees with the product and existing builds are unchanged.
+    ⛔ Do not generalise that to the sibling adjustment tables — the stock
+    ``rna_deg_rates_adjustments`` table DOES contain two cistrons sharing two
+    TUs, and :func:`adjust_rna_deg_rates` still compounds them.
 
     Args:
         rna_ids: RNA IDs aligned with ``rna_expression``.
         cistron_ids: cistron IDs.
         rna_expression: numpy array of basal RNA expression (mutated in place).
-        adjustments: dict {cistron_id: adjustment_factor}.
+        adjustments: dict {cistron_id or rna_id: adjustment_factor}.
         cistron_to_rna_indexes: dict {cistron_id: array of RNA indexes}.
+        combine: key into :data:`COMBINERS`.
     Returns:
-        the adjusted (still-normalized) numpy array.
+        the adjusted (still-normalized) numpy array — the same object passed in.
+    Raises:
+        ValueError: an unknown id, an unknown combiner, or input the chosen
+            combiner refuses.
     """
-    for cistron_id, adjustment in adjustments.items():
-        rna_indexes = cistron_to_rna_indexes[cistron_id]
-        rna_expression[rna_indexes] = rna_expression[rna_indexes] * adjustment
+    try:
+        combiner = COMBINERS[combine]
+    except KeyError:
+        raise ValueError(
+            f"unknown combiner {combine!r}; expected one of {sorted(COMBINERS)}"
+        ) from None
+
+    # An id is looked up in the SAME mapping it will be fetched from, so the
+    # function does not silently depend on the caller having built
+    # `cistron_to_rna_indexes` from exactly `cistron_ids`.
+    known_cistrons = set(map(str, cistron_to_rna_indexes))
+
+    # RNA ids carry a compartment suffix (`EG10054_RNA[c]`). Accept the suffixed
+    # form as a TU address; `setdefault` so a stripped alias can never displace
+    # an exact id.
+    # ⚠ A BARE id is resolved as a CISTRON first, and for a monocistronic TU the
+    # two spellings coincide — so a bare id may reach every TU carrying that
+    # cistron, not one. Address a TU by its suffixed id when you mean the TU.
+    rna_index_by_id = {}
+    for i, rna_id in enumerate(rna_ids):
+        rna_id = str(rna_id)
+        rna_index_by_id.setdefault(rna_id, i)
+    for i, rna_id in enumerate(rna_ids):
+        rna_id = str(rna_id)
+        if rna_id.endswith("]") and "[" in rna_id:
+            rna_index_by_id.setdefault(rna_id[: rna_id.rindex("[")], i)
+
+    factors_by_index: dict[int, list[float]] = {}
+    for mol_id, adjustment in adjustments.items():
+        mol_id = str(mol_id)
+        if mol_id in known_cistrons:
+            rna_indexes = cistron_to_rna_indexes[mol_id]
+        elif mol_id in rna_index_by_id:
+            rna_indexes = [rna_index_by_id[mol_id]]
+        else:
+            raise ValueError(
+                f"RNA expression adjustment {mol_id!r} is neither a known "
+                "cistron id nor a known RNA id."
+            )
+        # `unique`: one cistron listing an index twice is ONE observation.
+        for rna_index in np.unique(np.atleast_1d(rna_indexes)):
+            factors_by_index.setdefault(int(rna_index), []).append(adjustment)
+
+    shared = {i: f for i, f in factors_by_index.items() if len(f) > 1}
+    if shared:
+        # Loud on purpose, and a warning rather than a print so a caller can
+        # assert on it: which cistrons share a TU is a property of the operon
+        # structure, not of the adjustments table, so an author cannot see this
+        # coming from their own file.
+        warnings.warn(
+            f"{len(shared)} of {len(factors_by_index)} adjusted transcription "
+            f"unit(s) carry more than one adjusted cistron; combining each with "
+            f"'{combine}' rather than compounding.",
+            stacklevel=2,
+        )
+
+    for rna_index, factors in factors_by_index.items():
+        # A single observation is passed through untouched rather than round-
+        # tripped through the combiner: exp(log(f)) != f in floating point, and
+        # the regression contract for tables with no shared TU is BIT-identity,
+        # not approximate agreement.
+        factor = factors[0] if len(factors) == 1 else combiner(factors)
+        rna_expression[rna_index] = rna_expression[rna_index] * factor
     rna_expression /= rna_expression.sum()
     return rna_expression
 
@@ -205,6 +343,9 @@ class InputAdjustmentsStep(Step):
 
     config_schema = {
         'debug': {'_type': 'boolean', '_default': False},
+        # How co-located adjusted cistrons combine; see COMBINERS.
+        'rna_expression_adjustment_combine': {
+            '_type': 'string', '_default': DEFAULT_COMBINER},
     }
 
     def inputs(self):
@@ -255,6 +396,8 @@ class InputAdjustmentsStep(Step):
             transcription.rna_expression['basal'].copy(),
             dict(adjustments.rna_expression_adjustments),
             cistron_to_rna_indexes,
+            combine=self.config.get(
+                'rna_expression_adjustment_combine', DEFAULT_COMBINER),
         )
         transcription.rna_expression['basal'][:] = new_rna_expr
 
