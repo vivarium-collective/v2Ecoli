@@ -20,6 +20,7 @@ from v2ecoli.processes.parca.steps.step_06_promoter_binding      import Promoter
 from v2ecoli.processes.parca.steps.step_07_adjust_promoters      import AdjustPromotersStep
 from v2ecoli.processes.parca.steps.step_08_set_conditions        import SetConditionsStep
 from v2ecoli.processes.parca.steps.step_09_final_adjustments     import FinalAdjustmentsStep
+from v2ecoli.processes.parca.steps.step_10_write_sim_input       import SimInputWriteStep
 
 
 ALL_STEP_CLASSES = {
@@ -32,6 +33,11 @@ ALL_STEP_CLASSES = {
     'AdjustPromotersStep':  AdjustPromotersStep,
     'SetConditionsStep':    SetConditionsStep,
     'FinalAdjustmentsStep': FinalAdjustmentsStep,
+    # Optional persist step -- registered so a ParCa document can reference it by
+    # name, but deliberately NOT in STEP_ORDER (the default fit chain), so a plain
+    # ParCa run is unchanged. Append it to a document to have ParCa write its
+    # cache bundle (the pbg-native one-document run, sms-ecoli #166).
+    'SimInputWriteStep':    SimInputWriteStep,
 }
 
 
@@ -40,4 +46,5 @@ __all__ = [
     'InitializeStep', 'InputAdjustmentsStep', 'BasalSpecsStep',
     'TfConditionSpecsStep', 'FitConditionStep', 'PromoterBindingStep',
     'AdjustPromotersStep', 'SetConditionsStep', 'FinalAdjustmentsStep',
+    'SimInputWriteStep',
 ]
