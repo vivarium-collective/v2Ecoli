@@ -133,7 +133,23 @@ def _plots(cells):
         frac[(v, s, g)] = {"protein": float(np.mean(prot / dry)),
                            "rRNA": float(np.mean(rrna / dry)),
                            "DNA": float(np.mean(dna / dry))}
-        div_rows.append((v, s, g, dry[0], dry[-1], t[-1]))
+        # ⛔ A CYCLE DURATION IS ``t[-1] - t[0]``, NEVER ``t[-1]``.
+        # ``time`` is written under two different conventions depending on how
+        # the sweep was produced, and only the DIFFERENCE is correct under both:
+        #   * one continuous invocation -> an ABSOLUTE clock that keeps rising
+        #     across generations (``run_comparison_ensemble.py`` refuses
+        #     ``--initial-generation > 1`` on the wrapped arm, so that arm is
+        #     always this case).
+        #   * chained/resumed invocations (``--initial-generation`` /
+        #     ``--daughter-state-out``) -> an INVOCATION-RELATIVE clock that
+        #     restarts near zero.
+        # ``t[-1]`` is a span only when the generation's clock happened to start
+        # at ~0 -- true for the first generation of an invocation, and never
+        # true past generation 1 on an absolute clock.
+        # `[m@an 8-generation two-arm campaign]` the absolute arm reported
+        # 43/88/132/178/230/288/357/424 as "cycles" where the true spans are
+        # 42/44/43/45/51/57/68/66.
+        div_rows.append((v, s, g, dry[0], dry[-1], t[-1] - t[0]))
 
     fig, ax = plt.subplots(figsize=(9, 4.2))
     for (v, s) in sorted({(v, s) for v, s, g in cells}):
@@ -144,12 +160,13 @@ def _plots(cells):
                 continue
             t, dry = a[:, 0], a[:, 1]
             label = (f"seed {s}" + (f" / v{v}" if len(variants) > 1 else "")) if first else None
-            ax.plot((t + offset) / 60.0, dry,
+            # Rebase each generation onto its own start -- see the note above.
+            ax.plot((t - t[0] + offset) / 60.0, dry,
                     color=_SEED_COLORS[seeds.index(s) % len(_SEED_COLORS)],
                     ls=_VARIANT_STYLES[variants.index(v) % len(_VARIANT_STYLES)],
                     lw=1.4, label=label)
             ax.axvline(offset / 60.0, color="#9ca3af", ls=":", lw=0.7)
-            offset += t[-1]
+            offset += t[-1] - t[0]
             first = False
     ax.set_xlabel("time across lineage (min)")
     ax.set_ylabel("dry mass (fg)")
