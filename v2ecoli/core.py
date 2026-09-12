@@ -35,6 +35,7 @@ from v2ecoli.types import ECOLI_TYPES
 __all__ = [
     "build_core",
     "register_ecoli_core",
+    "register_ecoli_processes",
     "load_cache_bundle",
     "save_cache",
     "save_sim_input",
@@ -122,7 +123,61 @@ def register_ecoli_core(core):
         core.register_links(REPORT_CARD_STEPS)
     except Exception:  # noqa: BLE001 — never let card registration break build_core
         pass
+    # v2ecoli's own WCM process/step classes as first-class Registry entries.
+    # The composites instantiate these DIRECTLY (the partitioned WCM
+    # architecture), so without this they never enter core.link_registry —
+    # used everywhere yet invisible in the dashboard Registry.
+    try:
+        register_ecoli_processes(core)
+    except Exception:  # noqa: BLE001 — never let it break build_core
+        pass
     return core
+
+
+def register_ecoli_processes(core):
+    """Register v2ecoli's own WCM process/step classes (``v2ecoli.processes.*``)
+    onto ``core`` by class name, so they are first-class, discoverable Registry
+    entries — not merely instantiated inside the composites. The partitioned WCM
+    architecture builds these processes DIRECTLY (import + instantiate), which
+    never enters the core's name registry, so the dashboard Registry couldn't see
+    them even though every baseline run uses them.
+
+    Filters to process-bigraph-native classes (``process_bigraph.Process`` /
+    ``Step`` subclasses — the ``EcoliStep`` ports); vivarium-core Steps and
+    unrelated classes are skipped. Best-effort + idempotent: a module that fails
+    to import, or a class that fails to register, is skipped — never fatal to
+    build_core. Heavy subpackages (e.g. ``v2ecoli.processes.parca``) are not
+    descended into. Returns the number registered.
+    """
+    import importlib
+    import inspect
+    import pkgutil
+
+    import process_bigraph as _pb
+
+    try:
+        pkg = importlib.import_module("v2ecoli.processes")
+    except Exception:
+        return 0
+    n = 0
+    for modinfo in pkgutil.iter_modules(pkg.__path__):
+        if modinfo.ispkg:
+            continue
+        try:
+            mod = importlib.import_module(f"v2ecoli.processes.{modinfo.name}")
+        except Exception:
+            continue
+        for name, obj in vars(mod).items():
+            if not (inspect.isclass(obj) and obj.__module__ == mod.__name__):
+                continue
+            if obj in (_pb.Process, _pb.Step) or not issubclass(obj, (_pb.Process, _pb.Step)):
+                continue
+            try:
+                core.register_link(name, obj)
+                n += 1
+            except Exception:
+                pass
+    return n
 
 
 def build_core():
