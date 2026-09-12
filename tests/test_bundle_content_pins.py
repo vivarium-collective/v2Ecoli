@@ -37,7 +37,10 @@ EXPECTED_SHA256 = {
     # (len(condition_defs) + 2*len(tf_condition)); pin them so a data change is
     # caught here rather than silently shifting graded references downstream.
     "condition__condition_defs": "5d71324e95ef9794f130667e2d033539a3ffc7c747c5b5f7d10d5476640149cd",
-    "condition__media_recipes": "6501ea7880a2906f8cd04e5d3010e12d042efe0da653f88e08d182c3cb46b7cb",
+    # ecoli-sources f76dd55b (#18, 2026-09-10): minimal_plus_tryptophan became the
+    # finite MIX0-57 x0.9 + TRP_supplement x0.1 recipe (was TRP [Infinity]) --
+    # a deliberate data change, matching the vEcoli-private reference.
+    "condition__media_recipes": "7f144f3c6498ef09c169894f0ef83f99018ed7c67fcbf45947e774b7daa51db8",
     "condition__tf_condition": "fbcfbefdcffde74a380b13c1cf0b4c7d2cab28b312a7cb7b841459bc18460099",
     # v2ecoli local overrides (diverged biology, must win):
     "equilibrium_reactions": "836a0acb5bb347c474e7cfc63ee3599a91baa35d7bb7e9b4da45b0f09933080a",

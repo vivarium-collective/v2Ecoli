@@ -324,9 +324,13 @@ NON_CARRIED_ROOT_KEYS = frozenset({
     # ``process``/``listeners`` as re-derived node stores): every Requester
     # overwrites its own ``request[<process>]`` each tick and the Allocator
     # writes ``allocate`` from whatever ``request`` holds. Carrying the mother's
-    # snapshot seeds the daughter's first tick with the MOTHER's full-size
-    # demands for every process, so the Allocator partitions a half-size cell
-    # against stale requests (sims 943/944/945, 2026-09-10; v2ecoli#769).
+    # snapshot forward seeds the daughter's first tick with the MOTHER's requests
+    # for every process -- including ones that do not request on that tick -- so
+    # the Allocator partitions a half-size cell against full-size, stale demands.
+    # Measured 2026-09-10 on the first #765 images (sims 943/944, 898's shape):
+    # both lineages died in generation 1 within the first ticks after division,
+    # ``NegativeCountsError ... partitioned_counts`` and ``Failed to meet
+    # molecule limits with ppGpp reactions``; 898 (pre-#765) ran 5 generations.
     'request', 'allocate',
 })
 

@@ -163,7 +163,17 @@ class _MultiseedCollapseMixin:
         conn: DuckDBPyConnection,
         columns=None,
     ):
-        """Fetch raw per-seed rows and collapse to one row per time."""
+        """Collapse to one row per time, streaming one seed at a time.
+
+        The cross-seed collapse is a pure element-wise SUM per shared ``time``
+        (:func:`collapse_cross_seed`), which is associative and commutative
+        across seeds.  So instead of loading every seed's rows — including the
+        wide ``DOUBLE[]`` list columns — into one ``.df()`` (the 78 GB /
+        112.8 GB peak that killed the multiseed Omics-Viewer upload on a 10×10
+        sweep, #786), we read each seed on its own and accumulate the running
+        collapse.  Peak resident stays at one seed's rows plus the
+        one-row-per-time accumulator.
+        """
         if columns is None:
             # Fallback: should not happen in practice (analyze always passes
             # explicit columns), but guard against bare calls.
@@ -171,15 +181,51 @@ class _MultiseedCollapseMixin:
                 "_MultiseedCollapseMixin._do_read_outputs requires explicit columns"
             )
 
-        # Build the same SQL used by the single-scale read_outputs — but do NOT
-        # apply groupby.sum() here; collapse_cross_seed handles aggregation.
-        query_sql = (
-            f"SELECT {','.join(columns)}, global_time AS time"
-            f" FROM ({history_sql})"
-            f" ORDER BY time"
-        )
-        raw_df = conn.sql(query_sql).df()
-        return collapse_cross_seed(raw_df, id_cols=frozenset({"bulk__id"}))
+        id_cols = frozenset({"bulk__id"})
+        # Partition on the seed axis. If there is no seed column (a synthetic or
+        # narrowed history), there is nothing to stream over — one group.
+        if "lineage_seed" in available_columns(conn, history_sql):
+            seeds = [
+                r[0] for r in conn.sql(
+                    f"SELECT DISTINCT lineage_seed FROM ({history_sql})"
+                    f" ORDER BY lineage_seed"
+                ).fetchall()
+            ]
+        else:
+            seeds = [None]
+
+        def _read_collapsed(where_seed):
+            seed_sql = (
+                history_sql if where_seed is None
+                else f"SELECT * FROM ({history_sql}) WHERE lineage_seed = {where_seed}"
+            )
+            # Same SQL the single-scale read_outputs builds — no groupby.sum()
+            # here; collapse_cross_seed does the aggregation.
+            query_sql = (
+                f"SELECT {','.join(columns)}, global_time AS time"
+                f" FROM ({seed_sql})"
+                f" ORDER BY time"
+            )
+            return collapse_cross_seed(conn.sql(query_sql).df(), id_cols=id_cols)
+
+        accumulated = None
+        for seed in seeds:
+            seed_collapsed = _read_collapsed(seed)
+            if accumulated is None:
+                accumulated = seed_collapsed
+                continue
+            # Sum-of-sums: concatenate the two already-per-time-collapsed frames
+            # and re-run the identical collapse, so the incremental step reuses
+            # the exact aggregation primitive rather than a parallel reduction
+            # that could drift from it.
+            accumulated = collapse_cross_seed(
+                pd.concat([accumulated, seed_collapsed], ignore_index=True),
+                id_cols=id_cols,
+            )
+
+        if accumulated is None:  # empty history (no seeds) — preserve old shape
+            return _read_collapsed(None)
+        return accumulated
 
 
 # ---------------------------------------------------------------------------

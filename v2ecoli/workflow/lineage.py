@@ -283,6 +283,17 @@ class LineageProcess(Process):
         "experiment_id": {"_type": "string", "_default": "default"},
         "out_dir": {"_type": "string", "_default": "out/workflow"},
         "max_duration_per_gen": {"_type": "float", "_default": 3600.0},
+        # How often (simulated seconds) _run_until_division looks for a division
+        # while running a single-window generation (the LineageStep / Nextflow
+        # path, where ``interval == max_duration_per_gen``). Without it the inner
+        # composite ran the WHOLE window after the mother divided -- both
+        # daughters kept simulating and the next founder was daughter "0" aged
+        # (window - division time) past its birth (sim 955: division at 2,528 s,
+        # ``_gen_elapsed`` booked 1,072 s = 3,600 - 2,528). With it a generation
+        # ends within one slice of the division, like the tick-driven chain path.
+        # The residual overshoot is bounded by this value; ``time_step`` removes
+        # it at the cost of one composite.run() call per tick.
+        "division_poll_interval": {"_type": "float", "_default": 10.0},
         "time_step": {"_type": "float", "_default": 1.0},
         "media": {"_type": "string", "_default": "minimal"},
         # Gate 1b / v2ecoli#693: seeds sharing a cache_dir share a FOUNDER cell,
@@ -660,11 +671,19 @@ class LineageProcess(Process):
                     f"downgrade to warn-and-skip."
                 )
         if not view:
-            _warn_static(owner=self, site="_emit_xarray", message=
-                "LineageProcess: xarray view has no leaves present in "
-                "composite state; skipping xarray emission."
-            )
-            self._xarray_pending = False
+            # This tick's composite state has no declared KPI leaves yet. The
+            # docstring's contract is to open "on the first POPULATED tick", so
+            # do NOT give up the generation here: leave _xarray_pending True and
+            # return, so a later populated tick in this same generation opens the
+            # emitter. The old code set _xarray_pending = False on the FIRST empty
+            # tick, abandoning the whole generation even when later ticks would
+            # populate -- and abandoning a generation writes NO group for it,
+            # which breaks the NEXT generation's _check_group linkage ("Missing
+            # path from previous generation"). A generation that stays empty for
+            # ALL ticks is still caught, loudly, by _assert_generation_emitted
+            # (0 populated emits) at this generation's own end -- not by a cryptic
+            # crash one generation later. (Contributing fix to the multi-seed-gang
+            # #777 residual; not on its own the completion fix.)
             return
         output_metadata = extract_output_metadata_from_state(wrapped, view)
 
@@ -692,18 +711,50 @@ class LineageProcess(Process):
             "max_duration": float(self.config["max_duration_per_gen"]),
         }
         self._xarray_view = view
-        self._xarray_em = _build_emitter(
-            core=self._core,
-            store_path=self._xarray_store,
-            view=view,
-            metadata_base=metadata_base,
-            generation=self._generation,
-            agent_id=self._agent_id,
-            buffer_size=buf,
-            output_metadata=output_metadata,
-            writer=writer,
-            predicate=predicate,
-        )
+        try:
+            self._xarray_em = _build_emitter(
+                core=self._core,
+                store_path=self._xarray_store,
+                view=view,
+                metadata_base=metadata_base,
+                generation=self._generation,
+                agent_id=self._agent_id,
+                buffer_size=buf,
+                output_metadata=output_metadata,
+                writer=writer,
+                predicate=predicate,
+            )
+        except Exception as e:
+            # DIAGNOSTIC GUARD (multi-seed-gang #777 residual). A FRESH emitter
+            # open at generation>0 means the single lineage emitter was NOT
+            # carried forward from the previous generation (advance_generation).
+            # The emitter's own _open_store->_check_group then raises a cryptic
+            # zarr "Missing path from previous generation" FileNotFoundError on
+            # the missing prior-gen group. Re-raise with the lineage context so
+            # the exact gen/seed and the two suspected causes are named -- turning
+            # the next gang failure into a precise diagnostic instead of another
+            # opaque _check_group crash. (A fresh open that SUCCEEDS at gen>0 --
+            # e.g. a legitimate checkpoint resume where the prior gen IS on disk
+            # -- is untouched; only a FAILED one is annotated.) This NAMES the
+            # residual; it is NOT the completion fix -- the prior gen is either
+            # empty-view-skipped (see the _open guard above, now fixed to wait
+            # for a populated tick) or advance_generation's consolidate was not
+            # durably visible before this gen read consolidated metadata.
+            if int(self._generation) > 0:
+                raise RuntimeError(
+                    f"LineageProcess: opening a FRESH xarray emitter at generation "
+                    f"{self._generation} (lineage_seed "
+                    f"{self.config.get('lineage_seed')}) failed on the previous "
+                    f"generation's linkage: {type(e).__name__}: {e}\n"
+                    f"  A fresh open at generation>0 means the one lineage emitter "
+                    f"was not carried forward across the last division. The prior "
+                    f"generation's consolidated group is missing -- either its emit "
+                    f"view was empty and the generation was skipped, or "
+                    f"advance_generation's consolidate was not durably visible "
+                    f"before this generation read it. This is the multi-seed-gang "
+                    f"residual to #777 (NOT yet the completion fix)."
+                ) from e
+            raise
         self._xarray_pending = False
 
     def _emit_xarray(self, agents_now):
@@ -779,6 +830,45 @@ class LineageProcess(Process):
                 f"LineageProcess: parquet finalize failed for "
                 f"generation {self._generation} ({self._agent_id}): {e}"
             )
+
+    def _finalize_xarray(self) -> None:
+        """Finalize this generation's xarray emitter, however the generation ended.
+
+        ONE XArrayEmitter drives the whole lineage: at each division it is
+        advanced IN PLACE to the next generation's partition -- its trailing
+        buffer is flushed, the division event is marked, and consolidated
+        metadata is written -- so this generation is durably on disk before the
+        next generation opens and passes ``_check_group``. Only the LAST
+        generation ``close()``s it. (Eran's "same emitter, launch a new internal
+        ecoli model per generation" / viva-emitters 0.4.0 advance_generation,
+        #38/#761.)
+
+        Unlike ``_finalize_parquet`` -- independent per-generation emitters,
+        where a failed close is warned and the lineage continues -- a failed
+        xarray advance/close is NOT swallowed. The generations share one store,
+        so an advance that fails to consolidate leaves this generation absent;
+        the old fallback (warn, drop the emitter, rebuild a fresh one next
+        generation) does NOT heal that -- it only DEFERS the failure to the next
+        generation's ``_open_xarray_emitter -> _open_store -> _check_group``,
+        which crashes with a cryptic "Missing path from previous generation"
+        FileNotFoundError that tears down the whole (multi-seed gang) run --
+        reintroducing the exact failure advance_generation exists to prevent,
+        and hiding its own actionable message (e.g. its zero-emit refusal). Fail
+        loud here, at the generation that could not persist.
+        """
+        if self._is_xarray() and self._xarray_em is not None:
+            is_last_gen = (self._generation + 1) >= int(self.config["generations"])
+            if is_last_gen:
+                self._xarray_em.close(success=True)
+                self._xarray_em = None
+            else:
+                from v2ecoli.steps.division import daughter_phylogeny_id
+
+                next_agent_id = daughter_phylogeny_id(self._agent_id)[0]
+                self._xarray_em.advance_generation(
+                    agent_id=next_agent_id, success=True)
+        if self._is_xarray():
+            self._xarray_pending = False
 
     def _assert_generation_emitted(self) -> None:
         """Refuse to close a generation that ran and emitted nothing.
@@ -944,27 +1034,68 @@ class LineageProcess(Process):
         (Run 3's ``field_timeline`` onset at 10,000 s) fired ~2,900 s of simulated
         time early (sim 898, sms-ecoli#166, 2026-09-10).
 
-        Precedence: (1) the division timestamp the Division step stamps onto each
-        NEW daughter agent (``global_time``); (2) the inner composite's own clock,
+        Precedence: (1) a division timestamp stamped onto a NEW daughter agent
+        (``global_time``) -- but only if it ADVANCES the clock. The Division step
+        rebuilds each daughter document from ``baseline()``, whose ``global_time``
+        is ``0.0`` (``ecoli_baseline.py``), so on the real composite the stamp is
+        0.0, not the division time. The first version of this method (#767)
+        returned that 0.0: ``_gen_elapsed`` never advanced, ``lineage_time_offset``
+        stayed 0 across every generation, ``summary.json`` recorded
+        ``duration 0.0`` five times, and Run 3's cumulative 10,000 s dose never
+        fired at all (sims 946/947, 2026-09-10) -- #767 had moved the bug from
+        "3,600 x n, early" to "0, never". (2) The inner composite's own clock,
         which restarts at 0 every generation and stops where the run stopped;
-        (3) the previous value plus ``interval`` -- the old behaviour, kept for a
-        composite that exposes neither (stubs).
+        on the ``LineageStep`` path the run stops at the division signal, so the
+        clock IS the division time (2,528 s on 898/946/947). (3) The previous
+        value plus ``interval`` -- the old behaviour, kept for a composite that
+        exposes neither (stubs).
+
+        With ``_run_until_division`` polling for the division every
+        ``division_poll_interval`` seconds, the inner clock IS the division time
+        to within one slice on every path, so it is consulted FIRST. The
+        daughter stamp is only a fallback for a composite that does not expose a
+        clock: on the single-window path the daughters have been alive for 0-10 s
+        at the slice break, and ``previous`` is 0.0 there (the whole generation is
+        one ``update()`` call), so a stamp-first rule booked those few seconds as
+        the generation and the lineage offset never advanced (sim 958, five
+        generations, cumulative 14,645 s of simulated time and the 10,000 s dose
+        never fired). On the tick-driven path ``previous`` is already near the
+        division when it lands, which is why the same rule was correct there
+        (sim 952 dosed at 10,001 s).
         """
         previous = float(self._gen_elapsed)
-        new_ids = set(agents_now) - set(agents_before or ())
-        for agent_id in sorted(new_ids):
-            agent = agents_now.get(agent_id)
-            stamped = agent.get("global_time") if isinstance(agent, dict) else None
-            if isinstance(stamped, (int, float)) and not isinstance(stamped, bool):
-                return float(stamped)
         state = getattr(self._composite, "state", None)
         clock = state.get("global_time") if isinstance(state, dict) else None
         if isinstance(clock, (int, float)) and not isinstance(clock, bool) and float(clock) > previous:
             return float(clock)
+        new_ids = set(agents_now) - set(agents_before or ())
+        for agent_id in sorted(new_ids):
+            agent = agents_now.get(agent_id)
+            stamped = agent.get("global_time") if isinstance(agent, dict) else None
+            if (
+                isinstance(stamped, (int, float))
+                and not isinstance(stamped, bool)
+                and float(stamped) > previous
+            ):
+                return float(stamped)
         return previous + float(interval)
 
+    def _division_signalled(self, agents_before) -> bool:
+        """True once the inner composite shows a division: the agents map changed
+        (the Division step swapped the mother for daughters) or the surviving
+        cell carries the ``divide`` flag (MarkDPeriod). Read between run slices
+        so a single-window generation stops at the division instead of running
+        both daughters to the end of the window."""
+        state = getattr(self._composite, "state", None)
+        agents_now = (state.get("agents") if isinstance(state, dict) else None) or {}
+        if agents_before and set(agents_now.keys()) != set(agents_before):
+            return True
+        survivor = agents_now.get(self._agent_id) or next(iter(agents_now.values()), {})
+        return isinstance(survivor, dict) and bool(survivor.get("divide"))
+
     def _run_until_division(self, interval):
-        """Run the internal composite for ``interval`` seconds. Returns
+        """Run the internal composite for up to ``interval`` seconds, stopping
+        within one ``division_poll_interval`` slice of a division. Returns
         ``(divided, daughter_cell_data_or_None, final_dry_mass)``."""
         agents = self._composite.state.get("agents") or {}
         agents_before = set(agents.keys())
@@ -993,9 +1124,35 @@ class LineageProcess(Process):
             mother_snapshot = None
 
         divided = False
+        # Run in slices and stop at the first division signal. A single
+        # ``run(interval)`` for the whole window (the LineageStep / Nextflow
+        # path) does NOT stop when the mother divides: the Division step swaps
+        # the mother for two daughters and the composite keeps simulating BOTH
+        # of them to the end of the window. The generation then booked the
+        # surviving daughter's own clock as its duration (sim 955, 2026-09-10:
+        # ``DIVISION at t=2528s`` followed by ``[lineage-debug] t=1072.0`` --
+        # exactly 3,600 - 2,528) and carried that daughter aged 1,072 s past
+        # its birth as the next founder, while the tick-driven chain path ended
+        # the generation at the division. Polling every
+        # ``division_poll_interval`` seconds makes both paths agree: a
+        # generation ends within one slice of the division, the founder is the
+        # daughter at (within one slice of) division, and no compute is spent
+        # on the abandoned sibling.
+        slice_s = float(self.config.get("division_poll_interval") or 10.0)
+        if slice_s <= 0:
+            slice_s = float(interval)
+        remaining = float(interval)
+        # Observability: which signal ended the generation (structural change,
+        # the division flag, or a division-signalling exception). Set at the
+        # raise site below and reported on the ``lineage.division`` event.
         _exc_signal = False
         try:
-            self._composite.run(interval)
+            while remaining > 0:
+                step = min(slice_s, remaining)
+                self._composite.run(step)
+                remaining -= step
+                if self._division_signalled(agents_before):
+                    break
         except Exception as e:
             # A genuine division surfaces as a structural agents-map update that
             # process-bigraph raises through; its message mentions divide/division.
@@ -1131,35 +1288,7 @@ class LineageProcess(Process):
             "lineage.generation.flushing",
             generation=int(self._generation), divided=bool(divided), timed_out=bool(timed_out),
         )
-        if self._is_xarray() and self._xarray_em is not None:
-            # ONE emitter drives the whole lineage: advance it to the next
-            # generation's partition IN PLACE (flush this generation's trailing
-            # buffer, mark the division event, and consolidate — so this
-            # generation is durably on disk before the next opens) instead of
-            # closing and rebuilding a fresh emitter every generation. Only the
-            # LAST generation closes it. This is Eran's "same emitter, launch a
-            # new internal ecoli model per generation" and the viva-emitters
-            # 0.4.0 advance_generation pattern (#38/#761).
-            is_last_gen = (self._generation + 1) >= int(self.config["generations"])
-            try:
-                if is_last_gen:
-                    self._xarray_em.close(success=True)
-                    self._xarray_em = None
-                else:
-                    from v2ecoli.steps.division import daughter_phylogeny_id
-
-                    next_agent_id = daughter_phylogeny_id(self._agent_id)[0]
-                    self._xarray_em.advance_generation(agent_id=next_agent_id, success=True)
-            except Exception as e:
-                _warn_static(owner=self, site="update.xarray_advance", message=
-                    f"LineageProcess: xarray advance/close failed for "
-                    f"generation {self._generation}: {e}"
-                )
-                # Fall back to a fresh emitter next generation (the
-                # pre-advance_generation per-generation-emitter behavior).
-                self._xarray_em = None
-        if self._is_xarray():
-            self._xarray_pending = False
+        self._finalize_xarray()
         if self._is_parquet():
             self._finalize_parquet()
         _flush_s = time.monotonic() - _t_flush

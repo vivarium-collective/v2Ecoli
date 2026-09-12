@@ -737,18 +737,67 @@ class _FakeComposite:
         self.state = state
 
 
-def test_elapsed_after_run_prefers_the_daughters_division_stamp(monkeypatch):
-    """sim 898 / sms-ecoli#166: a generation that divides at 2,528 s inside a
-    3,600 s window must book 2,528 s, not the window -- otherwise
-    lineage_time_offset drifts by (window - division time) per generation and a
-    cumulative-time dose fires early."""
+def test_elapsed_after_run_uses_the_daughter_stamp_when_there_is_no_clock(monkeypatch):
+    """The daughter stamp is the fallback for a composite that exposes no clock.
+    (Its original fixture -- clock 3,600 with daughters stamped 2,528 -- was the
+    pre-#773 window semantics: the inner run carried on past the division to the
+    end of the window. With the slice loop the clock stops AT the division, so
+    that state can no longer occur; the clock-vs-stamp ordering is covered by
+    test_elapsed_after_run_prefers_the_inner_clock_over_a_young_daughter.)"""
     lp, _ = _make(monkeypatch, generations=2)
     lp._gen_elapsed = 0.0
     lp._composite = _FakeComposite({
-        "global_time": 3600.0,
         "agents": {"00": {"global_time": 2528.0}, "01": {"global_time": 2528.0}},
     })
     assert lp._elapsed_after_run(3600.0, {"0"}, lp._composite.state["agents"]) == 2528.0
+
+
+def test_elapsed_after_run_prefers_the_inner_clock_over_a_young_daughter(monkeypatch):
+    """sim 958 (2026-09-10): with the slice loop the daughters are 0-10 s old at
+    the break and ``previous`` is 0.0 on the single-window path (one update() per
+    generation), so a stamp-first rule booked ~2 s per generation, the lineage
+    offset never advanced, and the 10,000 s dose never fired across five
+    generations (cumulative 14,645 s). The inner clock stops at the division and
+    must win."""
+    lp, _ = _make(monkeypatch, generations=2)
+    lp._gen_elapsed = 0.0
+    lp._composite = _FakeComposite({
+        "global_time": 2530.0,
+        "agents": {"00": {"global_time": 2.0}, "01": {"global_time": 2.0}},
+    })
+    assert lp._elapsed_after_run(3600.0, {"0"}, lp._composite.state["agents"]) == 2530.0
+
+
+def test_elapsed_after_run_tick_driven_path_is_unchanged(monkeypatch):
+    """The chain path drives the runner per tick, so ``previous`` is already at
+    the division when it lands and the inner clock agrees with it (sim 952 dosed
+    at cumulative 10,001 s). Reordering the precedence must not move that."""
+    lp, _ = _make(monkeypatch, generations=2)
+    lp._gen_elapsed = 2527.0
+    lp._composite = _FakeComposite({
+        "global_time": 2528.0,
+        "agents": {"00": {"global_time": 1.0}, "01": {"global_time": 1.0}},
+    })
+    assert lp._elapsed_after_run(1.0, {"0"}, lp._composite.state["agents"]) == 2528.0
+
+
+def test_elapsed_after_run_ignores_a_daughter_stamp_that_does_not_advance(monkeypatch):
+    """sims 946/947 (2026-09-10): the Division step rebuilds each daughter from
+    baseline(), whose global_time is 0.0, so the "stamp" on a real daughter is 0.0.
+    Trusting it booked 0 s per generation: lineage_time_offset never advanced and
+    Run 3's cumulative 10,000 s dose never fired. A non-advancing stamp must be
+    ignored in favour of the inner clock, which stops at the division (2,528 s)."""
+    lp, _ = _make(monkeypatch, generations=2)
+    lp._gen_elapsed = 0.0
+    lp._composite = _FakeComposite({
+        "global_time": 2528.0,
+        "agents": {"00": {"global_time": 0.0}, "01": {"global_time": 0.0}},
+    })
+    assert lp._elapsed_after_run(3600.0, {"0"}, lp._composite.state["agents"]) == 2528.0
+    # and with neither a usable stamp nor an advancing clock, the window (stubs)
+    lp._composite = _FakeComposite({"global_time": 0.0,
+                                    "agents": {"00": {"global_time": 0.0}}})
+    assert lp._elapsed_after_run(3600.0, {"0"}, lp._composite.state["agents"]) == 3600.0
 
 
 def test_elapsed_after_run_uses_the_inner_clock_without_daughters(monkeypatch):
@@ -769,3 +818,141 @@ def test_elapsed_after_run_falls_back_to_the_window_for_stubs(monkeypatch):
     # A stale clock (not past what is already booked) never rewinds.
     lp._composite = _FakeComposite({"global_time": 5.0, "agents": {"0": {}}})
     assert lp._elapsed_after_run(10.0, {"0"}, {"0": {}}) == 50.0
+
+
+class _DividingComposite:
+    """A composite whose ``run(dt)`` advances its clock and, once it passes a
+    scripted division time, swaps the mother ``0`` for daughters ``00``/``01``
+    whose own clocks start at 0 and keep advancing -- the shape sim 955 exposed
+    on the single-window path (division at 2,528 s, daughter clock 1,072 s at
+    the 3,600 s window end)."""
+
+    def __init__(self, divide_at=None, mother_id="0"):
+        self.divide_at = divide_at
+        self.state = {
+            "global_time": 0.0,
+            "agents": {mother_id: {"bulk": "M", "unique": {}, "environment": {},
+                                   "boundary": {}, "global_time": 0.0,
+                                   "listeners": {"mass": {"dry_mass": 700.0}}}},
+        }
+        self.calls = []
+        self.divided_at = None
+
+    def run(self, dt):
+        self.calls.append(float(dt))
+        t0 = self.state["global_time"]
+        t1 = t0 + float(dt)
+        self.state["global_time"] = t1
+        agents = self.state["agents"]
+        if self.divided_at is None and self.divide_at is not None and t1 >= self.divide_at:
+            self.divided_at = t1
+            for d in ("00", "01"):
+                agents[d] = {"bulk": "D", "unique": {}, "environment": {}, "boundary": {},
+                             "global_time": 0.0, "listeners": {"mass": {"dry_mass": 350.0}}}
+            agents.pop("0", None)
+        elif self.divided_at is not None:
+            for d in ("00", "01"):
+                agents[d]["global_time"] += float(dt)
+        else:
+            agents["0"]["global_time"] = t1
+
+
+def _real_run_until_division(monkeypatch, lp):
+    monkeypatch.setattr(lp, "_run_until_division",
+                        LineageProcess._run_until_division.__get__(lp))
+
+
+def test_single_window_generation_stops_within_one_slice_of_division(monkeypatch):
+    """sim 955 (2026-09-10): on the LineageStep path one ``run(3600)`` ran both
+    daughters to the window end and booked the daughter's clock (1,072 s =
+    3,600 - 2,528) as the generation's duration. Polling every
+    ``division_poll_interval`` seconds must stop within one slice of the
+    division, book the division time, and carry the daughter at division."""
+    lp, _ = _make(monkeypatch, generations=2)
+    _real_run_until_division(monkeypatch, lp)
+    lp.config["division_poll_interval"] = 10.0
+    lp.config["max_duration_per_gen"] = 3600.0
+    lp._gen_elapsed = 0.0
+    comp = _DividingComposite(divide_at=2528.0)
+    lp._composite = comp
+
+    divided, daughter, _ = lp._run_until_division(3600.0)
+
+    assert divided is True
+    assert 2528.0 <= lp._gen_elapsed <= 2538.0            # within one slice
+    assert sum(comp.calls) <= comp.divided_at + 10.0       # never ran the sibling on
+    assert daughter is not None and daughter["bulk"] == "D"
+    assert comp.state["agents"]["00"]["global_time"] <= 10.0   # daughter at division
+
+
+def test_tick_driven_path_is_unchanged_by_division_polling(monkeypatch):
+    """The chain path drives the runner one second at a time: with
+    ``interval=1`` a poll interval of 10 s still issues exactly one 1 s run."""
+    lp, _ = _make(monkeypatch, generations=2)
+    _real_run_until_division(monkeypatch, lp)
+    lp.config["division_poll_interval"] = 10.0
+    lp._gen_elapsed = 0.0
+    comp = _DividingComposite(divide_at=None)
+    lp._composite = comp
+
+    divided, daughter, _ = lp._run_until_division(1.0)
+
+    assert comp.calls == [1.0]
+    assert divided is False and daughter is None
+    assert lp._gen_elapsed == 1.0
+
+
+def test_no_division_consumes_the_whole_window(monkeypatch):
+    """Without a division the slices add up to the full window and the
+    generation books the window (so ``update`` reports ``timed_out``)."""
+    lp, _ = _make(monkeypatch, generations=2)
+    _real_run_until_division(monkeypatch, lp)
+    lp.config["division_poll_interval"] = 250.0
+    lp.config["max_duration_per_gen"] = 3600.0
+    lp._gen_elapsed = 0.0
+    comp = _DividingComposite(divide_at=None)
+    lp._composite = comp
+
+    divided, daughter, _ = lp._run_until_division(3600.0)
+
+    assert divided is False and daughter is None
+    assert sum(comp.calls) == 3600.0
+    assert max(comp.calls) <= 250.0
+    assert lp._gen_elapsed == 3600.0
+    assert lp._gen_elapsed >= float(lp.config["max_duration_per_gen"])
+
+
+def test_partition_bookkeeping_roots_are_never_carried():
+    """``request``/``allocate`` are per-tick partition bookkeeping (each Requester
+    overwrites its own entry; the Allocator derives ``allocate`` from ``request``).
+    Carrying the mother's snapshot seeded the daughter's first tick with stale,
+    full-size demands from EVERY process and the Allocator partitioned a half-size
+    cell against them: sims 943/944 (2026-09-10) died in generation 1 on
+    ``NegativeCountsError`` / ``Failed to meet molecule limits with ppGpp``."""
+    from v2ecoli.library.division import extra_store_keys
+    from v2ecoli.workflow.lineage import apply_carry_state, select_carry_daughter
+
+    stale_request = {"ecoli-polypeptide-elongation": {"bulk": [[300, 10 ** 6]]}}
+    stale_allocate = {"ecoli-polypeptide-elongation": {"bulk": [[300, 10 ** 6]]}}
+    mother_snapshot = {
+        "bulk": "M", "unique": {}, "environment": {}, "boundary": {},
+        "request": stale_request, "allocate": stale_allocate,
+        "fields": {"drug": 1.0},
+    }
+    assert "request" not in extra_store_keys(mother_snapshot)
+    assert "allocate" not in extra_store_keys(mother_snapshot)
+
+    agents_now = {
+        "00": {"bulk": "D0", "unique": {}, "environment": {}, "boundary": {},
+               "request": {}, "allocate": {}, "fields": {"drug": 0.0}},
+        "01": {"bulk": "D1", "unique": {}, "environment": {}, "boundary": {}},
+    }
+    carry = select_carry_daughter({"0"}, agents_now, mother_snapshot)
+    assert "request" not in carry and "allocate" not in carry
+    assert carry["fields"] == {"drug": 1.0}          # injected extras still ride
+
+    fresh = {"bulk": "F", "unique": {}, "environment": {}, "boundary": {},
+             "request": {}, "allocate": {}, "fields": {"drug": 0.0}}
+    apply_carry_state(fresh, carry)
+    assert fresh["request"] == {} and fresh["allocate"] == {}
+    assert fresh["fields"] == {"drug": 1.0}

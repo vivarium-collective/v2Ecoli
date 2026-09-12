@@ -82,13 +82,50 @@ def _git_sha() -> str:
         return "unknown"
 
 
+def _pos(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
+
+
+def induction_problems(manifest: dict) -> list[str]:
+    """Every reason this new-gene cache is NOT a genuine induction. Empty = ok.
+
+    The whole point of this script (see the module docstring) is that ParCa
+    inserts a new gene SILENT -- rna_expression exactly zero. A cache that
+    requested induction but whose ``applied`` block came back silent is a basal
+    build wearing a genotype's name, bit-indistinguishable from a real one at
+    exit 0. Verify the induction actually took, at the one place that can: right
+    after the library assigns it, before the manifest is trusted downstream."""
+    problems: list[str] = []
+    req = manifest.get("requested") or {}
+    if not _pos(req.get("expression")):
+        problems.append(
+            f"requested.expression is {req.get('expression')!r}: an induced "
+            f"cache must request a positive expression multiplier")
+
+    applied = manifest.get("applied") or {}
+    rna_ids = applied.get("rna_ids") or []
+    factors = applied.get("expression_factors") or []
+    if not rna_ids:
+        problems.append(
+            "applied.rna_ids is empty: no new-gene cistron was found to "
+            "induce -- the cache is basal under a genotype's name (point "
+            "--state at a v2ecoli-parca --new-genes build)")
+    if not factors or not all(_pos(f) for f in factors):
+        problems.append(
+            f"applied.expression_factors {factors!r} are not all positive: the "
+            f"new gene was inserted SILENT (rna_expression 0) -- the exact "
+            f"silent-basal defect this script exists to prevent")
+    return problems
+
+
 def build(state_path: str, cache_dir: str, expression: float,
           translation_efficiency: float,
           rel_exp_adj: list[float] | None = None,
           rel_trl_eff_adj: list[float] | None = None,
           seed: int = 0,
           media_condition: str | None = None,
-          fixed_media: str | None = None) -> dict:
+          fixed_media: str | None = None,
+          verify: bool = True) -> dict:
     # Resolve BEFORE the chdir: `build()` is importable as a function, and a
     # caller passing a relative path would otherwise have it silently resolved
     # against the repo root rather than their own cwd.
@@ -144,6 +181,23 @@ def build(state_path: str, cache_dir: str, expression: float,
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
     print(f"    new-gene manifest -> {manifest_path}")
+
+    # BUILD-TIME INDUCTION GATE. The manifest is written first (so a failed
+    # build leaves a diagnosable artifact), then verified. A silent/zero
+    # induction raises here -- refusing to hand back a basal cache that would
+    # dispatch as a genotype and pass every downstream check at exit 0.
+    # --no-verify-induction / verify=False overrides for an intentional
+    # zero-induction control.
+    if verify:
+        problems = induction_problems(manifest)
+        if problems:
+            raise SystemExit(
+                f"\nbuild-time induction gate FAILED for {cache_dir}:\n"
+                + "\n".join(f"  - {p}" for p in problems)
+                + "\n\nThe manifest was written for inspection but this cache "
+                "is NOT a genuine induction. Fix the state/expression, or pass "
+                "--no-verify-induction (verify=False) for a deliberate control.\n")
+
     print(f"\nTotal: {time.time()-t0:.1f}s")
     return manifest
 
@@ -174,6 +228,10 @@ def main() -> None:
                          "doubling time (default basal)")
     ap.add_argument("--fixed-media", default=None,
                     help="media id pinned for the whole run")
+    ap.add_argument("--no-verify-induction", dest="verify",
+                    action="store_false",
+                    help="skip the build-time induction gate (allow a silent / "
+                         "zero-induction cache -- only for a deliberate control)")
     args = ap.parse_args()
 
     build(args.state, args.cache_dir, args.expression,
@@ -182,7 +240,8 @@ def main() -> None:
           rel_trl_eff_adj=_weights(args.rel_trl_eff_adj, "rel-trl-eff-adj"),
           seed=args.seed,
           media_condition=args.media_condition,
-          fixed_media=args.fixed_media)
+          fixed_media=args.fixed_media,
+          verify=args.verify)
 
 
 if __name__ == "__main__":
