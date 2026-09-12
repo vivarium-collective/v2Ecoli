@@ -253,7 +253,7 @@ def _section_biocyc(repo_root: str, out_dir: str, do_fetch: bool) -> str:
         body = (
             '<p class="meta">No cached metadata at '
             f'<code>{meta_path}</code>.  Run '
-            '<code>scripts/compare_parca.py --fetch-biocyc</code> to '
+            '<code>scripts/parca_compare.py --fetch-biocyc</code> to '
             'populate this section (takes ~15-30 s; hits the BioCyc web '
             'service).</p>'
             '<details><summary>The 10 EcoCyc-refreshable files</summary>'
